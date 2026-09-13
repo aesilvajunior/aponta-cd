@@ -38,7 +38,7 @@ export default function App() {
   const [tab, setTab] = useState("kiosk");
   const [isAdmin, setIsAdmin] = useState(false);
   const [loaded, setLoaded] = useState(false);
-  const [connectionError, setConnectionError] = useState(false);
+  const [connectionError, setConnectionError] = useState(null);
 
   const [operators, setOperators] = useState(DEFAULT_OPERATORS);
   const [activities, setActivities] = useState(DEFAULT_ACTIVITIES);
@@ -52,10 +52,11 @@ export default function App() {
     const { data: cfg, error: cfgErr } = await supabase.from("admin_config").select("*").eq("id", 1).maybeSingle();
 
     if (opsErr || actsErr || cfgErr) {
-      setConnectionError(true);
+      const firstError = opsErr || actsErr || cfgErr;
+      setConnectionError(firstError?.message || "Erro desconhecido ao conectar com o banco.");
       return;
     }
-    setConnectionError(false);
+    setConnectionError(null);
     if (ops && ops.length) setOperators(ops);
     if (acts && acts.length) setActivities(acts);
     if (cfg) setAdminPin(cfg.pin);
@@ -111,11 +112,16 @@ export default function App() {
         {connectionError && (
           <div className="card" style={{ borderColor: "var(--danger)", marginBottom: 20 }}>
             <strong style={{ color: "var(--danger)" }}>Sem conexão com o banco de dados.</strong>
-            <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "6px 0 0 0" }}>
-              Verifique se o arquivo <code>.env</code> tem <code>VITE_SUPABASE_URL</code> e{" "}
-              <code>VITE_SUPABASE_ANON_KEY</code> corretos, e se o esquema SQL foi aplicado no Supabase.
-              Exibindo dados padrão por enquanto.
+            <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "6px 0 10px 0" }}>
+              Detalhe técnico: <code>{connectionError}</code>
+              <br />
+              Causas comuns: o script <code>supabase/schema.sql</code> ainda não foi rodado no Supabase,
+              ou as variáveis <code>VITE_SUPABASE_URL</code> / <code>VITE_SUPABASE_ANON_KEY</code> estão
+              erradas na hospedagem. Exibindo dados padrão por enquanto.
             </p>
+            <button className="btn-small" onClick={() => { loadConfig(); loadEntries(); loadActiveSessions(); }}>
+              Tentar novamente
+            </button>
           </div>
         )}
 
