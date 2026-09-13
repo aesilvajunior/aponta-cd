@@ -1,5 +1,13 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { supabase } from "./supabaseClient";
+import {
+  fetchOperators,
+  fetchActivities,
+  fetchAdminConfig,
+  fetchEntries,
+  fetchActiveSessions,
+  resetAllEntries,
+  subscribeToTables,
+} from "./lib/api";
 import Sidebar from "./components/Sidebar";
 import Kiosk from "./components/Kiosk";
 import AdminGate from "./components/AdminGate";
@@ -47,9 +55,8 @@ export default function App() {
   const [activeSessions, setActiveSessions] = useState([]);
 
   const loadConfig = useCallback(async () => {
-    const { data: ops, error: opsErr } = await supabase.from("operators").select("*").order("code");
-    const { data: acts, error: actsErr } = await supabase.from("activities").select("*").eq("active", true).order("name");
-    const { data: cfg, error: cfgErr } = await supabase.from("admin_config").select("*").eq("id", 1).maybeSingle();
+    const [{ data: ops, error: opsErr }, { data: acts, error: actsErr }, { data: cfg, error: cfgErr }] =
+      await Promise.all([fetchOperators(), fetchActivities(), fetchAdminConfig()]);
 
     if (opsErr || actsErr || cfgErr) {
       const firstError = opsErr || actsErr || cfgErr;
@@ -57,23 +64,25 @@ export default function App() {
       return;
     }
     setConnectionError(null);
-    if (ops && ops.length) setOperators(ops);
-    if (acts && acts.length) setActivities(acts);
+    // Aceita listas vazias também — se todos os operadores/atividades
+    // forem removidos, a tela deve refletir isso, não travar no cache antigo.
+    setOperators(ops ?? []);
+    setActivities(acts ?? []);
     if (cfg) setAdminPin(cfg.pin);
   }, []);
 
   const loadEntries = useCallback(async () => {
-    const { data } = await supabase.from("entries").select("*").order("start_time", { ascending: false }).limit(2000);
+    const { data } = await fetchEntries();
     if (data) setEntries(data);
   }, []);
 
   const loadActiveSessions = useCallback(async () => {
-    const { data } = await supabase.from("active_sessions").select("*");
+    const { data } = await fetchActiveSessions();
     if (data) setActiveSessions(data);
   }, []);
 
   const resetEntries = useCallback(async () => {
-    await supabase.from("entries").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    await resetAllEntries();
     await loadEntries();
   }, [loadEntries]);
 
@@ -83,18 +92,24 @@ export default function App() {
       setLoaded(true);
     })();
 
-    const entriesChannel = supabase
-      .channel("entries-changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "entries" }, () => loadEntries())
-      .subscribe();
-    const sessionsChannel = supabase
-      .channel("sessions-changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "active_sessions" }, () => loadActiveSessions())
-      .subscribe();
+    // Apontamentos e sessões em andamento mudam a cada batida de ponto.
+    const unsubscribeActivity = subscribeToTables(["entries", "active_sessions"], () => {
+      loadEntries();
+      loadActiveSessions();
+    });
+
+    // Equipe, atividades do mês e PIN também precisam sincronizar entre
+    // abas/dispositivos — antes só entries/sessões tinham isso, então uma
+    // tela do quiosque podia ficar com a lista de operadores desatualizada
+    // depois de uma alteração feita no painel em outra aba.
+    const unsubscribeConfig = subscribeToTables(
+      ["operators", "activities", "admin_config"],
+      () => loadConfig()
+    );
 
     return () => {
-      supabase.removeChannel(entriesChannel);
-      supabase.removeChannel(sessionsChannel);
+      unsubscribeActivity();
+      unsubscribeConfig();
     };
   }, [loadConfig, loadEntries, loadActiveSessions]);
 

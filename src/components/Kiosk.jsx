@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { supabase } from "../supabaseClient";
+import { fetchActiveSessionFor, startSession, finishSession } from "../lib/api";
 import { fmtDuration, fmtClock, fmtDate, shiftFor } from "../lib/format";
 import logo from "../assets/logo.png";
 
@@ -101,11 +101,7 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
     bump();
     setMsg("");
     setCheckingLogin(true);
-    const { data } = await supabase
-      .from("active_sessions")
-      .select("*")
-      .eq("operator_code", op.code)
-      .maybeSingle();
+    const { data } = await fetchActiveSessionFor(op.code);
     // Busca a sessão ANTES de logar visualmente, para não piscar a tela de
     // "escolher atividade" por um instante quando na verdade já tem uma em andamento.
     setSession(data || null);
@@ -118,15 +114,12 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
     bump();
     setBusy(true);
     const nowIso = new Date().toISOString();
-    const { error } = await supabase.from("active_sessions").upsert(
-      {
-        operator_code: loggedOperator.code,
-        operator_name: loggedOperator.name,
-        activity: activityName,
-        start_time: nowIso,
-      },
-      { onConflict: "operator_code" }
-    );
+    const { error } = await startSession({
+      operatorCode: loggedOperator.code,
+      operatorName: loggedOperator.name,
+      activity: activityName,
+      startTimeIso: nowIso,
+    });
     setBusy(false);
     if (!error) {
       setConfirmation({ kind: "started", activity: activityName, time: fmtClock(nowIso) });
@@ -145,19 +138,14 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
     const startTime = new Date(session.start_time);
     const duration = Math.round((endTime - startTime) / 1000);
 
-    const { error: insertError } = await supabase.from("entries").insert({
-      operator_code: session.operator_code,
-      operator_name: session.operator_name,
-      activity: session.activity,
-      start_time: session.start_time,
-      end_time: endTime.toISOString(),
-      duration_seconds: duration,
+    const { error } = await finishSession(session, {
+      endTimeIso: endTime.toISOString(),
+      durationSeconds: duration,
       shift: shiftFor(session.start_time),
     });
 
     setBusy(false);
-    if (!insertError) {
-      await supabase.from("active_sessions").delete().eq("operator_code", session.operator_code);
+    if (!error) {
       refreshEntries?.();
       setSession(null);
       setConfirmation({ kind: "finished", activity: session.activity, extra: fmtDuration(duration) });

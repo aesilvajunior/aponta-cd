@@ -108,6 +108,40 @@ create policy "escrita publica entries" on entries for all using (true) with che
 create policy "leitura publica admin_config" on admin_config for select using (true);
 create policy "escrita publica admin_config" on admin_config for all using (true) with check (true);
 
--- Habilita realtime (para o painel atualizar sozinho quando alguém bate ponto)
-alter publication supabase_realtime add table entries;
-alter publication supabase_realtime add table active_sessions;
+-- Habilita realtime (para as telas atualizarem sozinhas quando algo muda)
+-- Usa um bloco condicional porque "alter publication ... add table" dá erro
+-- se a tabela já estiver na publicação — importante para rodar este script
+-- de novo com segurança num banco que já foi configurado antes.
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and tablename = 'entries'
+  ) then
+    alter publication supabase_realtime add table entries;
+  end if;
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and tablename = 'active_sessions'
+  ) then
+    alter publication supabase_realtime add table active_sessions;
+  end if;
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and tablename = 'operators'
+  ) then
+    alter publication supabase_realtime add table operators;
+  end if;
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and tablename = 'activities'
+  ) then
+    alter publication supabase_realtime add table activities;
+  end if;
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime' and tablename = 'admin_config'
+  ) then
+    alter publication supabase_realtime add table admin_config;
+  end if;
+end $$;

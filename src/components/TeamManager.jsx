@@ -1,11 +1,22 @@
 import React, { useState } from "react";
-import { supabase } from "../supabaseClient";
+import {
+  insertOperator,
+  deleteOperator,
+  renameOperatorCode,
+  updateOperator,
+  insertActivity,
+  deleteActivity,
+  renameActivity,
+  updateAdminPin,
+} from "../lib/api";
 
 export default function TeamManager({ operators, activities, adminPin, refreshConfig }) {
   const [newOpName, setNewOpName] = useState("");
   const [newOpRole, setNewOpRole] = useState("");
   const [newOpCode, setNewOpCode] = useState("");
+  const [savingNewOp, setSavingNewOp] = useState(false);
   const [newActivity, setNewActivity] = useState("");
+  const [savingNewActivity, setSavingNewActivity] = useState(false);
   const [newPin, setNewPin] = useState("");
   const [savingPin, setSavingPin] = useState(false);
   const [formError, setFormError] = useState("");
@@ -24,13 +35,21 @@ export default function TeamManager({ operators, activities, adminPin, refreshCo
   }
 
   async function addOperator() {
+    // Trava o botão enquanto salva: antes, um clique duplo (ou o dedo
+    // escorregando na tela do quiosque/painel) disparava duas inserções
+    // com o mesmo código gerado automaticamente, e a segunda falhava por
+    // violar a chave primária — aparecendo como "erro ao salvar".
+    if (savingNewOp) return;
     setFormError("");
     const name = newOpName.trim();
     if (!name) return setFormError("Digite o nome do operador.");
     const code = newOpCode.trim() || nextFreeCode();
     if (!/^\d{1,4}$/.test(code)) return setFormError("O código deve conter só números (até 4 dígitos).");
     if (operators.some((o) => o.code === code)) return setFormError(`Já existe um operador com o código ${code}.`);
-    const { error } = await supabase.from("operators").insert({ code, name, role: newOpRole.trim() || "-" });
+
+    setSavingNewOp(true);
+    const { error } = await insertOperator({ code, name, role: newOpRole.trim() });
+    setSavingNewOp(false);
     if (error) return setFormError("Erro ao salvar. Tente novamente.");
     setNewOpName("");
     setNewOpRole("");
@@ -40,7 +59,8 @@ export default function TeamManager({ operators, activities, adminPin, refreshCo
 
   async function removeOperator(code) {
     if (!window.confirm("Remover este operador? Os registros antigos dele continuam no histórico.")) return;
-    await supabase.from("operators").delete().eq("code", code);
+    const { error } = await deleteOperator(code);
+    if (error) return setFormError("Erro ao remover. Tente novamente.");
     refreshConfig();
   }
 
@@ -64,38 +84,40 @@ export default function TeamManager({ operators, activities, adminPin, refreshCo
       return setFormError(`Já existe um operador com o código ${code}.`);
     }
     setSavingEdit(true);
-    if (code !== originalCode) {
-      const { error: insertErr } = await supabase.from("operators").insert({ code, name, role: editValues.role.trim() || "-" });
-      if (!insertErr) {
-        await supabase.from("operators").delete().eq("code", originalCode);
-      } else {
-        setFormError("Erro ao salvar (código pode já estar em uso).");
-        setSavingEdit(false);
-        return;
-      }
-    } else {
-      await supabase.from("operators").update({ name, role: editValues.role.trim() || "-" }).eq("code", originalCode);
-    }
+    const role = editValues.role.trim();
+    const { error } =
+      code !== originalCode
+        ? await renameOperatorCode(originalCode, { code, name, role })
+        : await updateOperator(originalCode, { name, role });
     setSavingEdit(false);
+    if (error) {
+      setFormError("Erro ao salvar (código pode já estar em uso).");
+      return;
+    }
     setEditingCode(null);
     refreshConfig();
   }
 
   async function addActivity() {
+    if (savingNewActivity) return;
     const name = newActivity.trim();
     if (!name) return;
     if (activities.some((a) => a.name.toLowerCase() === name.toLowerCase())) {
       return setFormError(`A atividade "${name}" já existe.`);
     }
     setFormError("");
-    await supabase.from("activities").insert({ name, active: true });
+    setSavingNewActivity(true);
+    const { error } = await insertActivity(name);
+    setSavingNewActivity(false);
+    if (error) return setFormError("Erro ao salvar. Tente novamente.");
     setNewActivity("");
     refreshConfig();
   }
 
   async function removeActivity(name) {
     if (!window.confirm(`Remover a atividade "${name}" da lista deste mês?`)) return;
-    await supabase.from("activities").delete().eq("name", name);
+    const { error } = await deleteActivity(name);
+    if (error) return setFormError("Erro ao remover. Tente novamente.");
     refreshConfig();
   }
 
@@ -117,17 +139,12 @@ export default function TeamManager({ operators, activities, adminPin, refreshCo
     }
     setFormError("");
     setSavingActivityEdit(true);
-    if (name !== originalName) {
-      const { error: insertErr } = await supabase.from("activities").insert({ name, active: true });
-      if (!insertErr) {
-        await supabase.from("activities").delete().eq("name", originalName);
-      } else {
-        setFormError("Erro ao renomear (nome pode já estar em uso).");
-        setSavingActivityEdit(false);
-        return;
-      }
-    }
+    const { error } = await renameActivity(originalName, name);
     setSavingActivityEdit(false);
+    if (error) {
+      setFormError("Erro ao renomear (nome pode já estar em uso).");
+      return;
+    }
     setEditingActivity(null);
     refreshConfig();
   }
@@ -137,9 +154,10 @@ export default function TeamManager({ operators, activities, adminPin, refreshCo
     if (pin.length < 4) return setFormError("O PIN precisa ter pelo menos 4 dígitos.");
     setFormError("");
     setSavingPin(true);
-    await supabase.from("admin_config").update({ pin }).eq("id", 1);
-    setNewPin("");
+    const { error } = await updateAdminPin(pin);
     setSavingPin(false);
+    if (error) return setFormError("Erro ao alterar o PIN. Tente novamente.");
+    setNewPin("");
     refreshConfig();
   }
 
@@ -181,7 +199,9 @@ export default function TeamManager({ operators, activities, adminPin, refreshCo
             <input className="field" style={{ width: 64 }} placeholder="Cód." value={newOpCode} onChange={(e) => setNewOpCode(e.target.value.replace(/\D/g, ""))} />
             <input className="field" style={{ flex: 1, minWidth: 100 }} placeholder="Nome" value={newOpName} onChange={(e) => setNewOpName(e.target.value)} />
             <input className="field" style={{ width: 140 }} placeholder="Função" value={newOpRole} onChange={(e) => setNewOpRole(e.target.value)} />
-            <button className="btn-small" onClick={addOperator}>Adicionar</button>
+            <button className="btn-small" onClick={addOperator} disabled={savingNewOp}>
+              {savingNewOp ? "Salvando..." : "Adicionar"}
+            </button>
           </div>
           <table className="data-table">
             <thead><tr><th>Cód.</th><th>Nome</th><th>Função</th><th></th></tr></thead>
@@ -223,7 +243,9 @@ export default function TeamManager({ operators, activities, adminPin, refreshCo
           <div className="card-title">Atividades do mês</div>
           <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
             <input className="field" style={{ flex: 1 }} placeholder="Nova atividade" value={newActivity} onChange={(e) => setNewActivity(e.target.value)} />
-            <button className="btn-small" onClick={addActivity}>Adicionar</button>
+            <button className="btn-small" onClick={addActivity} disabled={savingNewActivity}>
+              {savingNewActivity ? "Salvando..." : "Adicionar"}
+            </button>
           </div>
           <table className="data-table">
             <thead><tr><th>Atividade</th><th></th></tr></thead>
