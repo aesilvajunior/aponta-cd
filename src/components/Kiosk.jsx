@@ -3,8 +3,8 @@ import { supabase } from "../supabaseClient";
 import { fmtDuration, fmtClock, shiftFor } from "../lib/format";
 
 const CODE_LENGTH = 3;
-const AUTO_RETURN_MS = 2500; // tempo mostrando a confirmação antes de devolver o teclado
-const IDLE_TIMEOUT_MS = 20000; // tempo parado até o quiosque deslogar sozinho, por segurança
+const AUTO_RETURN_MS = 2200;
+const IDLE_TIMEOUT_MS = 20000;
 
 export default function Kiosk({ operators, activities, refreshEntries }) {
   const [codeInput, setCodeInput] = useState("");
@@ -15,7 +15,7 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
   const [now, setNow] = useState(Date.now());
   const [busy, setBusy] = useState(false);
   const [shake, setShake] = useState(false);
-  const [confirmation, setConfirmation] = useState(null); // { kind: "started"|"finished", activity, extra }
+  const [confirmation, setConfirmation] = useState(null);
 
   const codeInputRef = useRef(codeInput);
   codeInputRef.current = codeInput;
@@ -31,14 +31,10 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
     return () => clearInterval(iv);
   }, []);
 
-  // Devolve o teclado sozinho se alguém ficar logado sem mexer no quiosque
-  // (prática padrão em terminais compartilhados de CD, evita ficar preso num operador).
   useEffect(() => {
     if (!loggedOperator) return;
     const iv = setInterval(() => {
-      if (Date.now() - lastInteractionRef.current > IDLE_TIMEOUT_MS) {
-        reset();
-      }
+      if (Date.now() - lastInteractionRef.current > IDLE_TIMEOUT_MS) reset();
     }, 1000);
     return () => clearInterval(iv);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -50,8 +46,6 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
     };
   }, []);
 
-  // Permite digitar o código com o teclado físico do computador,
-  // não só clicando no teclado numérico na tela.
   useEffect(() => {
     if (loggedOperator) return;
     function onKeyDown(e) {
@@ -101,11 +95,11 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
 
   async function handleLogin() {
     const current = codeInputRef.current;
-    if (!current) return;
+    if (current.length < CODE_LENGTH) return;
     const op = operators.find((o) => o.code === current);
     if (!op) {
       setMsgType("error");
-      setMsg("Código não encontrado. Verifique com o líder.");
+      setMsg("Código não encontrado.");
       triggerShake();
       setCodeInput("");
       return;
@@ -121,21 +115,17 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
     bump();
     setBusy(true);
     const nowIso = new Date().toISOString();
-    const { error } = await supabase
-      .from("active_sessions")
-      .upsert(
-        {
-          operator_code: loggedOperator.code,
-          operator_name: loggedOperator.name,
-          activity: activityName,
-          start_time: nowIso,
-        },
-        { onConflict: "operator_code" }
-      );
+    const { error } = await supabase.from("active_sessions").upsert(
+      {
+        operator_code: loggedOperator.code,
+        operator_name: loggedOperator.name,
+        activity: activityName,
+        start_time: nowIso,
+      },
+      { onConflict: "operator_code" }
+    );
     setBusy(false);
     if (!error) {
-      // Não trava o quiosque num cronômetro: confirma e devolve o teclado.
-      // O operador volta depois, digita o código de novo e finaliza.
       setConfirmation({ kind: "started", activity: activityName, time: fmtClock(nowIso) });
       autoReturnTimeoutRef.current = setTimeout(reset, AUTO_RETURN_MS);
     } else {
@@ -175,27 +165,19 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
     }
   }
 
+  const dots = Array.from({ length: CODE_LENGTH }, (_, i) => i < codeInput.length);
+
   return (
-    <div onClick={bump}>
+    <div onClick={bump} style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
       <h1 className="page-title">Registrar atividade</h1>
-      <p className="page-sub">
-        Digite seu código de operador (3 dígitos) para iniciar ou finalizar uma atividade. Você pode usar
-        o teclado numérico na tela ou o teclado do computador — Backspace apaga, Enter confirma. O
-        quiosque libera sozinho depois de um tempo parado, para o próximo operador usar.
-      </p>
+      <p className="page-sub">Digite seu código para iniciar ou finalizar uma atividade.</p>
 
       {!loggedOperator && (
-        <div className={`card ${shake ? "shake" : ""}`} style={{ maxWidth: 320 }}>
-          <div
-            style={{
-              textAlign: "center",
-              fontFamily: "var(--font-mono)",
-              fontSize: 28,
-              letterSpacing: 10,
-              minHeight: 36,
-            }}
-          >
-            {codeInput.padEnd(CODE_LENGTH, "\u2013").split("").join(" ")}
+        <div className={`terminal ${shake ? "shake" : ""}`}>
+          <div className="terminal-dots">
+            {dots.map((filled, i) => (
+              <div key={i} className={`terminal-dot ${filled ? "filled" : ""}`} />
+            ))}
           </div>
           <div className="keypad">
             {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((d) => (
@@ -203,61 +185,60 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
                 {d}
               </button>
             ))}
-            <button className="keypad-key" onClick={() => { bump(); setCodeInput(""); }}>
-              C
+            <button className="keypad-key" onClick={() => { bump(); setCodeInput((p) => p.slice(0, -1)); }}>
+              ⌫
             </button>
             <button className="keypad-key" onClick={() => handleDigit("0")}>
               0
             </button>
-            <button
-              className="keypad-key"
-              style={{ background: "var(--accent)", color: "#1a1d20" }}
-              onClick={handleLogin}
-            >
+            <button className="keypad-key accent" onClick={handleLogin}>
               OK
             </button>
           </div>
-          {msg && (
-            <p style={{ color: "var(--danger)", fontSize: 13, textAlign: "center" }}>{msg}</p>
+          {msg ? (
+            <p className="terminal-error">{msg}</p>
+          ) : (
+            <p className="terminal-hint">teclado do computador também funciona</p>
           )}
         </div>
       )}
 
       {loggedOperator && confirmation && (
-        <div className="card" style={{ maxWidth: 420, textAlign: "center" }}>
-          <div style={{ fontSize: 34, marginBottom: 6 }}>{confirmation.kind === "started" ? "▶" : "✓"}</div>
-          {confirmation.kind === "started" ? (
-            <>
-              <div style={{ fontFamily: "var(--font-display)", fontSize: 19 }}>
-                {confirmation.activity} iniciada
-              </div>
-              <div style={{ color: "var(--text-muted)", fontSize: 13, marginTop: 4 }}>
-                às {confirmation.time} · volte depois e digite seu código de novo para finalizar
-              </div>
-            </>
-          ) : (
-            <>
-              <div style={{ fontFamily: "var(--font-display)", fontSize: 19 }}>
-                {confirmation.activity} finalizada
-              </div>
-              <div style={{ color: "var(--success)", fontSize: 15, marginTop: 4 }}>
-                Duração: {confirmation.extra}
-              </div>
-            </>
-          )}
-          <div style={{ color: "var(--text-muted)", fontSize: 11.5, marginTop: 14 }}>
-            Devolvendo o teclado...
+        <div className="terminal" style={{ textAlign: "center", padding: "36px 24px" }}>
+          <div
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: "50%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              margin: "0 auto 16px auto",
+              background: confirmation.kind === "started" ? "var(--accent-dim)" : "var(--ok-dim)",
+              color: confirmation.kind === "started" ? "var(--accent)" : "var(--ok)",
+              fontSize: 18,
+            }}
+          >
+            {confirmation.kind === "started" ? "▶" : "✓"}
+          </div>
+          <div style={{ fontSize: 17, fontWeight: 600 }}>
+            {confirmation.activity} {confirmation.kind === "started" ? "iniciada" : "finalizada"}
+          </div>
+          <div style={{ color: "var(--text-muted)", fontSize: 12.5, marginTop: 6 }}>
+            {confirmation.kind === "started"
+              ? `às ${confirmation.time} · volte depois para finalizar`
+              : `duração: ${confirmation.extra}`}
           </div>
         </div>
       )}
 
       {loggedOperator && !confirmation && (
-        <div className="card" style={{ maxWidth: 480 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <div className="card" style={{ width: 420 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
             <div>
-              <div style={{ fontFamily: "var(--font-display)", fontSize: 20 }}>{loggedOperator.name}</div>
+              <div style={{ fontSize: 17, fontWeight: 600 }}>{loggedOperator.name}</div>
               <div style={{ color: "var(--text-muted)", fontSize: 12 }}>
-                {loggedOperator.role} · código {loggedOperator.code}
+                {loggedOperator.role} · #{loggedOperator.code}
               </div>
             </div>
             <button className="btn-small" onClick={reset}>
@@ -266,29 +247,22 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
           </div>
 
           {!session && (
-            <>
-              <p style={{ color: "var(--text-muted)", fontSize: 13, marginBottom: 8 }}>
-                Selecione a atividade a iniciar:
-              </p>
-              <div className="activity-grid">
-                {activities.map((a) => (
-                  <div key={a.name} className="activity-btn" onClick={() => startActivity(a.name)}>
-                    {a.name}
-                  </div>
-                ))}
-              </div>
-            </>
+            <div className="activity-grid">
+              {activities.map((a) => (
+                <div key={a.name} className="activity-btn" onClick={() => startActivity(a.name)}>
+                  {a.name}
+                </div>
+              ))}
+            </div>
           )}
 
           {session && (
-            <div style={{ textAlign: "center", padding: "10px 0" }}>
-              <div style={{ color: "var(--text-muted)", fontSize: 12, textTransform: "uppercase", letterSpacing: 0.5 }}>
-                Em andamento desde {fmtClock(session.start_time)}
+            <div style={{ textAlign: "center", padding: "6px 0" }}>
+              <div style={{ color: "var(--text-muted)", fontSize: 11.5 }}>
+                em andamento desde {fmtClock(session.start_time)}
               </div>
-              <div style={{ fontFamily: "var(--font-display)", fontSize: 22, margin: "6px 0" }}>
-                {session.activity}
-              </div>
-              <div style={{ fontFamily: "var(--font-mono)", fontSize: 34, color: "var(--accent)", margin: "10px 0" }}>
+              <div style={{ fontSize: 18, fontWeight: 600, margin: "4px 0 8px 0" }}>{session.activity}</div>
+              <div className="stat-num" style={{ fontSize: 32, marginBottom: 16 }}>
                 {fmtDuration(Math.round((now - new Date(session.start_time).getTime()) / 1000))}
               </div>
               <button className="btn btn-danger" onClick={finishActivity} disabled={busy}>
@@ -299,8 +273,8 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
           {msg && (
             <p
               style={{
-                color: msgType === "error" ? "var(--danger)" : "var(--success)",
-                fontSize: 13,
+                color: msgType === "error" ? "var(--danger)" : "var(--ok)",
+                fontSize: 12.5,
                 textAlign: "center",
                 marginTop: 10,
               }}

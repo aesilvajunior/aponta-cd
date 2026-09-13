@@ -8,7 +8,7 @@ export default function Sidebar({ tab, setTab, isAdmin, onLock, onResetKiosk }) 
         <img src={logo} alt="Hidráulica Tropeiro" />
         <div className="sidebar-brand-text">
           Aponta CD
-          <span>HIDRÁULICA TROPEIRO</span>
+          <span>Hidráulica Tropeiro</span>
         </div>
       </div>
 
@@ -29,7 +29,7 @@ export default function Sidebar({ tab, setTab, isAdmin, onLock, onResetKiosk }) 
       </div>
 
       {isAdmin && (
-        <div style={{ marginTop: "auto", padding: "12px 20px" }}>
+        <div style={{ marginTop: "auto", padding: "12px 22px" }}>
           <button className="btn-small" onClick={onLock} style={{ width: "100%" }}>
             Sair do admin
           </button>

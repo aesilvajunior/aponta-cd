@@ -72,6 +72,11 @@ export default function App() {
     if (data) setActiveSessions(data);
   }, []);
 
+  const resetEntries = useCallback(async () => {
+    await supabase.from("entries").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+    await loadEntries();
+  }, [loadEntries]);
+
   useEffect(() => {
     (async () => {
       await Promise.all([loadConfig(), loadEntries(), loadActiveSessions()]);
@@ -134,7 +139,13 @@ export default function App() {
         )}
 
         {tab === "panel" && isAdmin && (
-          <Panel entries={entries} activities={activities} operators={operators} activeSessions={activeSessions} />
+          <Panel
+            entries={entries}
+            activities={activities}
+            operators={operators}
+            activeSessions={activeSessions}
+            onResetEntries={resetEntries}
+          />
         )}
 
         {tab === "team" && isAdmin && (
