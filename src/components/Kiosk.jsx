@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { supabase } from "../supabaseClient";
-import { fmtDuration, fmtClock, shiftFor } from "../lib/format";
+import { fmtDuration, fmtClock, fmtDate, shiftFor } from "../lib/format";
+import logo from "../assets/logo.png";
 
 const CODE_LENGTH = 3;
 const AUTO_RETURN_MS = 2200;
@@ -65,14 +66,7 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loggedOperator, operators]);
 
-  async function loadSession(operatorCode) {
-    const { data } = await supabase
-      .from("active_sessions")
-      .select("*")
-      .eq("operator_code", operatorCode)
-      .maybeSingle();
-    setSession(data || null);
-  }
+  const [checkingLogin, setCheckingLogin] = useState(false);
 
   function reset() {
     if (autoReturnTimeoutRef.current) clearTimeout(autoReturnTimeoutRef.current);
@@ -95,7 +89,7 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
 
   async function handleLogin() {
     const current = codeInputRef.current;
-    if (current.length < CODE_LENGTH) return;
+    if (current.length < CODE_LENGTH || checkingLogin) return;
     const op = operators.find((o) => o.code === current);
     if (!op) {
       setMsgType("error");
@@ -105,9 +99,18 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
       return;
     }
     bump();
-    setLoggedOperator(op);
     setMsg("");
-    await loadSession(op.code);
+    setCheckingLogin(true);
+    const { data } = await supabase
+      .from("active_sessions")
+      .select("*")
+      .eq("operator_code", op.code)
+      .maybeSingle();
+    // Busca a sessão ANTES de logar visualmente, para não piscar a tela de
+    // "escolher atividade" por um instante quando na verdade já tem uma em andamento.
+    setSession(data || null);
+    setLoggedOperator(op);
+    setCheckingLogin(false);
   }
 
   async function startActivity(activityName) {
@@ -172,6 +175,7 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
       <h1 className="page-title">Registrar atividade</h1>
       <p className="page-sub">Digite seu código para iniciar ou finalizar uma atividade.</p>
 
+      <div style={{ display: "flex", gap: 24, flexWrap: "wrap", alignItems: "flex-start" }}>
       {!loggedOperator && (
         <div className={`terminal ${shake ? "shake" : ""}`}>
           <div className="terminal-dots">
@@ -191,8 +195,8 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
             <button className="keypad-key" onClick={() => handleDigit("0")}>
               0
             </button>
-            <button className="keypad-key accent" onClick={handleLogin}>
-              OK
+            <button className="keypad-key accent" onClick={handleLogin} disabled={checkingLogin}>
+              {checkingLogin ? "..." : "OK"}
             </button>
           </div>
           {msg ? (
@@ -284,6 +288,19 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
           )}
         </div>
       )}
+
+      <div className="side-panel">
+        <div className="side-clock">{fmtClock(now)}</div>
+        <div className="side-date">{fmtDate(now)}</div>
+        <div className="side-shift-badge">
+          <span className="side-shift-dot" />
+          Turno {shiftFor(now)}
+        </div>
+        <div className="side-divider" />
+        <img src={logo} alt="" className="side-logo" />
+        <div className="side-motto">"joga junto e cresce todo dia"</div>
+      </div>
+      </div>
     </div>
   );
 }
