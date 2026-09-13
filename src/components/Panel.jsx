@@ -52,9 +52,9 @@ export default function Panel({ entries, activities, operators, activeSessions, 
   }
 
   function exportCSV() {
-    const header = "Operador,Codigo,Atividade,Data,Turno,Inicio,Fim,Duracao(s)\n";
+    const header = "Operador,Codigo,Atividade,Detalhe,Data,Turno,Inicio,Fim,Duracao(s)\n";
     const rows = filteredEntries.map((e) =>
-      [e.operator_name, e.operator_code, e.activity, fmtDate(e.start_time), e.shift, fmtClock(e.start_time), fmtClock(e.end_time), e.duration_seconds].join(",")
+      [e.operator_name, e.operator_code, e.activity, e.detail || "", fmtDate(e.start_time), e.shift, fmtClock(e.start_time), fmtClock(e.end_time), e.duration_seconds].join(",")
     );
     const csv = header + rows.join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -211,6 +211,27 @@ export default function Panel({ entries, activities, operators, activeSessions, 
         </div>
       </div>
 
+      {Object.keys(metrics.detailBreakdown).length > 0 && (
+        <div className="card" style={{ marginBottom: 20 }}>
+          <div className="card-title">Detalhamento por local / veículo</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(240px,1fr))", gap: 16 }}>
+            {Object.entries(metrics.detailBreakdown).map(([activity, rows]) => (
+              <div key={activity}>
+                <div style={{ fontSize: 12.5, color: "var(--accent)", fontWeight: 600, marginBottom: 6 }}>{activity}</div>
+                {rows.map((r) => (
+                  <div key={r.name} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, padding: "3px 0", borderBottom: "1px solid var(--border)" }}>
+                    <span>{r.name}</span>
+                    <span style={{ fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>
+                      {r.registros}× · {fmtDuration(r.media)} méd.
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="card">
         <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
           <select className="field" value={filterOperator} onChange={(e) => setFilterOperator(e.target.value)}>
@@ -245,7 +266,12 @@ export default function Panel({ entries, activities, operators, activeSessions, 
                 <tr key={e.id}>
                   <td>{fmtDate(e.start_time)}</td>
                   <td style={{ fontFamily: "var(--font-display)" }}>{e.operator_name}</td>
-                  <td>{e.activity}</td>
+                  <td>
+                    {e.activity}
+                    {e.detail && (
+                      <span style={{ color: "var(--text-muted)", fontSize: 11.5 }}> · {e.detail}</span>
+                    )}
+                  </td>
                   <td>{e.shift}</td>
                   <td>{fmtClock(e.start_time)}</td>
                   <td>{fmtClock(e.end_time)}</td>

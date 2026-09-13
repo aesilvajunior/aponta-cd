@@ -21,7 +21,8 @@ create table if not exists active_sessions (
   operator_code text primary key,
   operator_name text not null,
   activity text not null,
-  start_time timestamptz not null
+  start_time timestamptz not null,
+  detail text
 );
 
 -- Tabela de registros finalizados (histórico)
@@ -34,6 +35,7 @@ create table if not exists entries (
   end_time timestamptz not null,
   duration_seconds integer not null,
   shift text not null,
+  detail text,
   created_at timestamptz default now()
 );
 
@@ -42,6 +44,13 @@ create table if not exists admin_config (
   id integer primary key,
   pin text not null
 );
+
+-- Coluna "detail" guarda o local (Limpeza/Organização) ou o veículo
+-- (Carregamento de Caminhão) escolhido antes de iniciar a atividade.
+-- Usa "add column if not exists" porque essas tabelas provavelmente já
+-- existem no seu banco, criadas antes dessa coluna existir.
+alter table active_sessions add column if not exists detail text;
+alter table entries add column if not exists detail text;
 
 -- Dados iniciais -------------------------------------------------------
 
@@ -56,7 +65,13 @@ insert into activities (name, active) values
   ('Expedição', true),
   ('Reposição', true),
   ('Inventário', true),
-  ('Outros', true)
+  ('Outros', true),
+  ('Limpeza', true),
+  ('Organização', true),
+  ('Carregamento de Caminhão', true),
+  ('Reabastecimento de gavetas', true),
+  ('Bater praças', true),
+  ('Conferência de entregas futuras', true)
   on conflict (name) do nothing;
 
 insert into operators (code, name, role) values
@@ -93,19 +108,34 @@ alter table active_sessions enable row level security;
 alter table entries enable row level security;
 alter table admin_config enable row level security;
 
+-- "drop ... if exists" antes de cada "create policy" porque, ao contrário
+-- de "create table"/"insert", o Postgres não tem "create policy if not
+-- exists" — sem isso, rodar o script de novo (algo que pedimos aqui mais de
+-- uma vez, ao adicionar colunas/tabelas novas) travaria com erro de
+-- "política já existe".
+drop policy if exists "leitura publica operators" on operators;
 create policy "leitura publica operators" on operators for select using (true);
+drop policy if exists "escrita publica operators" on operators;
 create policy "escrita publica operators" on operators for all using (true) with check (true);
 
+drop policy if exists "leitura publica activities" on activities;
 create policy "leitura publica activities" on activities for select using (true);
+drop policy if exists "escrita publica activities" on activities;
 create policy "escrita publica activities" on activities for all using (true) with check (true);
 
+drop policy if exists "leitura publica active_sessions" on active_sessions;
 create policy "leitura publica active_sessions" on active_sessions for select using (true);
+drop policy if exists "escrita publica active_sessions" on active_sessions;
 create policy "escrita publica active_sessions" on active_sessions for all using (true) with check (true);
 
+drop policy if exists "leitura publica entries" on entries;
 create policy "leitura publica entries" on entries for select using (true);
+drop policy if exists "escrita publica entries" on entries;
 create policy "escrita publica entries" on entries for all using (true) with check (true);
 
+drop policy if exists "leitura publica admin_config" on admin_config;
 create policy "leitura publica admin_config" on admin_config for select using (true);
+drop policy if exists "escrita publica admin_config" on admin_config;
 create policy "escrita publica admin_config" on admin_config for all using (true) with check (true);
 
 -- Habilita realtime (para as telas atualizarem sozinhas quando algo muda)

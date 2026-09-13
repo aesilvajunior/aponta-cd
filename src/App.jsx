@@ -40,6 +40,8 @@ const DEFAULT_OPERATORS = [
 const DEFAULT_ACTIVITIES = [
   "Recebimento", "Conferência", "Separação", "Embalagem",
   "Expedição", "Reposição", "Inventário", "Outros",
+  "Limpeza", "Organização", "Carregamento de Caminhão",
+  "Reabastecimento de gavetas", "Bater praças", "Conferência de entregas futuras",
 ].map((name) => ({ name, active: true }));
 
 export default function App() {

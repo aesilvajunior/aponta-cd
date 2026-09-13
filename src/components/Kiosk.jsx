@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { fetchActiveSessionFor, startSession, finishSession } from "../lib/api";
 import { fmtDuration, fmtClock, fmtDate, shiftFor } from "../lib/format";
+import { activityNeedsDetail, detailOptionsFor, detailLabelFor } from "../lib/activityDetails";
 import logo from "../assets/logo.png";
 
 const CODE_LENGTH = 3;
@@ -17,6 +18,7 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
   const [busy, setBusy] = useState(false);
   const [shake, setShake] = useState(false);
   const [confirmation, setConfirmation] = useState(null);
+  const [pendingActivity, setPendingActivity] = useState(null);
 
   const codeInputRef = useRef(codeInput);
   codeInputRef.current = codeInput;
@@ -75,6 +77,7 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
     setSession(null);
     setMsg("");
     setConfirmation(null);
+    setPendingActivity(null);
   }
 
   function handleDigit(d) {
@@ -109,7 +112,20 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
     setCheckingLogin(false);
   }
 
-  async function startActivity(activityName) {
+  function chooseActivity(activityName) {
+    if (busy) return;
+    bump();
+    if (activityNeedsDetail(activityName)) {
+      // Atividades como Limpeza, Organização e Carregamento de Caminhão
+      // precisam de uma escolha extra (local ou veículo) antes de começar
+      // a contar o tempo.
+      setPendingActivity(activityName);
+    } else {
+      startActivity(activityName, null);
+    }
+  }
+
+  async function startActivity(activityName, detail) {
     if (busy) return;
     bump();
     setBusy(true);
@@ -119,10 +135,12 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
       operatorName: loggedOperator.name,
       activity: activityName,
       startTimeIso: nowIso,
+      detail,
     });
     setBusy(false);
     if (!error) {
-      setConfirmation({ kind: "started", activity: activityName, time: fmtClock(nowIso) });
+      setPendingActivity(null);
+      setConfirmation({ kind: "started", activity: activityName, detail, time: fmtClock(nowIso) });
       autoReturnTimeoutRef.current = setTimeout(reset, AUTO_RETURN_MS);
     } else {
       setMsgType("error");
@@ -148,7 +166,7 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
     if (!error) {
       refreshEntries?.();
       setSession(null);
-      setConfirmation({ kind: "finished", activity: session.activity, extra: fmtDuration(duration) });
+      setConfirmation({ kind: "finished", activity: session.activity, detail: session.detail, extra: fmtDuration(duration) });
       autoReturnTimeoutRef.current = setTimeout(reset, AUTO_RETURN_MS);
     } else {
       setMsgType("error");
@@ -216,6 +234,9 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
           <div style={{ fontSize: 17, fontWeight: 600 }}>
             {confirmation.activity} {confirmation.kind === "started" ? "iniciada" : "finalizada"}
           </div>
+          {confirmation.detail && (
+            <div style={{ color: "var(--text-muted)", fontSize: 12.5, marginTop: 2 }}>{confirmation.detail}</div>
+          )}
           <div style={{ color: "var(--text-muted)", fontSize: 12.5, marginTop: 6 }}>
             {confirmation.kind === "started"
               ? `às ${confirmation.time} · volte depois para finalizar`
@@ -238,13 +259,33 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
             </button>
           </div>
 
-          {!session && (
+          {!session && !pendingActivity && (
             <div className="activity-grid">
               {activities.map((a) => (
-                <div key={a.name} className="activity-btn" onClick={() => startActivity(a.name)}>
+                <div key={a.name} className="activity-btn" onClick={() => chooseActivity(a.name)}>
                   {a.name}
                 </div>
               ))}
+            </div>
+          )}
+
+          {!session && pendingActivity && (
+            <div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+                  {pendingActivity} · {detailLabelFor(pendingActivity)}
+                </div>
+                <button className="btn-small" onClick={() => setPendingActivity(null)}>
+                  Voltar
+                </button>
+              </div>
+              <div className="activity-grid">
+                {detailOptionsFor(pendingActivity).map((opt) => (
+                  <div key={opt} className="activity-btn" onClick={() => startActivity(pendingActivity, opt)}>
+                    {opt}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
@@ -254,6 +295,11 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
                 em andamento desde {fmtClock(session.start_time)}
               </div>
               <div style={{ fontSize: 18, fontWeight: 600, margin: "4px 0 8px 0" }}>{session.activity}</div>
+              {session.detail && (
+                <div style={{ color: "var(--text-muted)", fontSize: 12.5, marginTop: -4, marginBottom: 8 }}>
+                  {session.detail}
+                </div>
+              )}
               <div className="stat-num" style={{ fontSize: 32, marginBottom: 16 }}>
                 {fmtDuration(Math.round((now - new Date(session.start_time).getTime()) / 1000))}
               </div>

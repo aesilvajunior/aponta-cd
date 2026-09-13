@@ -85,13 +85,14 @@ export async function updateAdminPin(pin) {
 
 // ---------- Sessões / apontamentos -----------------------------------------
 
-export async function startSession({ operatorCode, operatorName, activity, startTimeIso }) {
+export async function startSession({ operatorCode, operatorName, activity, startTimeIso, detail }) {
   return supabase.from("active_sessions").upsert(
     {
       operator_code: operatorCode,
       operator_name: operatorName,
       activity,
       start_time: startTimeIso,
+      detail: detail || null,
     },
     { onConflict: "operator_code" }
   );
@@ -106,6 +107,7 @@ export async function finishSession(session, { endTimeIso, durationSeconds, shif
     end_time: endTimeIso,
     duration_seconds: durationSeconds,
     shift,
+    detail: session.detail || null,
   });
   if (insertError) return { error: insertError };
 

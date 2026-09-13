@@ -66,5 +66,26 @@ export function computeMetrics(entries, activities) {
     rankByActivity[act.name] = arr;
   });
 
-  return { avgByActivity, opStats, shiftData, outliers, rankByActivity };
+  // Detalhamento por local (Limpeza/Organização) ou veículo (Carregamento
+  // de Caminhão) — só entra aqui quem tem `detail` preenchido.
+  const byDetail = {};
+  entries.forEach((e) => {
+    if (!e.detail) return;
+    byDetail[e.activity] = byDetail[e.activity] || {};
+    byDetail[e.activity][e.detail] = byDetail[e.activity][e.detail] || [];
+    byDetail[e.activity][e.detail].push(e.duration_seconds);
+  });
+  const detailBreakdown = {};
+  Object.entries(byDetail).forEach(([activity, byOption]) => {
+    detailBreakdown[activity] = Object.entries(byOption)
+      .map(([name, arr]) => ({
+        name,
+        registros: arr.length,
+        media: Math.round(mean(arr)),
+        total: arr.reduce((a, b) => a + b, 0),
+      }))
+      .sort((a, b) => b.registros - a.registros);
+  });
+
+  return { avgByActivity, opStats, shiftData, outliers, rankByActivity, detailBreakdown };
 }
