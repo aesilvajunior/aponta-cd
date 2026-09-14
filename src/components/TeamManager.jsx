@@ -7,18 +7,20 @@ import {
   insertActivity,
   deleteActivity,
   renameActivity,
-  updateAdminPin,
 } from "../lib/api";
+import { createAdminAccount } from "../lib/auth";
 
-export default function TeamManager({ operators, activities, adminPin, refreshConfig }) {
+export default function TeamManager({ operators, activities, adminEmail, refreshConfig }) {
   const [newOpName, setNewOpName] = useState("");
   const [newOpRole, setNewOpRole] = useState("");
   const [newOpCode, setNewOpCode] = useState("");
   const [savingNewOp, setSavingNewOp] = useState(false);
   const [newActivity, setNewActivity] = useState("");
   const [savingNewActivity, setSavingNewActivity] = useState(false);
-  const [newPin, setNewPin] = useState("");
-  const [savingPin, setSavingPin] = useState(false);
+  const [newAdminEmail, setNewAdminEmail] = useState("");
+  const [newAdminPassword, setNewAdminPassword] = useState("");
+  const [savingAdmin, setSavingAdmin] = useState(false);
+  const [adminMsg, setAdminMsg] = useState("");
   const [formError, setFormError] = useState("");
 
   const [editingCode, setEditingCode] = useState(null);
@@ -149,16 +151,20 @@ export default function TeamManager({ operators, activities, adminPin, refreshCo
     refreshConfig();
   }
 
-  async function changePin() {
-    const pin = newPin.trim();
-    if (pin.length < 4) return setFormError("O PIN precisa ter pelo menos 4 dígitos.");
+  async function addNewAdmin() {
+    const email = newAdminEmail.trim();
+    if (!email || newAdminPassword.length < 6) {
+      return setFormError("Preencha o e-mail e uma senha com pelo menos 6 caracteres.");
+    }
     setFormError("");
-    setSavingPin(true);
-    const { error } = await updateAdminPin(pin);
-    setSavingPin(false);
-    if (error) return setFormError("Erro ao alterar o PIN. Tente novamente.");
-    setNewPin("");
-    refreshConfig();
+    setAdminMsg("");
+    setSavingAdmin(true);
+    const { error } = await createAdminAccount(email, newAdminPassword);
+    setSavingAdmin(false);
+    if (error) return setFormError("Erro ao criar a conta: " + error.message);
+    setNewAdminEmail("");
+    setNewAdminPassword("");
+    setAdminMsg("Conta criada. Se a confirmação por e-mail estiver ativa no Supabase, peça para a pessoa confirmar o e-mail antes de entrar.");
   }
 
   return (
@@ -175,21 +181,19 @@ export default function TeamManager({ operators, activities, adminPin, refreshCo
         </div>
       )}
 
-      <div className="card" style={{ maxWidth: 340, marginBottom: 20 }}>
-        <div className="card-title">PIN de administrador</div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <input
-            className="field"
-            style={{ flex: 1 }}
-            placeholder="Novo PIN"
-            value={newPin}
-            onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ""))}
-          />
-          <button className="btn-small" onClick={changePin} disabled={savingPin}>
-            {savingPin ? "Salvando..." : "Alterar"}
+      <div className="card" style={{ maxWidth: 420, marginBottom: 20 }}>
+        <div className="card-title">Contas de administrador</div>
+        <p style={{ fontSize: 12, color: "var(--text-faint)", margin: "-6px 0 12px 0" }}>
+          Logado como {adminEmail}. Crie uma conta por pessoa — melhor do que um PIN único compartilhado.
+        </p>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <input className="field" style={{ flex: "1 1 180px" }} type="email" placeholder="E-mail do novo admin" value={newAdminEmail} onChange={(e) => setNewAdminEmail(e.target.value)} />
+          <input className="field" style={{ flex: "1 1 140px" }} type="password" placeholder="Senha (mín. 6)" value={newAdminPassword} onChange={(e) => setNewAdminPassword(e.target.value)} />
+          <button className="btn-small" onClick={addNewAdmin} disabled={savingAdmin}>
+            {savingAdmin ? "Criando..." : "Criar conta"}
           </button>
         </div>
-        <p style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: 8, marginBottom: 0 }}>PIN atual: {adminPin}</p>
+        {adminMsg && <p style={{ fontSize: 12, color: "var(--ok)", marginTop: 8, marginBottom: 0 }}>{adminMsg}</p>}
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr", gap: 20 }}>

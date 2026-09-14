@@ -39,7 +39,10 @@ create table if not exists entries (
   created_at timestamptz default now()
 );
 
--- Configuração do admin (PIN)
+-- Tabela antiga do PIN único de admin — não é mais usada pelo app (o login
+-- agora é feito com e-mail/senha via Supabase Auth, em Authentication >
+-- Users). Deixamos a tabela aqui só para não perder o histórico; pode
+-- ignorá-la ou apagá-la manualmente se quiser.
 create table if not exists admin_config (
   id integer primary key,
   pin text not null
@@ -97,10 +100,14 @@ insert into operators (code, name, role) values
   on conflict (code) do nothing;
 
 -- Segurança (RLS) --------------------------------------------------------
--- Este é um sistema de uso interno do CD, acessado só pela rede da empresa.
--- Liberamos leitura/escrita para a chave "anon" (pública) nas tabelas
--- operacionais. NÃO exponha esse link publicamente na internet sem outra
--- camada de proteção (ex: senha de rede, VPN, ou domínio não divulgado).
+-- entries/active_sessions: leitura e escrita públicas, porque o quiosque
+--   (tela de bater ponto) não pede login — qualquer operador com o código
+--   dele bate ponto ali, então essas duas tabelas continuam abertas.
+-- operators/activities: leitura pública (o quiosque precisa mostrar a
+--   lista), mas agora só admins LOGADOS (via Supabase Auth) podem
+--   adicionar/editar/remover — antes, qualquer pessoa com a chave pública
+--   do site conseguia editar a equipe direto pela API, mesmo sem PIN.
+-- admin_config: mantido igual (tabela não é mais usada pelo app).
 
 alter table operators enable row level security;
 alter table activities enable row level security;
@@ -116,12 +123,14 @@ alter table admin_config enable row level security;
 drop policy if exists "leitura publica operators" on operators;
 create policy "leitura publica operators" on operators for select using (true);
 drop policy if exists "escrita publica operators" on operators;
-create policy "escrita publica operators" on operators for all using (true) with check (true);
+drop policy if exists "escrita admin operators" on operators;
+create policy "escrita admin operators" on operators for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 
 drop policy if exists "leitura publica activities" on activities;
 create policy "leitura publica activities" on activities for select using (true);
 drop policy if exists "escrita publica activities" on activities;
-create policy "escrita publica activities" on activities for all using (true) with check (true);
+drop policy if exists "escrita admin activities" on activities;
+create policy "escrita admin activities" on activities for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
 
 drop policy if exists "leitura publica active_sessions" on active_sessions;
 create policy "leitura publica active_sessions" on active_sessions for select using (true);

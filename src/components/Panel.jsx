@@ -1,13 +1,18 @@
 import React, { useMemo, useState } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
+  AreaChart, Area, PieChart, Pie, Legend,
 } from "recharts";
-import { fmtClock, fmtDate, fmtDuration } from "../lib/format";
+import * as XLSX from "xlsx";
+import { fmtClock, fmtDate, fmtDuration, isLongSession, minutesSince, LONG_SESSION_MINUTES } from "../lib/format";
 import { computeMetrics, mean as meanM } from "../lib/metrics";
 
 const COLORS = ["#FFB020", "#34D399", "#F87171", "#60A5FA", "#C084FC", "#FB923C", "#22D3EE", "#A3A3A3"];
 
-export default function Panel({ entries, activities, operators, activeSessions, onResetEntries }) {
+export default function Panel({
+  entries, activities, operators, activeSessions, onResetEntries,
+  notifPermission, onRequestNotifPermission,
+}) {
   const [filterOperator, setFilterOperator] = useState("");
   const [filterActivity, setFilterActivity] = useState("");
   const [filterShift, setFilterShift] = useState("");
@@ -34,6 +39,31 @@ export default function Panel({ entries, activities, operators, activeSessions, 
   }, [entries, dateFrom, dateTo]);
 
   const metrics = useMemo(() => computeMetrics(dateFilteredEntries, activities), [dateFilteredEntries, activities]);
+
+  // Registros por dia (para o gráfico de tendência) — últimos 30 dias do
+  // período filtrado.
+  const byDay = useMemo(() => {
+    const map = {};
+    dateFilteredEntries.forEach((e) => {
+      const key = fmtDate(e.start_time);
+      map[key] = (map[key] || 0) + 1;
+    });
+    return Object.entries(map)
+      .map(([name, registros]) => ({ name, registros, sortKey: name.split("/").reverse().join("-") }))
+      .sort((a, b) => a.sortKey.localeCompare(b.sortKey))
+      .slice(-30);
+  }, [dateFilteredEntries]);
+
+  // Distribuição de registros por atividade (contagem, não tempo médio).
+  const byActivityCount = useMemo(() => {
+    const map = {};
+    dateFilteredEntries.forEach((e) => {
+      map[e.activity] = (map[e.activity] || 0) + 1;
+    });
+    return Object.entries(map).map(([name, value]) => ({ name, value }));
+  }, [dateFilteredEntries]);
+
+  const longSessions = activeSessions.filter((s) => isLongSession(s));
 
   const filteredEntries = useMemo(() => {
     return dateFilteredEntries
@@ -66,6 +96,35 @@ export default function Panel({ entries, activities, operators, activeSessions, 
     URL.revokeObjectURL(url);
   }
 
+  function exportExcel() {
+    const rows = filteredEntries.map((e) => ({
+      Operador: e.operator_name,
+      Código: e.operator_code,
+      Atividade: e.activity,
+      Detalhe: e.detail || "",
+      Data: fmtDate(e.start_time),
+      Turno: e.shift,
+      Início: fmtClock(e.start_time),
+      Fim: fmtClock(e.end_time),
+      "Duração (s)": e.duration_seconds,
+      "Duração": fmtDuration(e.duration_seconds),
+    }));
+    const resumo = metrics.opStats.map((o) => ({
+      Operador: o.name,
+      Registros: o.registros,
+      "Tempo médio": fmtDuration(o.media),
+      "Tempo total": fmtDuration(o.total),
+    }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Registros");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(resumo), "Resumo por operador");
+    XLSX.writeFile(wb, `apontamentos_${Date.now()}.xlsx`);
+  }
+
+  function exportPDF() {
+    window.print();
+  }
+
   async function confirmReset() {
     if (resetPhrase.trim().toUpperCase() !== "ZERAR") return;
     setResetting(true);
@@ -86,16 +145,40 @@ export default function Panel({ entries, activities, operators, activeSessions, 
             {filteredEntries.length} de {entries.length} registros · {activeSessions.length} em andamento agora
           </p>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button className="btn-small" onClick={exportCSV}>Exportar CSV</button>
+        <div style={{ display: "flex", gap: 8 }} className="no-print">
+          {notifPermission !== "granted" && notifPermission !== "unsupported" && (
+            <button className="btn-small" onClick={onRequestNotifPermission}>
+              Ativar notificações
+            </button>
+          )}
+          <button className="btn-small" onClick={exportCSV}>CSV</button>
+          <button className="btn-small" onClick={exportExcel}>Excel</button>
+          <button className="btn-small" onClick={exportPDF}>PDF</button>
           <button className="btn-danger-outline" onClick={() => setConfirmingReset((v) => !v)}>
             Zerar resultados
           </button>
         </div>
       </div>
 
+      {longSessions.length > 0 && (
+        <div className="confirm-box no-print" style={{ marginBottom: 22 }}>
+          <strong style={{ color: "var(--danger)", fontSize: 14 }}>
+            {longSessions.length} atividade{longSessions.length > 1 ? "s" : ""} em aberto há mais de {LONG_SESSION_MINUTES} minutos
+          </strong>
+          <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+            {longSessions.map((s) => (
+              <div key={s.operator_code} style={{ fontSize: 12.5, color: "var(--text-muted)" }}>
+                <span style={{ color: "var(--text)", fontFamily: "var(--font-display)" }}>{s.operator_name}</span>
+                {" — "}{s.activity}{s.detail ? ` · ${s.detail}` : ""}{" · "}
+                <span style={{ color: "var(--danger)" }}>{Math.floor(minutesSince(s.start_time))} min</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {confirmingReset && (
-        <div className="confirm-box" style={{ marginBottom: 22 }}>
+        <div className="confirm-box no-print" style={{ marginBottom: 22 }}>
           <strong style={{ color: "var(--danger)", fontSize: 14 }}>Isso apaga todo o histórico de registros, permanentemente.</strong>
           <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "6px 0 12px 0" }}>
             Não afeta a lista de operadores nem de atividades. Para confirmar, digite <strong>ZERAR</strong> abaixo.
@@ -171,6 +254,36 @@ export default function Panel({ entries, activities, operators, activeSessions, 
         </ResponsiveContainer>
       </div>
 
+      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 20, marginBottom: 20 }}>
+        <div className="card">
+          <div className="card-title">Registros por dia</div>
+          <ResponsiveContainer width="100%" height={190}>
+            <AreaChart data={byDay}>
+              <CartesianGrid stroke="#262B31" vertical={false} />
+              <XAxis dataKey="name" tick={{ fill: "#8D95A0", fontSize: 10 }} />
+              <YAxis tick={{ fill: "#8D95A0", fontSize: 11 }} allowDecimals={false} />
+              <Tooltip contentStyle={{ background: "#16191D", border: "1px solid #343B42", fontSize: 12, borderRadius: 8 }} labelStyle={{ color: "#F4F5F6" }} />
+              <Area type="monotone" dataKey="registros" stroke="#FFB020" fill="#FFB02033" strokeWidth={2} />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div className="card">
+          <div className="card-title">Volume por atividade</div>
+          <ResponsiveContainer width="100%" height={190}>
+            <PieChart>
+              <Pie data={byActivityCount} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70}>
+                {byActivityCount.map((_, i) => (
+                  <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                ))}
+              </Pie>
+              <Tooltip contentStyle={{ background: "#16191D", border: "1px solid #343B42", fontSize: 12, borderRadius: 8 }} labelStyle={{ color: "#F4F5F6" }} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
       <div className="card" style={{ marginBottom: 20 }}>
         <div className="card-title">Produtividade por operador</div>
         <table className="data-table">
@@ -233,7 +346,7 @@ export default function Panel({ entries, activities, operators, activeSessions, 
       )}
 
       <div className="card">
-        <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+        <div className="no-print" style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
           <select className="field" value={filterOperator} onChange={(e) => setFilterOperator(e.target.value)}>
             <option value="">Todos operadores</option>
             {operators.map((o) => <option key={o.code} value={o.code}>{o.name}</option>)}

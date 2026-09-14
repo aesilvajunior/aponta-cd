@@ -26,3 +26,15 @@ export function shiftFor(iso) {
   const totalMin = d.getHours() * 60 + d.getMinutes();
   return totalMin < 13 * 60 + 30 ? "Manhã" : "Tarde";
 }
+
+// Quanto tempo (em minutos) uma atividade fica em aberto antes de ser
+// considerada "longa demais" e gerar alerta no painel/notificação.
+export const LONG_SESSION_MINUTES = 45;
+
+export function minutesSince(iso) {
+  return (Date.now() - new Date(iso).getTime()) / 60000;
+}
+
+export function isLongSession(session, thresholdMinutes = LONG_SESSION_MINUTES) {
+  return minutesSince(session.start_time) >= thresholdMinutes;
+}

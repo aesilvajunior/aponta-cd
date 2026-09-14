@@ -18,10 +18,6 @@ export async function fetchActivities() {
   return supabase.from("activities").select("*").eq("active", true).order("name");
 }
 
-export async function fetchAdminConfig() {
-  return supabase.from("admin_config").select("*").eq("id", 1).maybeSingle();
-}
-
 export async function fetchEntries(limit = 2000) {
   return supabase.from("entries").select("*").order("start_time", { ascending: false }).limit(limit);
 }
@@ -75,12 +71,6 @@ export async function renameActivity(originalName, newName) {
   if (insertErr) return { error: insertErr };
   const { error: deleteErr } = await deleteActivity(originalName);
   return { error: deleteErr || null };
-}
-
-// ---------- Admin config -----------------------------------------
-
-export async function updateAdminPin(pin) {
-  return supabase.from("admin_config").update({ pin }).eq("id", 1);
 }
 
 // ---------- Sessões / apontamentos -----------------------------------------

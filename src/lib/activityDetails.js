@@ -2,11 +2,19 @@
 // atividades exigem uma seleção extra antes de começar a contar o tempo,
 // e quais são as opções dessa seleção.
 //
-// A chave precisa bater exatamente com o nome da atividade cadastrado em
-// "activities" no banco. Se o nome da atividade for renomeado pelo admin
-// em Equipe, essa ligação se perde — como combinado, por ora isso fica
-// fixo no código em vez de editável.
-export const ACTIVITY_DETAILS = {
+// A comparação de nomes ignora maiúscula/minúscula, acentos e espaços nas
+// pontas — isso evita que a seleção de local/veículo simplesmente não
+// apareça se a atividade foi digitada de um jeito ligeiramente diferente
+// em "Equipe" (ex.: sem acento, ou com espaço extra).
+function normalize(str) {
+  return (str || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+const RAW_ACTIVITY_DETAILS = {
   "Limpeza": {
     label: "Selecione o local",
     options: [
@@ -39,14 +47,23 @@ export const ACTIVITY_DETAILS = {
   },
 };
 
+// Índice normalizado para lookup tolerante.
+const NORMALIZED_INDEX = Object.fromEntries(
+  Object.entries(RAW_ACTIVITY_DETAILS).map(([name, cfg]) => [normalize(name), cfg])
+);
+
+function configFor(activityName) {
+  return NORMALIZED_INDEX[normalize(activityName)];
+}
+
 export function activityNeedsDetail(activityName) {
-  return Boolean(ACTIVITY_DETAILS[activityName]);
+  return Boolean(configFor(activityName));
 }
 
 export function detailOptionsFor(activityName) {
-  return ACTIVITY_DETAILS[activityName]?.options || [];
+  return configFor(activityName)?.options || [];
 }
 
 export function detailLabelFor(activityName) {
-  return ACTIVITY_DETAILS[activityName]?.label || "Selecione";
+  return configFor(activityName)?.label || "Selecione";
 }

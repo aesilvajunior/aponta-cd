@@ -1,13 +1,14 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   fetchOperators,
   fetchActivities,
-  fetchAdminConfig,
   fetchEntries,
   fetchActiveSessions,
   resetAllEntries,
   subscribeToTables,
 } from "./lib/api";
+import { getCurrentSession, onAuthStateChange, signOut } from "./lib/auth";
+import { isLongSession, LONG_SESSION_MINUTES } from "./lib/format";
 import Sidebar from "./components/Sidebar";
 import Kiosk from "./components/Kiosk";
 import AdminGate from "./components/AdminGate";
@@ -46,23 +47,28 @@ const DEFAULT_ACTIVITIES = [
 
 export default function App() {
   const [tab, setTab] = useState("kiosk");
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [session, setSession] = useState(undefined); // undefined = ainda checando, null = deslogado
   const [loaded, setLoaded] = useState(false);
   const [connectionError, setConnectionError] = useState(null);
 
   const [operators, setOperators] = useState(DEFAULT_OPERATORS);
   const [activities, setActivities] = useState(DEFAULT_ACTIVITIES);
-  const [adminPin, setAdminPin] = useState("2026");
   const [entries, setEntries] = useState([]);
   const [activeSessions, setActiveSessions] = useState([]);
 
-  const loadConfig = useCallback(async () => {
-    const [{ data: ops, error: opsErr }, { data: acts, error: actsErr }, { data: cfg, error: cfgErr }] =
-      await Promise.all([fetchOperators(), fetchActivities(), fetchAdminConfig()]);
+  const [notifPermission, setNotifPermission] = useState(
+    typeof Notification !== "undefined" ? Notification.permission : "unsupported"
+  );
+  const notifiedRef = useRef(new Set()); // operator_code já notificado, evita spam repetido
 
-    if (opsErr || actsErr || cfgErr) {
-      const firstError = opsErr || actsErr || cfgErr;
-      setConnectionError(firstError?.message || "Erro desconhecido ao conectar com o banco.");
+  const isAdmin = Boolean(session);
+
+  const loadConfig = useCallback(async () => {
+    const [{ data: ops, error: opsErr }, { data: acts, error: actsErr }] =
+      await Promise.all([fetchOperators(), fetchActivities()]);
+
+    if (opsErr || actsErr) {
+      setConnectionError((opsErr || actsErr)?.message || "Erro desconhecido ao conectar com o banco.");
       return;
     }
     setConnectionError(null);
@@ -70,7 +76,6 @@ export default function App() {
     // forem removidos, a tela deve refletir isso, não travar no cache antigo.
     setOperators(ops ?? []);
     setActivities(acts ?? []);
-    if (cfg) setAdminPin(cfg.pin);
   }, []);
 
   const loadEntries = useCallback(async () => {
@@ -88,6 +93,18 @@ export default function App() {
     await loadEntries();
   }, [loadEntries]);
 
+  // ---------- Login ----------
+  useEffect(() => {
+    getCurrentSession().then(setSession);
+    return onAuthStateChange(setSession);
+  }, []);
+
+  function lockAdmin() {
+    signOut();
+    setTab("kiosk");
+  }
+
+  // ---------- Dados + realtime ----------
   useEffect(() => {
     (async () => {
       await Promise.all([loadConfig(), loadEntries(), loadActiveSessions()]);
@@ -100,14 +117,11 @@ export default function App() {
       loadActiveSessions();
     });
 
-    // Equipe, atividades do mês e PIN também precisam sincronizar entre
-    // abas/dispositivos — antes só entries/sessões tinham isso, então uma
-    // tela do quiosque podia ficar com a lista de operadores desatualizada
-    // depois de uma alteração feita no painel em outra aba.
-    const unsubscribeConfig = subscribeToTables(
-      ["operators", "activities", "admin_config"],
-      () => loadConfig()
-    );
+    // Equipe e atividades do mês também precisam sincronizar entre
+    // abas/dispositivos — uma tela do quiosque não pode ficar com a lista
+    // de operadores desatualizada depois de uma alteração feita em Equipe
+    // em outra aba.
+    const unsubscribeConfig = subscribeToTables(["operators", "activities"], () => loadConfig());
 
     return () => {
       unsubscribeActivity();
@@ -115,18 +129,49 @@ export default function App() {
     };
   }, [loadConfig, loadEntries, loadActiveSessions]);
 
-  function lockAdmin() {
-    setIsAdmin(false);
-    setTab("kiosk");
+  // ---------- Alerta de sessão em aberto há muito tempo ----------
+  // Roda mesmo se o admin estiver em outra aba (Registrar/Equipe) — não
+  // depende do Painel estar aberto na tela.
+  useEffect(() => {
+    const knownCodes = new Set(activeSessions.map((s) => s.operator_code));
+    // limpa quem já finalizou, para poder notificar de novo se abrir outra sessão longa no futuro
+    for (const code of notifiedRef.current) {
+      if (!knownCodes.has(code)) notifiedRef.current.delete(code);
+    }
+    if (notifPermission !== "granted") return;
+    activeSessions.forEach((s) => {
+      if (isLongSession(s) && !notifiedRef.current.has(s.operator_code)) {
+        notifiedRef.current.add(s.operator_code);
+        try {
+          new Notification("Atividade em aberto há muito tempo", {
+            body: `${s.operator_name} — ${s.activity}${s.detail ? " · " + s.detail : ""} (mais de ${LONG_SESSION_MINUTES} min)`,
+            tag: `long-session-${s.operator_code}`,
+          });
+        } catch {
+          // navegador pode bloquear notificações silenciosamente; sem problema
+        }
+      }
+    });
+  }, [activeSessions, notifPermission]);
+
+  function requestNotifPermission() {
+    if (typeof Notification === "undefined") return;
+    Notification.requestPermission().then(setNotifPermission);
   }
 
-  if (!loaded) {
+  if (!loaded || session === undefined) {
     return <div className="loading-screen">Carregando...</div>;
   }
 
   return (
     <div className="app-shell">
-      <Sidebar tab={tab} setTab={setTab} isAdmin={isAdmin} onLock={lockAdmin} />
+      <Sidebar
+        tab={tab}
+        setTab={setTab}
+        isAdmin={isAdmin}
+        onLock={lockAdmin}
+        longSessionCount={activeSessions.filter((s) => isLongSession(s)).length}
+      />
 
       <main className="main">
         <div className="topbar-accent" />
@@ -151,9 +196,7 @@ export default function App() {
           <Kiosk operators={operators} activities={activities} refreshEntries={loadEntries} />
         )}
 
-        {(tab === "panel" || tab === "team") && !isAdmin && (
-          <AdminGate correctPin={adminPin} onUnlock={() => setIsAdmin(true)} />
-        )}
+        {(tab === "panel" || tab === "team") && !isAdmin && <AdminGate />}
 
         {tab === "panel" && isAdmin && (
           <Panel
@@ -162,6 +205,8 @@ export default function App() {
             operators={operators}
             activeSessions={activeSessions}
             onResetEntries={resetEntries}
+            notifPermission={notifPermission}
+            onRequestNotifPermission={requestNotifPermission}
           />
         )}
 
@@ -169,7 +214,7 @@ export default function App() {
           <TeamManager
             operators={operators}
             activities={activities}
-            adminPin={adminPin}
+            adminEmail={session?.user?.email}
             refreshConfig={loadConfig}
           />
         )}

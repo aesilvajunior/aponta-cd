@@ -576,3 +576,27 @@ select.field:focus {
   font-style: italic;
   line-height: 1.5;
 }
+
+/* ---------- impressão (Exportar PDF usa isso) ---------- */
+@media print {
+  .sidebar, .topbar-accent, .footer-note, .no-print, button {
+    display: none !important;
+  }
+  .main {
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  body, .app-shell {
+    background: #fff !important;
+    color: #111 !important;
+  }
+  .card {
+    break-inside: avoid;
+    border: 1px solid #ccc !important;
+    background: #fff !important;
+  }
+  .data-table th, .data-table td {
+    color: #111 !important;
+    border-color: #ddd !important;
+  }
+}
