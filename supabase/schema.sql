@@ -43,6 +43,23 @@ create table if not exists admin_config (
   pin text not null
 );
 
+-- Erros de separação (a mesma ideia do "Apontamento de Erros" original,
+-- agora dentro do mesmo site e banco de dados)
+create table if not exists separation_errors (
+  id uuid primary key default gen_random_uuid(),
+  operator_code text not null,
+  operator_name text not null,
+  error_type text not null,
+  note text,
+  created_at timestamptz not null default now()
+);
+
+-- Tipos de erro disponíveis no quiosque de erros (editável pelo admin)
+create table if not exists error_types (
+  name text primary key,
+  active boolean default true
+);
+
 -- Migrações incrementais (seguro rodar de novo — só adiciona o que faltar) ---
 
 -- Meta de tempo (em segundos) por atividade, definida pelo admin.
@@ -51,6 +68,10 @@ alter table activities add column if not exists target_seconds integer;
 -- Marca registros lançados manualmente pelo admin (dados retroativos),
 -- para diferenciar de registros batidos de verdade no quiosque.
 alter table entries add column if not exists manual_entry boolean not null default false;
+
+-- Observação opcional que o operador pode deixar ao finalizar uma
+-- atividade (ex: "atraso por falta de material").
+alter table entries add column if not exists note text;
 
 -- Dados iniciais -------------------------------------------------------
 
@@ -65,6 +86,13 @@ insert into activities (name, active) values
   ('Expedição', true),
   ('Reposição', true),
   ('Inventário', true),
+  ('Outros', true)
+  on conflict (name) do nothing;
+
+insert into error_types (name, active) values
+  ('Sobra de Material', true),
+  ('Não Tem no Pedido', true),
+  ('Falta de Material', true),
   ('Outros', true)
   on conflict (name) do nothing;
 
@@ -101,6 +129,8 @@ alter table activities enable row level security;
 alter table active_sessions enable row level security;
 alter table entries enable row level security;
 alter table admin_config enable row level security;
+alter table separation_errors enable row level security;
+alter table error_types enable row level security;
 
 drop policy if exists "leitura publica operators" on operators;
 create policy "leitura publica operators" on operators for select using (true);
@@ -127,6 +157,16 @@ create policy "leitura publica admin_config" on admin_config for select using (t
 drop policy if exists "escrita publica admin_config" on admin_config;
 create policy "escrita publica admin_config" on admin_config for all using (true) with check (true);
 
+drop policy if exists "leitura publica separation_errors" on separation_errors;
+create policy "leitura publica separation_errors" on separation_errors for select using (true);
+drop policy if exists "escrita publica separation_errors" on separation_errors;
+create policy "escrita publica separation_errors" on separation_errors for all using (true) with check (true);
+
+drop policy if exists "leitura publica error_types" on error_types;
+create policy "leitura publica error_types" on error_types for select using (true);
+drop policy if exists "escrita publica error_types" on error_types;
+create policy "escrita publica error_types" on error_types for all using (true) with check (true);
+
 -- Habilita realtime (para as telas atualizarem sozinhas quando algo muda,
 -- em qualquer aba ou dispositivo conectado). Os blocos abaixo verificam se
 -- a tabela já está no publication antes de adicionar, para que este script
@@ -148,5 +188,11 @@ begin
   end if;
   if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'admin_config') then
     alter publication supabase_realtime add table admin_config;
+  end if;
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'separation_errors') then
+    alter publication supabase_realtime add table separation_errors;
+  end if;
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'error_types') then
+    alter publication supabase_realtime add table error_types;
   end if;
 end $$;

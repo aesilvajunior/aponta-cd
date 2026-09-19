@@ -68,3 +68,37 @@ export function computeMetrics(entries, activities) {
 
   return { avgByActivity, opStats, shiftData, outliers, rankByActivity };
 }
+
+// Segunda-feira da semana de uma data, no formato dd/mm — usado para
+// agrupar registros por semana no gráfico de tendência.
+function mondayLabel(date) {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = (day === 0 ? -6 : 1) - day; // volta até a segunda-feira
+  d.setDate(d.getDate() + diff);
+  const pad = (n) => String(n).padStart(2, "0");
+  return { key: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`, label: `${pad(d.getDate())}/${pad(d.getMonth() + 1)}` };
+}
+
+// Monta os dados para o gráfico de tendência semanal: uma linha por
+// atividade, mostrando como a média de tempo mudou semana a semana.
+export function computeWeeklyTrend(entries, activities) {
+  const weeks = {}; // key -> { label, [activityName]: [durations] }
+  entries.forEach((e) => {
+    const { key, label } = mondayLabel(e.start_time);
+    if (!weeks[key]) weeks[key] = { key, label };
+    if (!weeks[key][e.activity]) weeks[key][e.activity] = [];
+    weeks[key][e.activity].push(e.duration_seconds);
+  });
+
+  return Object.values(weeks)
+    .sort((a, b) => (a.key > b.key ? 1 : -1))
+    .map((week) => {
+      const row = { label: week.label };
+      activities.forEach((a) => {
+        const durs = week[a.name];
+        row[a.name] = durs && durs.length ? Math.round(mean(durs)) : null;
+      });
+      return row;
+    });
+}

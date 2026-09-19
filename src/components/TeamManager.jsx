@@ -8,6 +8,9 @@ import {
   renameActivity,
   updateActivityTarget,
   deleteActivity as apiDeleteActivity,
+  addErrorType as apiAddErrorType,
+  renameErrorType,
+  deleteErrorType as apiDeleteErrorType,
   updateAdminPin,
 } from "../lib/api";
 
@@ -21,7 +24,7 @@ function secondsToMinutesLabel(sec) {
   return String(Math.round(sec / 60));
 }
 
-export default function TeamManager({ operators, activities, adminPin, refreshConfig }) {
+export default function TeamManager({ operators, activities, errorTypes, adminPin, refreshConfig }) {
   const [newOpName, setNewOpName] = useState("");
   const [newOpRole, setNewOpRole] = useState("");
   const [newOpCode, setNewOpCode] = useState("");
@@ -41,6 +44,10 @@ export default function TeamManager({ operators, activities, adminPin, refreshCo
   const [editingActivity, setEditingActivity] = useState(null);
   const [editActivityValues, setEditActivityValues] = useState({ name: "", target: "" });
 
+  const [newErrorType, setNewErrorType] = useState("");
+  const [editingErrorType, setEditingErrorType] = useState(null);
+  const [editErrorTypeValue, setEditErrorTypeValue] = useState("");
+
   // Se o operador/atividade em edição for removido por outra aba (agora
   // sincronizamos em tempo real), sai do modo de edição sozinho em vez de
   // deixar um formulário "fantasma" apontando para algo que não existe mais.
@@ -55,6 +62,12 @@ export default function TeamManager({ operators, activities, adminPin, refreshCo
       setEditingActivity(null);
     }
   }, [activities, editingActivity]);
+
+  useEffect(() => {
+    if (editingErrorType && !errorTypes.some((t) => t.name === editingErrorType)) {
+      setEditingErrorType(null);
+    }
+  }, [errorTypes, editingErrorType]);
 
   function nextFreeCode() {
     const maxCode = operators.reduce((m, o) => {
@@ -182,6 +195,46 @@ export default function TeamManager({ operators, activities, adminPin, refreshCo
     await runAction(action, () => setEditingActivity(null));
   }
 
+  async function addErrorType() {
+    const name = newErrorType.trim();
+    if (!name) return;
+    if (errorTypes.some((t) => t.name.toLowerCase() === name.toLowerCase())) {
+      return setFormError(`O tipo de erro "${name}" já existe.`);
+    }
+    await runAction(() => apiAddErrorType(name), () => setNewErrorType(""));
+  }
+
+  async function removeErrorType(name) {
+    if (!window.confirm(`Remover o tipo de erro "${name}"?`)) return;
+    await runAction(() => apiDeleteErrorType(name));
+  }
+
+  function startEditErrorType(t) {
+    setEditingErrorType(t.name);
+    setEditErrorTypeValue(t.name);
+    setFormError("");
+  }
+
+  function cancelEditErrorType() {
+    setEditingErrorType(null);
+  }
+
+  async function saveEditErrorType(originalName) {
+    const name = editErrorTypeValue.trim();
+    if (!name) return setFormError("O nome do tipo de erro não pode ficar em branco.");
+    if (
+      name.toLowerCase() !== originalName.toLowerCase() &&
+      errorTypes.some((t) => t.name.toLowerCase() === name.toLowerCase())
+    ) {
+      return setFormError(`Já existe um tipo de erro chamado "${name}".`);
+    }
+    if (name === originalName) {
+      setEditingErrorType(null);
+      return;
+    }
+    await runAction(() => renameErrorType(originalName, name), () => setEditingErrorType(null));
+  }
+
   async function changePin() {
     const pin = newPin.trim();
     if (pin.length < 4) return setFormError("O PIN precisa ter pelo menos 4 dígitos.");
@@ -221,7 +274,7 @@ export default function TeamManager({ operators, activities, adminPin, refreshCo
         <p style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: 8, marginBottom: 0 }}>PIN atual: {adminPin}</p>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr", gap: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr", gap: 20 }}>
         <div className="card">
           <div className="card-title">Operadores</div>
           <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
@@ -303,6 +356,44 @@ export default function TeamManager({ operators, activities, adminPin, refreshCo
                 );
               })}
               {activities.length === 0 && <tr><td colSpan={3}>Nenhuma atividade cadastrada.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="card">
+          <div className="card-title">Tipos de erro</div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+            <input className="field" style={{ flex: 1 }} placeholder="Novo tipo" value={newErrorType} onChange={(e) => setNewErrorType(e.target.value)} disabled={busy} />
+            <button className="btn-small" onClick={addErrorType} disabled={busy}>Adicionar</button>
+          </div>
+          <table className="data-table">
+            <thead><tr><th>Tipo de erro</th><th></th></tr></thead>
+            <tbody>
+              {errorTypes.map((t) => {
+                const isEditing = editingErrorType === t.name;
+                return (
+                  <tr key={t.name}>
+                    {isEditing ? (
+                      <>
+                        <td><input className="field" style={{ width: "100%", padding: "4px 6px" }} value={editErrorTypeValue} onChange={(e) => setEditErrorTypeValue(e.target.value)} disabled={busy} /></td>
+                        <td style={{ whiteSpace: "nowrap" }}>
+                          <button className="btn-small" style={{ padding: "4px 8px", marginRight: 4 }} onClick={() => saveEditErrorType(t.name)} disabled={busy}>Salvar</button>
+                          <button className="btn-small" style={{ padding: "4px 8px" }} onClick={cancelEditErrorType} disabled={busy}>Cancelar</button>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td>{t.name}</td>
+                        <td style={{ whiteSpace: "nowrap" }}>
+                          <button className="btn-small" style={{ padding: "4px 8px", marginRight: 4 }} onClick={() => startEditErrorType(t)} disabled={busy}>Editar</button>
+                          <button className="btn-small" style={{ padding: "4px 8px" }} onClick={() => removeErrorType(t.name)} disabled={busy}>Remover</button>
+                        </td>
+                      </>
+                    )}
+                  </tr>
+                );
+              })}
+              {errorTypes.length === 0 && <tr><td colSpan={2}>Nenhum tipo cadastrado.</td></tr>}
             </tbody>
           </table>
         </div>

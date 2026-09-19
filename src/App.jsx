@@ -6,10 +6,14 @@ import {
   fetchAdminConfig,
   fetchEntries,
   fetchActiveSessions,
+  fetchSeparationErrors,
+  fetchErrorTypes,
   deleteAllEntries,
+  SEPARATION_ERROR_TYPES,
 } from "./lib/api";
 import Sidebar from "./components/Sidebar";
 import Kiosk from "./components/Kiosk";
+import ErrorKiosk from "./components/ErrorKiosk";
 import AdminGate from "./components/AdminGate";
 import Panel from "./components/Panel";
 import TeamManager from "./components/TeamManager";
@@ -43,6 +47,8 @@ const DEFAULT_ACTIVITIES = [
   "Expedição", "Reposição", "Inventário", "Outros",
 ].map((name) => ({ name, active: true }));
 
+const DEFAULT_ERROR_TYPES = SEPARATION_ERROR_TYPES.map((name) => ({ name, active: true }));
+
 export default function App() {
   const [tab, setTab] = useState("kiosk");
   const [isAdmin, setIsAdmin] = useState(false);
@@ -52,16 +58,22 @@ export default function App() {
 
   const [operators, setOperators] = useState(DEFAULT_OPERATORS);
   const [activities, setActivities] = useState(DEFAULT_ACTIVITIES);
+  const [errorTypes, setErrorTypes] = useState(DEFAULT_ERROR_TYPES);
   const [adminPin, setAdminPin] = useState("2026");
   const [entries, setEntries] = useState([]);
   const [activeSessions, setActiveSessions] = useState([]);
+  const [separationErrors, setSeparationErrors] = useState([]);
 
   const loadConfig = useCallback(async () => {
-    const [{ data: ops, error: opsErr }, { data: acts, error: actsErr }, { data: cfg, error: cfgErr }] =
-      await Promise.all([fetchOperators(), fetchActivities(), fetchAdminConfig()]);
+    const [
+      { data: ops, error: opsErr },
+      { data: acts, error: actsErr },
+      { data: cfg, error: cfgErr },
+      { data: errTypes, error: errTypesErr },
+    ] = await Promise.all([fetchOperators(), fetchActivities(), fetchAdminConfig(), fetchErrorTypes()]);
 
-    if (opsErr || actsErr || cfgErr) {
-      const firstError = opsErr || actsErr || cfgErr;
+    if (opsErr || actsErr || cfgErr || errTypesErr) {
+      const firstError = opsErr || actsErr || cfgErr || errTypesErr;
       setConnectionError(firstError?.message || "Erro desconhecido ao conectar com o banco.");
       return;
     }
@@ -71,6 +83,7 @@ export default function App() {
     // deve travar o quiosque sem ninguém cadastrado.
     setOperators(ops && ops.length ? ops : DEFAULT_OPERATORS);
     setActivities(acts && acts.length ? acts : DEFAULT_ACTIVITIES);
+    setErrorTypes(errTypes && errTypes.length ? errTypes : DEFAULT_ERROR_TYPES);
     if (cfg) setAdminPin(cfg.pin);
   }, []);
 
@@ -82,6 +95,11 @@ export default function App() {
   const loadActiveSessions = useCallback(async () => {
     const { data, error } = await fetchActiveSessions();
     if (!error && data) setActiveSessions(data);
+  }, []);
+
+  const loadSeparationErrors = useCallback(async () => {
+    const { data, error } = await fetchSeparationErrors();
+    if (!error && data) setSeparationErrors(data);
   }, []);
 
   const resetEntries = useCallback(async () => {
@@ -98,7 +116,7 @@ export default function App() {
   useEffect(() => {
     (async () => {
       try {
-        await Promise.all([loadConfig(), loadEntries(), loadActiveSessions()]);
+        await Promise.all([loadConfig(), loadEntries(), loadActiveSessions(), loadSeparationErrors()]);
       } catch (err) {
         // Blinda contra qualquer erro inesperado na carga inicial — melhor
         // mostrar o site com o aviso de conexão do que travar em branco.
@@ -116,13 +134,15 @@ export default function App() {
       supabase.channel("sessions-changes").on("postgres_changes", { event: "*", schema: "public", table: "active_sessions" }, loadActiveSessions).subscribe(),
       supabase.channel("operators-changes").on("postgres_changes", { event: "*", schema: "public", table: "operators" }, loadConfig).subscribe(),
       supabase.channel("activities-changes").on("postgres_changes", { event: "*", schema: "public", table: "activities" }, loadConfig).subscribe(),
+      supabase.channel("error-types-changes").on("postgres_changes", { event: "*", schema: "public", table: "error_types" }, loadConfig).subscribe(),
       supabase.channel("admin-config-changes").on("postgres_changes", { event: "*", schema: "public", table: "admin_config" }, loadConfig).subscribe(),
+      supabase.channel("separation-errors-changes").on("postgres_changes", { event: "*", schema: "public", table: "separation_errors" }, loadSeparationErrors).subscribe(),
     ];
 
     return () => {
       channels.forEach((ch) => supabase.removeChannel(ch));
     };
-  }, [loadConfig, loadEntries, loadActiveSessions]);
+  }, [loadConfig, loadEntries, loadActiveSessions, loadSeparationErrors]);
 
   function lockAdmin() {
     setIsAdmin(false);
@@ -166,6 +186,10 @@ export default function App() {
           <Kiosk operators={operators} activities={activities} refreshEntries={loadEntries} />
         )}
 
+        {tab === "errors-kiosk" && (
+          <ErrorKiosk operators={operators} errorTypes={errorTypes} />
+        )}
+
         {(tab === "panel" || tab === "team" || tab === "manual") && !isAdmin && (
           <AdminGate correctPin={adminPin} onUnlock={() => setIsAdmin(true)} />
         )}
@@ -176,6 +200,7 @@ export default function App() {
             activities={activities}
             operators={operators}
             activeSessions={activeSessions}
+            separationErrors={separationErrors}
             onResetEntries={resetEntries}
           />
         )}
@@ -188,6 +213,7 @@ export default function App() {
           <TeamManager
             operators={operators}
             activities={activities}
+            errorTypes={errorTypes}
             adminPin={adminPin}
             refreshConfig={loadConfig}
           />

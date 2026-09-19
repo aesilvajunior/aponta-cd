@@ -21,6 +21,9 @@ export default function Sidebar({ tab, setTab, isAdmin, onLock, onResetKiosk }) 
       >
         Registrar
       </div>
+      <div className={`nav-item ${tab === "errors-kiosk" ? "active" : ""}`} onClick={() => setTab("errors-kiosk")}>
+        Registrar Erro
+      </div>
       <div className={`nav-item ${tab === "panel" ? "active" : ""}`} onClick={() => setTab("panel")}>
         Painel
       </div>

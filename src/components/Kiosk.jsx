@@ -18,6 +18,7 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
   const [checkingLogin, setCheckingLogin] = useState(false);
   const [shake, setShake] = useState(false);
   const [confirmation, setConfirmation] = useState(null);
+  const [noteInput, setNoteInput] = useState("");
 
   const codeInputRef = useRef(codeInput);
   codeInputRef.current = codeInput;
@@ -77,6 +78,7 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
     setSession(null);
     setMsg("");
     setConfirmation(null);
+    setNoteInput("");
   }
 
   function handleDigit(d) {
@@ -142,7 +144,7 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
     bump();
     setBusy(true);
     const duration = Math.round((Date.now() - new Date(session.start_time).getTime()) / 1000);
-    const { error } = await finishSession(session, duration, shiftFor(session.start_time));
+    const { error } = await finishSession(session, duration, shiftFor(session.start_time), noteInput.trim());
     setBusy(false);
     if (!error) {
       refreshEntries?.();
@@ -259,9 +261,17 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
                   em andamento desde {fmtClock(session.start_time)}
                 </div>
                 <div style={{ fontSize: 18, fontWeight: 600, margin: "4px 0 8px 0" }}>{session.activity}</div>
-                <div className="stat-num" style={{ fontSize: 32, marginBottom: 16 }}>
+                <div className="stat-num" style={{ fontSize: 32, marginBottom: 14 }}>
                   {fmtDuration(Math.round((now - new Date(session.start_time).getTime()) / 1000))}
                 </div>
+                <textarea
+                  className="field"
+                  placeholder="Observação (opcional) — ex: atraso por falta de material"
+                  value={noteInput}
+                  onChange={(e) => { bump(); setNoteInput(e.target.value); }}
+                  rows={2}
+                  style={{ width: "100%", resize: "none", marginBottom: 12, fontFamily: "inherit" }}
+                />
                 <button className="btn btn-danger" onClick={finishActivity} disabled={busy}>
                   {busy ? "Salvando..." : "Finalizar atividade"}
                 </button>

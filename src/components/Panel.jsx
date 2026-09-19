@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
+  BarChart, Bar, LineChart, Line, Legend, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
 import { fmtClock, fmtDate, fmtDuration } from "../lib/format";
-import { computeMetrics, mean as meanM } from "../lib/metrics";
+import { computeMetrics, computeWeeklyTrend, mean as meanM } from "../lib/metrics";
+import logo from "../assets/logo.png";
 
 const COLORS = ["#FFB020", "#34D399", "#F87171", "#60A5FA", "#C084FC", "#FB923C", "#22D3EE", "#A3A3A3"];
 const DEFAULT_ALERT_SECONDS = 45 * 60;
@@ -14,7 +15,7 @@ function todayLocalISODate() {
   return new Date(d - tz).toISOString().slice(0, 10);
 }
 
-export default function Panel({ entries, activities, operators, activeSessions, onResetEntries }) {
+export default function Panel({ entries, activities, operators, activeSessions, separationErrors = [], onResetEntries }) {
   const [filterOperator, setFilterOperator] = useState("");
   const [filterActivity, setFilterActivity] = useState("");
   const [filterShift, setFilterShift] = useState("");
@@ -111,6 +112,44 @@ export default function Panel({ entries, activities, operators, activeSessions, 
     });
   }, [operators, activities, dateFilteredEntries]);
 
+  // ---------- Tendência semanal ----------
+  const weeklyTrend = useMemo(() => computeWeeklyTrend(dateFilteredEntries, activities), [dateFilteredEntries, activities]);
+
+  // ---------- Erros de separação ----------
+  const dateFilteredErrors = useMemo(() => {
+    return separationErrors.filter((e) => {
+      const d = new Date(e.created_at);
+      if (dateFrom && d < new Date(dateFrom + "T00:00:00")) return false;
+      if (dateTo && d > new Date(dateTo + "T23:59:59")) return false;
+      return true;
+    });
+  }, [separationErrors, dateFrom, dateTo]);
+
+  const errorsByType = useMemo(() => {
+    const byType = {};
+    dateFilteredErrors.forEach((e) => {
+      byType[e.error_type] = (byType[e.error_type] || 0) + 1;
+    });
+    return Object.entries(byType)
+      .map(([name, total]) => ({ name, total }))
+      .sort((a, b) => b.total - a.total);
+  }, [dateFilteredErrors]);
+
+  function exportErrorsCSV() {
+    const header = "Operador,Codigo,Tipo,Observacao,Data,Hora\n";
+    const rows = dateFilteredErrors.map((e) =>
+      [e.operator_name, e.operator_code, e.error_type, (e.note || "").replace(/,/g, ";"), fmtDate(e.created_at), fmtClock(e.created_at)].join(",")
+    );
+    const csv = header + rows.join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `erros_separacao_${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   function clearFilters() {
     setFilterOperator("");
     setFilterActivity("");
@@ -152,6 +191,16 @@ export default function Panel({ entries, activities, operators, activeSessions, 
     lines.push("");
     lines.push("Por operador:");
     todayMetrics.opStats.forEach((o) => lines.push(`  • ${o.name}: ${o.registros} registro(s), total ${fmtDuration(o.total)}`));
+
+    const todayErrors = separationErrors.filter((e) => e.created_at.slice(0, 10) === today);
+    if (todayErrors.length > 0) {
+      lines.push("");
+      lines.push(`Erros de separação hoje: ${todayErrors.length}`);
+      const byType = {};
+      todayErrors.forEach((e) => { byType[e.error_type] = (byType[e.error_type] || 0) + 1; });
+      Object.entries(byType).forEach(([type, count]) => lines.push(`  • ${type}: ${count}`));
+    }
+
     if (activityAlerts.length > 0) {
       lines.push("");
       lines.push("Alertas (atividades em andamento além do esperado):");
@@ -166,6 +215,81 @@ export default function Panel({ entries, activities, operators, activeSessions, 
       setCopyLabel("Não foi possível copiar");
     }
     setTimeout(() => setCopyLabel("Copiar resumo do dia"), 2500);
+  }
+
+  function openPrintableReport() {
+    const period = dateFrom || dateTo ? `${dateFrom ? fmtDate(dateFrom + "T12:00:00") : "início"} até ${dateTo ? fmtDate(dateTo + "T12:00:00") : "hoje"}` : "todo o histórico";
+    const esc = (s) => String(s ?? "").replace(/</g, "&lt;");
+
+    const activityRows = metrics.avgByActivity
+      .filter((a) => a.registros > 0)
+      .map((a) => `<tr><td>${esc(a.name)}</td><td>${a.registros}</td><td>${esc(fmtDuration(a.media))}</td></tr>`)
+      .join("");
+
+    const opRows = metrics.opStats
+      .map((o) => `<tr><td>${esc(o.name)}</td><td>${o.registros}</td><td>${esc(fmtDuration(o.media))}</td><td>${esc(fmtDuration(o.total))}</td></tr>`)
+      .join("");
+
+    const coverageHeaders = activities.map((a) => `<th>${esc(a.name)}</th>`).join("");
+    const coverageRows = coverage
+      .map((row) => {
+        const cells = activities.map((a) => `<td style="text-align:center">${row.counts[a.name] > 0 ? row.counts[a.name] : "—"}</td>`).join("");
+        return `<tr><td>${esc(row.operator.name)}</td>${cells}<td style="text-align:center">${row.done}/${row.total}</td></tr>`;
+      })
+      .join("");
+
+    const errorRows = errorsByType.map((e) => `<tr><td>${esc(e.name)}</td><td>${e.total}</td></tr>`).join("");
+
+    const html = `<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>Relatório Aponta CD</title>
+<style>
+  body { font-family: Arial, Helvetica, sans-serif; color: #14171a; padding: 32px; }
+  header { display: flex; align-items: center; gap: 14px; border-bottom: 3px solid #FFB020; padding-bottom: 14px; margin-bottom: 20px; }
+  header img { width: 48px; height: 48px; border-radius: 50%; }
+  h1 { font-size: 20px; margin: 0; }
+  h2 { font-size: 14px; margin: 26px 0 8px 0; border-left: 4px solid #FFB020; padding-left: 8px; }
+  p.meta { color: #555; font-size: 12px; margin: 2px 0 0 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 6px; }
+  th, td { border: 1px solid #ccc; padding: 6px 8px; text-align: left; }
+  th { background: #f2f2f2; }
+  footer { margin-top: 30px; font-size: 10px; color: #888; text-align: center; }
+  @media print { body { padding: 12px; } }
+</style></head>
+<body>
+  <header>
+    <img src="${window.location.origin}${logo}" alt="" />
+    <div>
+      <h1>Relatório de Atividades — Aponta CD</h1>
+      <p class="meta">Hidráulica Tropeiro · Período: ${esc(period)} · Gerado em ${esc(fmtDate(new Date()))} às ${esc(fmtClock(new Date()))}</p>
+    </div>
+  </header>
+
+  <h2>Resumo</h2>
+  <table>
+    <tr><th>Registros no período</th><td>${filteredEntries.length}</td></tr>
+    <tr><th>Tempo médio geral</th><td>${esc(fmtDuration(Math.round(meanM(filteredEntries.map((e) => e.duration_seconds)))))}</td></tr>
+    <tr><th>Registros fora do padrão</th><td>${metrics.outliers.length}</td></tr>
+  </table>
+
+  <h2>Tempo médio por atividade</h2>
+  <table><tr><th>Atividade</th><th>Registros</th><th>Tempo médio</th></tr>${activityRows || '<tr><td colspan="3">Sem registros</td></tr>'}</table>
+
+  <h2>Produtividade por operador</h2>
+  <table><tr><th>Operador</th><th>Registros</th><th>Tempo médio</th><th>Tempo total</th></tr>${opRows || '<tr><td colspan="4">Sem registros</td></tr>'}</table>
+
+  <h2>Cobertura de rodízio</h2>
+  <table><tr><th>Operador</th>${coverageHeaders}<th>Cobertura</th></tr>${coverageRows || `<tr><td colspan="${activities.length + 2}">Sem operadores</td></tr>`}</table>
+
+  ${errorsByType.length > 0 ? `<h2>Erros de separação</h2><table><tr><th>Tipo</th><th>Ocorrências</th></tr>${errorRows}</table>` : ""}
+
+  <footer>Aponta CD · Hidráulica Tropeiro — relatório gerado automaticamente</footer>
+</body></html>`;
+
+    const win = window.open("", "_blank");
+    if (!win) return;
+    win.document.write(html);
+    win.document.close();
+    win.onload = () => win.print();
   }
 
   async function confirmReset() {
@@ -190,6 +314,7 @@ export default function Panel({ entries, activities, operators, activeSessions, 
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button className="btn-small" onClick={copyDailySummary}>{copyLabel}</button>
+          <button className="btn-small" onClick={openPrintableReport}>Gerar relatório (PDF)</button>
           <button className="btn-small" onClick={exportCSV}>Exportar CSV</button>
           <button className="btn-danger-outline" onClick={() => setConfirmingReset((v) => !v)}>
             Zerar resultados
@@ -275,6 +400,28 @@ export default function Panel({ entries, activities, operators, activeSessions, 
             </Bar>
           </BarChart>
         </ResponsiveContainer>
+      </div>
+
+      <div className="card" style={{ marginBottom: 20 }}>
+        <div className="card-title">Tendência semanal por atividade (segundos, média)</div>
+        {weeklyTrend.length > 1 ? (
+          <ResponsiveContainer width="100%" height={230}>
+            <LineChart data={weeklyTrend}>
+              <CartesianGrid stroke="#262B31" vertical={false} />
+              <XAxis dataKey="label" tick={{ fill: "#8D95A0", fontSize: 11 }} />
+              <YAxis tick={{ fill: "#8D95A0", fontSize: 11 }} />
+              <Tooltip contentStyle={{ background: "#16191D", border: "1px solid #343B42", fontSize: 12, borderRadius: 8 }} labelStyle={{ color: "#F4F5F6" }} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              {activities.map((a, i) => (
+                <Line key={a.name} type="monotone" dataKey={a.name} stroke={COLORS[i % COLORS.length]} strokeWidth={2} dot={{ r: 3 }} connectNulls />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        ) : (
+          <p style={{ fontSize: 12.5, color: "var(--text-faint)" }}>
+            Ainda não há dados de mais de uma semana no período filtrado para mostrar uma tendência.
+          </p>
+        )}
       </div>
 
       {targetComparison.length > 0 && (
@@ -368,6 +515,42 @@ export default function Panel({ entries, activities, operators, activeSessions, 
       </div>
 
       <div className="card" style={{ marginBottom: 20 }}>
+        <div className="page-header-row" style={{ marginBottom: 14 }}>
+          <div className="card-title" style={{ marginBottom: 0 }}>Erros de separação no período</div>
+          <button className="btn-small" onClick={exportErrorsCSV}>Exportar CSV</button>
+        </div>
+        {errorsByType.length > 0 ? (
+          <>
+            <ResponsiveContainer width="100%" height={160}>
+              <BarChart data={errorsByType}>
+                <CartesianGrid stroke="#262B31" vertical={false} />
+                <XAxis dataKey="name" tick={{ fill: "#8D95A0", fontSize: 10.5 }} />
+                <YAxis tick={{ fill: "#8D95A0", fontSize: 11 }} allowDecimals={false} />
+                <Tooltip contentStyle={{ background: "#16191D", border: "1px solid #343B42", fontSize: 12, borderRadius: 8 }} labelStyle={{ color: "#F4F5F6" }} />
+                <Bar dataKey="total" fill="#F87171" radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+            <table className="data-table" style={{ marginTop: 14 }}>
+              <thead><tr><th>Operador</th><th>Tipo</th><th>Observação</th><th>Data</th><th>Hora</th></tr></thead>
+              <tbody>
+                {dateFilteredErrors.slice(0, 100).map((e) => (
+                  <tr key={e.id}>
+                    <td style={{ fontFamily: "var(--font-display)" }}>{e.operator_name}</td>
+                    <td>{e.error_type}</td>
+                    <td style={{ color: "var(--text-muted)" }}>{e.note || "—"}</td>
+                    <td>{fmtDate(e.created_at)}</td>
+                    <td>{fmtClock(e.created_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        ) : (
+          <p style={{ fontSize: 12.5, color: "var(--text-faint)" }}>Nenhum erro registrado no período filtrado.</p>
+        )}
+      </div>
+
+      <div className="card" style={{ marginBottom: 20 }}>
         <div className="card-title">Ranking por atividade (mais rápido → mais lento)</div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 16 }}>
           {activities.map((act) => (
@@ -429,6 +612,7 @@ export default function Panel({ entries, activities, operators, activeSessions, 
                     {fmtDuration(e.duration_seconds)}
                     {isOutlier && <span className="outlier-tag">fora do padrão</span>}
                     {e.manual_entry && <span className="outlier-tag" style={{ background: "var(--accent-dim)", color: "var(--accent)" }}>manual</span>}
+                    {e.note && <span title={e.note} style={{ marginLeft: 6, cursor: "help" }}>📝</span>}
                   </td>
                 </tr>
               );

@@ -44,7 +44,7 @@ export async function startSession({ operatorCode, operatorName, activity }) {
   );
 }
 
-export async function finishSession(session, durationSeconds, shift) {
+export async function finishSession(session, durationSeconds, shift, note = null) {
   const insertRes = await supabase.from("entries").insert({
     operator_code: session.operator_code,
     operator_name: session.operator_name,
@@ -53,6 +53,7 @@ export async function finishSession(session, durationSeconds, shift) {
     end_time: new Date().toISOString(),
     duration_seconds: durationSeconds,
     shift,
+    note: note || null,
   });
   if (insertRes.error) return insertRes;
   return supabase.from("active_sessions").delete().eq("operator_code", session.operator_code);
@@ -142,4 +143,46 @@ export async function addManualEntry({ operatorCode, operatorName, activity, sta
     shift,
     manual_entry: true,
   });
+}
+
+// ---------- Erros de separação ----------
+
+export const SEPARATION_ERROR_TYPES = ["Sobra de Material", "Não Tem no Pedido", "Falta de Material", "Outros"];
+
+export async function fetchSeparationErrors(limit = 2000) {
+  return supabase.from("separation_errors").select("*").order("created_at", { ascending: false }).limit(limit);
+}
+
+export async function logSeparationError({ operatorCode, operatorName, errorType, note }) {
+  return supabase.from("separation_errors").insert({
+    operator_code: operatorCode,
+    operator_name: operatorName,
+    error_type: errorType,
+    note: note || null,
+  });
+}
+
+// ---------- Tipos de erro (editável pelo admin) ----------
+
+export async function fetchErrorTypes() {
+  return supabase.from("error_types").select("*").eq("active", true).order("name");
+}
+
+export async function addErrorType(name) {
+  return supabase.from("error_types").insert({ name, active: true });
+}
+
+export async function renameErrorType(oldName, newName) {
+  const insertRes = await supabase.from("error_types").insert({ name: newName, active: true });
+  if (insertRes.error) return insertRes;
+  const deleteRes = await supabase.from("error_types").delete().eq("name", oldName);
+  if (deleteRes.error) {
+    await supabase.from("error_types").delete().eq("name", newName);
+    return deleteRes;
+  }
+  return deleteRes;
+}
+
+export async function deleteErrorType(name) {
+  return supabase.from("error_types").delete().eq("name", name);
 }
