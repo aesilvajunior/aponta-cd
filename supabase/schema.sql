@@ -21,8 +21,7 @@ create table if not exists active_sessions (
   operator_code text primary key,
   operator_name text not null,
   activity text not null,
-  start_time timestamptz not null,
-  detail text
+  start_time timestamptz not null
 );
 
 -- Tabela de registros finalizados (histórico)
@@ -35,25 +34,23 @@ create table if not exists entries (
   end_time timestamptz not null,
   duration_seconds integer not null,
   shift text not null,
-  detail text,
   created_at timestamptz default now()
 );
 
--- Tabela antiga do PIN único de admin — não é mais usada pelo app (o login
--- agora é feito com e-mail/senha via Supabase Auth, em Authentication >
--- Users). Deixamos a tabela aqui só para não perder o histórico; pode
--- ignorá-la ou apagá-la manualmente se quiser.
+-- Configuração do admin (PIN)
 create table if not exists admin_config (
   id integer primary key,
   pin text not null
 );
 
--- Coluna "detail" guarda o local (Limpeza/Organização) ou o veículo
--- (Carregamento de Caminhão) escolhido antes de iniciar a atividade.
--- Usa "add column if not exists" porque essas tabelas provavelmente já
--- existem no seu banco, criadas antes dessa coluna existir.
-alter table active_sessions add column if not exists detail text;
-alter table entries add column if not exists detail text;
+-- Migrações incrementais (seguro rodar de novo — só adiciona o que faltar) ---
+
+-- Meta de tempo (em segundos) por atividade, definida pelo admin.
+alter table activities add column if not exists target_seconds integer;
+
+-- Marca registros lançados manualmente pelo admin (dados retroativos),
+-- para diferenciar de registros batidos de verdade no quiosque.
+alter table entries add column if not exists manual_entry boolean not null default false;
 
 -- Dados iniciais -------------------------------------------------------
 
@@ -68,13 +65,7 @@ insert into activities (name, active) values
   ('Expedição', true),
   ('Reposição', true),
   ('Inventário', true),
-  ('Outros', true),
-  ('Limpeza', true),
-  ('Organização', true),
-  ('Carregamento de Caminhão', true),
-  ('Reabastecimento de gavetas', true),
-  ('Bater praças', true),
-  ('Conferência de entregas futuras', true)
+  ('Outros', true)
   on conflict (name) do nothing;
 
 insert into operators (code, name, role) values
@@ -100,14 +91,10 @@ insert into operators (code, name, role) values
   on conflict (code) do nothing;
 
 -- Segurança (RLS) --------------------------------------------------------
--- entries/active_sessions: leitura e escrita públicas, porque o quiosque
---   (tela de bater ponto) não pede login — qualquer operador com o código
---   dele bate ponto ali, então essas duas tabelas continuam abertas.
--- operators/activities: leitura pública (o quiosque precisa mostrar a
---   lista), mas agora só admins LOGADOS (via Supabase Auth) podem
---   adicionar/editar/remover — antes, qualquer pessoa com a chave pública
---   do site conseguia editar a equipe direto pela API, mesmo sem PIN.
--- admin_config: mantido igual (tabela não é mais usada pelo app).
+-- Este é um sistema de uso interno do CD, acessado só pela rede da empresa.
+-- Liberamos leitura/escrita para a chave "anon" (pública) nas tabelas
+-- operacionais. NÃO exponha esse link publicamente na internet sem outra
+-- camada de proteção (ex: senha de rede, VPN, ou domínio não divulgado).
 
 alter table operators enable row level security;
 alter table activities enable row level security;
@@ -115,22 +102,15 @@ alter table active_sessions enable row level security;
 alter table entries enable row level security;
 alter table admin_config enable row level security;
 
--- "drop ... if exists" antes de cada "create policy" porque, ao contrário
--- de "create table"/"insert", o Postgres não tem "create policy if not
--- exists" — sem isso, rodar o script de novo (algo que pedimos aqui mais de
--- uma vez, ao adicionar colunas/tabelas novas) travaria com erro de
--- "política já existe".
 drop policy if exists "leitura publica operators" on operators;
 create policy "leitura publica operators" on operators for select using (true);
 drop policy if exists "escrita publica operators" on operators;
-drop policy if exists "escrita admin operators" on operators;
-create policy "escrita admin operators" on operators for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+create policy "escrita publica operators" on operators for all using (true) with check (true);
 
 drop policy if exists "leitura publica activities" on activities;
 create policy "leitura publica activities" on activities for select using (true);
 drop policy if exists "escrita publica activities" on activities;
-drop policy if exists "escrita admin activities" on activities;
-create policy "escrita admin activities" on activities for all using (auth.role() = 'authenticated') with check (auth.role() = 'authenticated');
+create policy "escrita publica activities" on activities for all using (true) with check (true);
 
 drop policy if exists "leitura publica active_sessions" on active_sessions;
 create policy "leitura publica active_sessions" on active_sessions for select using (true);
@@ -147,40 +127,26 @@ create policy "leitura publica admin_config" on admin_config for select using (t
 drop policy if exists "escrita publica admin_config" on admin_config;
 create policy "escrita publica admin_config" on admin_config for all using (true) with check (true);
 
--- Habilita realtime (para as telas atualizarem sozinhas quando algo muda)
--- Usa um bloco condicional porque "alter publication ... add table" dá erro
--- se a tabela já estiver na publicação — importante para rodar este script
--- de novo com segurança num banco que já foi configurado antes.
+-- Habilita realtime (para as telas atualizarem sozinhas quando algo muda,
+-- em qualquer aba ou dispositivo conectado). Os blocos abaixo verificam se
+-- a tabela já está no publication antes de adicionar, para que este script
+-- possa ser rodado de novo no futuro (ex: depois de uma atualização do
+-- projeto) sem dar erro de "já existe".
 do $$
 begin
-  if not exists (
-    select 1 from pg_publication_tables
-    where pubname = 'supabase_realtime' and tablename = 'entries'
-  ) then
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'entries') then
     alter publication supabase_realtime add table entries;
   end if;
-  if not exists (
-    select 1 from pg_publication_tables
-    where pubname = 'supabase_realtime' and tablename = 'active_sessions'
-  ) then
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'active_sessions') then
     alter publication supabase_realtime add table active_sessions;
   end if;
-  if not exists (
-    select 1 from pg_publication_tables
-    where pubname = 'supabase_realtime' and tablename = 'operators'
-  ) then
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'operators') then
     alter publication supabase_realtime add table operators;
   end if;
-  if not exists (
-    select 1 from pg_publication_tables
-    where pubname = 'supabase_realtime' and tablename = 'activities'
-  ) then
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'activities') then
     alter publication supabase_realtime add table activities;
   end if;
-  if not exists (
-    select 1 from pg_publication_tables
-    where pubname = 'supabase_realtime' and tablename = 'admin_config'
-  ) then
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'admin_config') then
     alter publication supabase_realtime add table admin_config;
   end if;
 end $$;

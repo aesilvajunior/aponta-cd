@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { fetchActiveSessionFor, startSession, finishSession } from "../lib/api";
 import { fmtDuration, fmtClock, fmtDate, shiftFor } from "../lib/format";
-import { activityNeedsDetail, detailOptionsFor, detailLabelFor } from "../lib/activityDetails";
 import logo from "../assets/logo.png";
 
 const CODE_LENGTH = 3;
@@ -16,9 +15,9 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
   const [msgType, setMsgType] = useState("info");
   const [now, setNow] = useState(Date.now());
   const [busy, setBusy] = useState(false);
+  const [checkingLogin, setCheckingLogin] = useState(false);
   const [shake, setShake] = useState(false);
   const [confirmation, setConfirmation] = useState(null);
-  const [pendingActivity, setPendingActivity] = useState(null);
 
   const codeInputRef = useRef(codeInput);
   codeInputRef.current = codeInput;
@@ -34,6 +33,7 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
     return () => clearInterval(iv);
   }, []);
 
+  // Devolve o teclado sozinho se alguém ficar logado sem mexer no quiosque.
   useEffect(() => {
     if (!loggedOperator) return;
     const iv = setInterval(() => {
@@ -43,6 +43,8 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loggedOperator]);
 
+  // Limpa qualquer timer pendente ao desmontar (evita setState depois de
+  // trocar de aba no meio da contagem de "devolvendo o teclado").
   useEffect(() => {
     return () => {
       if (autoReturnTimeoutRef.current) clearTimeout(autoReturnTimeoutRef.current);
@@ -68,8 +70,6 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loggedOperator, operators]);
 
-  const [checkingLogin, setCheckingLogin] = useState(false);
-
   function reset() {
     if (autoReturnTimeoutRef.current) clearTimeout(autoReturnTimeoutRef.current);
     setCodeInput("");
@@ -77,7 +77,6 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
     setSession(null);
     setMsg("");
     setConfirmation(null);
-    setPendingActivity(null);
   }
 
   function handleDigit(d) {
@@ -104,43 +103,33 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
     bump();
     setMsg("");
     setCheckingLogin(true);
-    const { data } = await fetchActiveSessionFor(op.code);
-    // Busca a sessão ANTES de logar visualmente, para não piscar a tela de
-    // "escolher atividade" por um instante quando na verdade já tem uma em andamento.
+    // Busca a sessão ANTES de logar visualmente — evita piscar a tela de
+    // "escolher atividade" por um instante quando já existe uma em andamento.
+    const { data, error } = await fetchActiveSessionFor(op.code);
+    if (error) {
+      setMsgType("error");
+      setMsg("Erro ao verificar sessão. Tente de novo.");
+      setCheckingLogin(false);
+      return;
+    }
     setSession(data || null);
     setLoggedOperator(op);
     setCheckingLogin(false);
   }
 
-  function chooseActivity(activityName) {
-    if (busy) return;
-    bump();
-    if (activityNeedsDetail(activityName)) {
-      // Atividades como Limpeza, Organização e Carregamento de Caminhão
-      // precisam de uma escolha extra (local ou veículo) antes de começar
-      // a contar o tempo.
-      setPendingActivity(activityName);
-    } else {
-      startActivity(activityName, null);
-    }
-  }
-
-  async function startActivity(activityName, detail) {
+  async function startActivity(activityName) {
     if (busy) return;
     bump();
     setBusy(true);
-    const nowIso = new Date().toISOString();
+    const startedAt = new Date().toISOString();
     const { error } = await startSession({
       operatorCode: loggedOperator.code,
       operatorName: loggedOperator.name,
       activity: activityName,
-      startTimeIso: nowIso,
-      detail,
     });
     setBusy(false);
     if (!error) {
-      setPendingActivity(null);
-      setConfirmation({ kind: "started", activity: activityName, detail, time: fmtClock(nowIso) });
+      setConfirmation({ kind: "started", activity: activityName, time: fmtClock(startedAt) });
       autoReturnTimeoutRef.current = setTimeout(reset, AUTO_RETURN_MS);
     } else {
       setMsgType("error");
@@ -152,21 +141,13 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
     if (!session || busy) return;
     bump();
     setBusy(true);
-    const endTime = new Date();
-    const startTime = new Date(session.start_time);
-    const duration = Math.round((endTime - startTime) / 1000);
-
-    const { error } = await finishSession(session, {
-      endTimeIso: endTime.toISOString(),
-      durationSeconds: duration,
-      shift: shiftFor(session.start_time),
-    });
-
+    const duration = Math.round((Date.now() - new Date(session.start_time).getTime()) / 1000);
+    const { error } = await finishSession(session, duration, shiftFor(session.start_time));
     setBusy(false);
     if (!error) {
       refreshEntries?.();
       setSession(null);
-      setConfirmation({ kind: "finished", activity: session.activity, detail: session.detail, extra: fmtDuration(duration) });
+      setConfirmation({ kind: "finished", activity: session.activity, extra: fmtDuration(duration) });
       autoReturnTimeoutRef.current = setTimeout(reset, AUTO_RETURN_MS);
     } else {
       setMsgType("error");
@@ -182,158 +163,136 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
       <p className="page-sub">Digite seu código para iniciar ou finalizar uma atividade.</p>
 
       <div style={{ display: "flex", gap: 24, flexWrap: "wrap", alignItems: "flex-start" }}>
-      {!loggedOperator && (
-        <div className={`terminal ${shake ? "shake" : ""}`}>
-          <div className="terminal-dots">
-            {dots.map((filled, i) => (
-              <div key={i} className={`terminal-dot ${filled ? "filled" : ""}`} />
-            ))}
-          </div>
-          <div className="keypad">
-            {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((d) => (
-              <button key={d} className="keypad-key" onClick={() => handleDigit(d)}>
-                {d}
-              </button>
-            ))}
-            <button className="keypad-key" onClick={() => { bump(); setCodeInput((p) => p.slice(0, -1)); }}>
-              ⌫
-            </button>
-            <button className="keypad-key" onClick={() => handleDigit("0")}>
-              0
-            </button>
-            <button className="keypad-key accent" onClick={handleLogin} disabled={checkingLogin}>
-              {checkingLogin ? "..." : "OK"}
-            </button>
-          </div>
-          {msg ? (
-            <p className="terminal-error">{msg}</p>
-          ) : (
-            <p className="terminal-hint">teclado do computador também funciona</p>
-          )}
-        </div>
-      )}
-
-      {loggedOperator && confirmation && (
-        <div className="terminal" style={{ textAlign: "center", padding: "36px 24px" }}>
-          <div
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: "50%",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              margin: "0 auto 16px auto",
-              background: confirmation.kind === "started" ? "var(--accent-dim)" : "var(--ok-dim)",
-              color: confirmation.kind === "started" ? "var(--accent)" : "var(--ok)",
-              fontSize: 18,
-            }}
-          >
-            {confirmation.kind === "started" ? "▶" : "✓"}
-          </div>
-          <div style={{ fontSize: 17, fontWeight: 600 }}>
-            {confirmation.activity} {confirmation.kind === "started" ? "iniciada" : "finalizada"}
-          </div>
-          {confirmation.detail && (
-            <div style={{ color: "var(--text-muted)", fontSize: 12.5, marginTop: 2 }}>{confirmation.detail}</div>
-          )}
-          <div style={{ color: "var(--text-muted)", fontSize: 12.5, marginTop: 6 }}>
-            {confirmation.kind === "started"
-              ? `às ${confirmation.time} · volte depois para finalizar`
-              : `duração: ${confirmation.extra}`}
-          </div>
-        </div>
-      )}
-
-      {loggedOperator && !confirmation && (
-        <div className="card" style={{ width: 420 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-            <div>
-              <div style={{ fontSize: 17, fontWeight: 600 }}>{loggedOperator.name}</div>
-              <div style={{ color: "var(--text-muted)", fontSize: 12 }}>
-                {loggedOperator.role} · #{loggedOperator.code}
-              </div>
-            </div>
-            <button className="btn-small" onClick={reset}>
-              Trocar
-            </button>
-          </div>
-
-          {!session && !pendingActivity && (
-            <div className="activity-grid">
-              {activities.map((a) => (
-                <div key={a.name} className="activity-btn" onClick={() => chooseActivity(a.name)}>
-                  {a.name}
-                </div>
+        {!loggedOperator && (
+          <div className={`terminal ${shake ? "shake" : ""}`}>
+            <div className="terminal-dots">
+              {dots.map((filled, i) => (
+                <div key={i} className={`terminal-dot ${filled ? "filled" : ""}`} />
               ))}
             </div>
-          )}
-
-          {!session && pendingActivity && (
-            <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
-                  {pendingActivity} · {detailLabelFor(pendingActivity)}
-                </div>
-                <button className="btn-small" onClick={() => setPendingActivity(null)}>
-                  Voltar
+            <div className="keypad" style={{ opacity: checkingLogin ? 0.55 : 1, pointerEvents: checkingLogin ? "none" : "auto" }}>
+              {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((d) => (
+                <button key={d} className="keypad-key" onClick={() => handleDigit(d)}>
+                  {d}
                 </button>
+              ))}
+              <button className="keypad-key" onClick={() => { bump(); setCodeInput((p) => p.slice(0, -1)); }}>
+                ⌫
+              </button>
+              <button className="keypad-key" onClick={() => handleDigit("0")}>
+                0
+              </button>
+              <button className="keypad-key accent" onClick={handleLogin}>
+                {checkingLogin ? "..." : "OK"}
+              </button>
+            </div>
+            {msg ? (
+              <p className="terminal-error">{msg}</p>
+            ) : (
+              <p className="terminal-hint">teclado do computador também funciona</p>
+            )}
+          </div>
+        )}
+
+        {loggedOperator && confirmation && (
+          <div className="terminal" style={{ textAlign: "center", padding: "36px 24px" }}>
+            <div
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: "50%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                margin: "0 auto 16px auto",
+                background: confirmation.kind === "started" ? "var(--accent-dim)" : "var(--ok-dim)",
+                color: confirmation.kind === "started" ? "var(--accent)" : "var(--ok)",
+                fontSize: 18,
+              }}
+            >
+              {confirmation.kind === "started" ? "▶" : "✓"}
+            </div>
+            <div style={{ fontSize: 17, fontWeight: 600 }}>
+              {confirmation.activity} {confirmation.kind === "started" ? "iniciada" : "finalizada"}
+            </div>
+            <div style={{ color: "var(--text-muted)", fontSize: 12.5, marginTop: 6 }}>
+              {confirmation.kind === "started"
+                ? `às ${confirmation.time} · volte depois para finalizar`
+                : `duração: ${confirmation.extra}`}
+            </div>
+          </div>
+        )}
+
+        {loggedOperator && !confirmation && (
+          <div className="card" style={{ width: 420 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <div>
+                <div style={{ fontSize: 17, fontWeight: 600 }}>{loggedOperator.name}</div>
+                <div style={{ color: "var(--text-muted)", fontSize: 12 }}>
+                  {loggedOperator.role} · #{loggedOperator.code}
+                </div>
               </div>
-              <div className="activity-grid">
-                {detailOptionsFor(pendingActivity).map((opt) => (
-                  <div key={opt} className="activity-btn" onClick={() => startActivity(pendingActivity, opt)}>
-                    {opt}
+              <button className="btn-small" onClick={reset}>
+                Trocar
+              </button>
+            </div>
+
+            {!session && activities.length > 0 && (
+              <div className="activity-grid" style={{ opacity: busy ? 0.6 : 1, pointerEvents: busy ? "none" : "auto" }}>
+                {activities.map((a) => (
+                  <div key={a.name} className="activity-btn" onClick={() => startActivity(a.name)}>
+                    {a.name}
                   </div>
                 ))}
               </div>
-            </div>
-          )}
+            )}
 
-          {session && (
-            <div style={{ textAlign: "center", padding: "6px 0" }}>
-              <div style={{ color: "var(--text-muted)", fontSize: 11.5 }}>
-                em andamento desde {fmtClock(session.start_time)}
-              </div>
-              <div style={{ fontSize: 18, fontWeight: 600, margin: "4px 0 8px 0" }}>{session.activity}</div>
-              {session.detail && (
-                <div style={{ color: "var(--text-muted)", fontSize: 12.5, marginTop: -4, marginBottom: 8 }}>
-                  {session.detail}
+            {!session && activities.length === 0 && (
+              <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
+                Nenhuma atividade cadastrada ainda. Peça ao administrador para adicionar em "Equipe".
+              </p>
+            )}
+
+            {session && (
+              <div style={{ textAlign: "center", padding: "6px 0" }}>
+                <div style={{ color: "var(--text-muted)", fontSize: 11.5 }}>
+                  em andamento desde {fmtClock(session.start_time)}
                 </div>
-              )}
-              <div className="stat-num" style={{ fontSize: 32, marginBottom: 16 }}>
-                {fmtDuration(Math.round((now - new Date(session.start_time).getTime()) / 1000))}
+                <div style={{ fontSize: 18, fontWeight: 600, margin: "4px 0 8px 0" }}>{session.activity}</div>
+                <div className="stat-num" style={{ fontSize: 32, marginBottom: 16 }}>
+                  {fmtDuration(Math.round((now - new Date(session.start_time).getTime()) / 1000))}
+                </div>
+                <button className="btn btn-danger" onClick={finishActivity} disabled={busy}>
+                  {busy ? "Salvando..." : "Finalizar atividade"}
+                </button>
               </div>
-              <button className="btn btn-danger" onClick={finishActivity} disabled={busy}>
-                Finalizar atividade
-              </button>
-            </div>
-          )}
-          {msg && (
-            <p
-              style={{
-                color: msgType === "error" ? "var(--danger)" : "var(--ok)",
-                fontSize: 12.5,
-                textAlign: "center",
-                marginTop: 10,
-              }}
-            >
-              {msg}
-            </p>
-          )}
-        </div>
-      )}
+            )}
+            {msg && (
+              <p
+                style={{
+                  color: msgType === "error" ? "var(--danger)" : "var(--ok)",
+                  fontSize: 12.5,
+                  textAlign: "center",
+                  marginTop: 10,
+                }}
+              >
+                {msg}
+              </p>
+            )}
+          </div>
+        )}
 
-      <div className="side-panel">
-        <div className="side-clock">{fmtClock(now)}</div>
-        <div className="side-date">{fmtDate(now)}</div>
-        <div className="side-shift-badge">
-          <span className="side-shift-dot" />
-          Turno {shiftFor(now)}
+        <div className="side-panel">
+          <div className="side-clock">{fmtClock(now)}</div>
+          <div className="side-date">{fmtDate(now)}</div>
+          <div className="side-shift-badge">
+            <span className="side-shift-dot" />
+            Turno {shiftFor(now)}
+          </div>
+          <div className="side-divider" />
+          <img src={logo} alt="" className="side-logo" />
+          <div className="side-motto">"joga junto e cresce todo dia"</div>
         </div>
-        <div className="side-divider" />
-        <img src={logo} alt="" className="side-logo" />
-        <div className="side-motto">"joga junto e cresce todo dia"</div>
-      </div>
       </div>
     </div>
   );

@@ -1,55 +1,37 @@
 import React, { useState } from "react";
-import { signIn } from "../lib/auth";
 
-export default function AdminGate() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+export default function AdminGate({ correctPin, onUnlock }) {
+  const [attempt, setAttempt] = useState("");
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
 
-  async function submit() {
-    if (!email.trim() || !password) return;
-    setError("");
-    setLoading(true);
-    const { error } = await signIn(email.trim(), password);
-    setLoading(false);
-    if (error) {
-      setError(
-        error.message?.includes("Invalid login")
-          ? "E-mail ou senha incorretos."
-          : "Erro ao entrar. Tente novamente."
-      );
+  function submit() {
+    if (attempt.trim() === correctPin) {
+      setError("");
+      setAttempt("");
+      onUnlock();
+    } else {
+      setError("PIN incorreto.");
+      setAttempt("");
     }
-    // Se der certo, o App.jsx percebe sozinho via onAuthStateChange —
-    // não precisa fazer nada aqui.
   }
 
   return (
     <div>
       <h1 className="page-title">Área restrita</h1>
-      <p className="page-sub">As métricas e a configuração da equipe são visíveis apenas para administradores.</p>
-      <div className="card" style={{ width: 300 }}>
-        <input
-          type="email"
-          className="field"
-          style={{ width: "100%", marginBottom: 10 }}
-          placeholder="E-mail"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && submit()}
-          autoFocus
-        />
+      <p className="page-sub">As métricas e a configuração da equipe são visíveis apenas para o administrador.</p>
+      <div className="card" style={{ width: 280 }}>
         <input
           type="password"
           className="field"
-          style={{ width: "100%", marginBottom: 12 }}
-          placeholder="Senha"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
+          style={{ width: "100%", textAlign: "center", fontSize: 22, letterSpacing: 6, marginBottom: 12, fontFamily: "var(--font-mono)" }}
+          placeholder="••••"
+          value={attempt}
+          onChange={(e) => setAttempt(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && submit()}
+          autoFocus
         />
-        <button className="btn btn-primary" onClick={submit} disabled={loading} style={{ width: "100%" }}>
-          {loading ? "Entrando..." : "Entrar"}
+        <button className="btn btn-primary" onClick={submit}>
+          Entrar
         </button>
         {error && <p style={{ color: "var(--danger)", fontSize: 13, textAlign: "center", marginTop: 10 }}>{error}</p>}
       </div>

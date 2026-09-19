@@ -1,7 +1,7 @@
 import React from "react";
 import logo from "../assets/logo.png";
 
-export default function Sidebar({ tab, setTab, isAdmin, onLock, onResetKiosk, longSessionCount = 0 }) {
+export default function Sidebar({ tab, setTab, isAdmin, onLock, onResetKiosk }) {
   return (
     <nav className="sidebar">
       <div className="sidebar-brand">
@@ -21,17 +21,11 @@ export default function Sidebar({ tab, setTab, isAdmin, onLock, onResetKiosk, lo
       >
         Registrar
       </div>
-      <div
-        className={`nav-item ${tab === "panel" ? "active" : ""}`}
-        onClick={() => setTab("panel")}
-        style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}
-      >
+      <div className={`nav-item ${tab === "panel" ? "active" : ""}`} onClick={() => setTab("panel")}>
         Painel
-        {longSessionCount > 0 && (
-          <span className="badge" style={{ borderColor: "var(--danger)", color: "var(--danger)" }} title="Atividades em aberto há muito tempo">
-            {longSessionCount}
-          </span>
-        )}
+      </div>
+      <div className={`nav-item ${tab === "manual" ? "active" : ""}`} onClick={() => setTab("manual")}>
+        Lançar registro
       </div>
       <div className={`nav-item ${tab === "team" ? "active" : ""}`} onClick={() => setTab("team")}>
         Equipe

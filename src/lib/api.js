@@ -1,14 +1,10 @@
 import { supabase } from "../supabaseClient";
 
-// ============================================================
-// Camada central de acesso ao Supabase.
-// Nenhum componente deve chamar `supabase.from(...)` diretamente —
-// tudo passa por aqui. Isso evita lógica duplicada, facilita
-// adicionar recursos novos e concentra o tratamento de erro num
-// só lugar.
-// ============================================================
+// Centraliza todo o acesso ao banco em um só lugar. Isso evita duplicar a
+// mesma query em vários componentes (fonte comum de bugs quando o esquema
+// muda) e deixa mais fácil adicionar novas funcionalidades no futuro.
 
-// ---------- Leitura -----------------------------------------
+// ---------- Leituras ----------
 
 export async function fetchOperators() {
   return supabase.from("operators").select("*").order("code");
@@ -16,6 +12,10 @@ export async function fetchOperators() {
 
 export async function fetchActivities() {
   return supabase.from("activities").select("*").eq("active", true).order("name");
+}
+
+export async function fetchAdminConfig() {
+  return supabase.from("admin_config").select("*").eq("id", 1).maybeSingle();
 }
 
 export async function fetchEntries(limit = 2000) {
@@ -30,97 +30,116 @@ export async function fetchActiveSessionFor(operatorCode) {
   return supabase.from("active_sessions").select("*").eq("operator_code", operatorCode).maybeSingle();
 }
 
-// ---------- Operadores ----------------------------------------
+// ---------- Ações do quiosque ----------
 
-export async function insertOperator({ code, name, role }) {
+export async function startSession({ operatorCode, operatorName, activity }) {
+  return supabase.from("active_sessions").upsert(
+    {
+      operator_code: operatorCode,
+      operator_name: operatorName,
+      activity,
+      start_time: new Date().toISOString(),
+    },
+    { onConflict: "operator_code" }
+  );
+}
+
+export async function finishSession(session, durationSeconds, shift) {
+  const insertRes = await supabase.from("entries").insert({
+    operator_code: session.operator_code,
+    operator_name: session.operator_name,
+    activity: session.activity,
+    start_time: session.start_time,
+    end_time: new Date().toISOString(),
+    duration_seconds: durationSeconds,
+    shift,
+  });
+  if (insertRes.error) return insertRes;
+  return supabase.from("active_sessions").delete().eq("operator_code", session.operator_code);
+}
+
+// ---------- Operadores ----------
+
+export async function addOperator({ code, name, role }) {
   return supabase.from("operators").insert({ code, name, role: role || "-" });
 }
 
-export async function updateOperator(code, { name, role }) {
-  return supabase.from("operators").update({ name, role: role || "-" }).eq("code", code);
+export async function updateOperator(code, fields) {
+  return supabase.from("operators").update(fields).eq("code", code);
+}
+
+// O código é a chave primária no banco. Trocar o código de um operador
+// existente exige criar a linha nova antes de apagar a antiga, para nunca
+// ficar um instante sem nenhuma linha (e para poder desfazer se a segunda
+// parte falhar).
+export async function renameOperatorCode(oldCode, newCode, fields) {
+  const insertRes = await supabase.from("operators").insert({ code: newCode, ...fields });
+  if (insertRes.error) return insertRes;
+  const deleteRes = await supabase.from("operators").delete().eq("code", oldCode);
+  if (deleteRes.error) {
+    // Não conseguiu remover a linha antiga: desfaz a nova para não duplicar.
+    await supabase.from("operators").delete().eq("code", newCode);
+    return deleteRes;
+  }
+  return deleteRes;
 }
 
 export async function deleteOperator(code) {
   return supabase.from("operators").delete().eq("code", code);
 }
 
-// Renomear o código de um operador não é um "update" simples porque
-// `code` é a chave primária: fazemos insert do novo + delete do
-// antigo. Se o insert falhar (ex.: código já em uso), o antigo é
-// preservado e nada é perdido.
-export async function renameOperatorCode(originalCode, { code, name, role }) {
-  const { error: insertErr } = await insertOperator({ code, name, role });
-  if (insertErr) return { error: insertErr };
-  const { error: deleteErr } = await deleteOperator(originalCode);
-  return { error: deleteErr || null };
+// ---------- Atividades ----------
+
+export async function addActivity(name, targetSeconds = null) {
+  return supabase.from("activities").insert({ name, active: true, target_seconds: targetSeconds });
 }
 
-// ---------- Atividades -----------------------------------------
+export async function renameActivity(oldName, newName, targetSeconds = null) {
+  const insertRes = await supabase
+    .from("activities")
+    .insert({ name: newName, active: true, target_seconds: targetSeconds });
+  if (insertRes.error) return insertRes;
+  const deleteRes = await supabase.from("activities").delete().eq("name", oldName);
+  if (deleteRes.error) {
+    await supabase.from("activities").delete().eq("name", newName);
+    return deleteRes;
+  }
+  return deleteRes;
+}
 
-export async function insertActivity(name) {
-  return supabase.from("activities").insert({ name, active: true });
+export async function updateActivityTarget(name, targetSeconds) {
+  return supabase.from("activities").update({ target_seconds: targetSeconds }).eq("name", name);
 }
 
 export async function deleteActivity(name) {
   return supabase.from("activities").delete().eq("name", name);
 }
 
-export async function renameActivity(originalName, newName) {
-  if (newName === originalName) return { error: null };
-  const { error: insertErr } = await insertActivity(newName);
-  if (insertErr) return { error: insertErr };
-  const { error: deleteErr } = await deleteActivity(originalName);
-  return { error: deleteErr || null };
+// ---------- Administração ----------
+
+export async function updateAdminPin(pin) {
+  return supabase.from("admin_config").update({ pin }).eq("id", 1);
 }
 
-// ---------- Sessões / apontamentos -----------------------------------------
-
-export async function startSession({ operatorCode, operatorName, activity, startTimeIso, detail }) {
-  return supabase.from("active_sessions").upsert(
-    {
-      operator_code: operatorCode,
-      operator_name: operatorName,
-      activity,
-      start_time: startTimeIso,
-      detail: detail || null,
-    },
-    { onConflict: "operator_code" }
-  );
-}
-
-export async function finishSession(session, { endTimeIso, durationSeconds, shift }) {
-  const { error: insertError } = await supabase.from("entries").insert({
-    operator_code: session.operator_code,
-    operator_name: session.operator_name,
-    activity: session.activity,
-    start_time: session.start_time,
-    end_time: endTimeIso,
-    duration_seconds: durationSeconds,
-    shift,
-    detail: session.detail || null,
-  });
-  if (insertError) return { error: insertError };
-
-  const { error: deleteError } = await supabase
-    .from("active_sessions")
-    .delete()
-    .eq("operator_code", session.operator_code);
-  return { error: deleteError || null };
-}
-
-export async function resetAllEntries() {
+export async function deleteAllEntries() {
   return supabase.from("entries").delete().neq("id", "00000000-0000-0000-0000-000000000000");
 }
 
-// ---------- Realtime -----------------------------------------
+// ---------- Lançamento retroativo (só admin) ----------
 
-// Assina mudanças em várias tabelas e chama `onChange` (sem argumentos)
-// sempre que qualquer uma delas mudar. Retorna uma função de limpeza.
-export function subscribeToTables(tables, onChange) {
-  const channel = supabase.channel(`changes-${tables.join("-")}`);
-  tables.forEach((table) => {
-    channel.on("postgres_changes", { event: "*", schema: "public", table }, onChange);
+// Insere um registro já finalizado diretamente no histórico, sem passar
+// pelo quiosque — para digitar dados de meses anteriores (ex: papel de
+// agosto) para efeito de análise. Fica marcado como manual_entry para
+// manter rastreabilidade de que não veio de uma batida real de ponto.
+export async function addManualEntry({ operatorCode, operatorName, activity, startTime, endTime, durationSeconds, shift }) {
+  return supabase.from("entries").insert({
+    operator_code: operatorCode,
+    operator_name: operatorName,
+    activity,
+    start_time: startTime,
+    end_time: endTime,
+    duration_seconds: durationSeconds,
+    shift,
+    manual_entry: true,
   });
-  channel.subscribe();
-  return () => supabase.removeChannel(channel);
 }

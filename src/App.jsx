@@ -1,19 +1,19 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
+import { supabase } from "./supabaseClient";
 import {
   fetchOperators,
   fetchActivities,
+  fetchAdminConfig,
   fetchEntries,
   fetchActiveSessions,
-  resetAllEntries,
-  subscribeToTables,
+  deleteAllEntries,
 } from "./lib/api";
-import { getCurrentSession, onAuthStateChange, signOut } from "./lib/auth";
-import { isLongSession, LONG_SESSION_MINUTES } from "./lib/format";
 import Sidebar from "./components/Sidebar";
 import Kiosk from "./components/Kiosk";
 import AdminGate from "./components/AdminGate";
 import Panel from "./components/Panel";
 import TeamManager from "./components/TeamManager";
+import ManualEntry from "./components/ManualEntry";
 import logo from "./assets/logo.png";
 
 const DEFAULT_OPERATORS = [
@@ -41,137 +41,101 @@ const DEFAULT_OPERATORS = [
 const DEFAULT_ACTIVITIES = [
   "Recebimento", "Conferência", "Separação", "Embalagem",
   "Expedição", "Reposição", "Inventário", "Outros",
-  "Limpeza", "Organização", "Carregamento de Caminhão",
-  "Reabastecimento de gavetas", "Bater praças", "Conferência de entregas futuras",
 ].map((name) => ({ name, active: true }));
 
 export default function App() {
   const [tab, setTab] = useState("kiosk");
-  const [session, setSession] = useState(undefined); // undefined = ainda checando, null = deslogado
+  const [isAdmin, setIsAdmin] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [connectionError, setConnectionError] = useState(null);
+  const [actionError, setActionError] = useState(null);
 
   const [operators, setOperators] = useState(DEFAULT_OPERATORS);
   const [activities, setActivities] = useState(DEFAULT_ACTIVITIES);
+  const [adminPin, setAdminPin] = useState("2026");
   const [entries, setEntries] = useState([]);
   const [activeSessions, setActiveSessions] = useState([]);
 
-  const [notifPermission, setNotifPermission] = useState(
-    typeof Notification !== "undefined" ? Notification.permission : "unsupported"
-  );
-  const notifiedRef = useRef(new Set()); // operator_code já notificado, evita spam repetido
-
-  const isAdmin = Boolean(session);
-
   const loadConfig = useCallback(async () => {
-    const [{ data: ops, error: opsErr }, { data: acts, error: actsErr }] =
-      await Promise.all([fetchOperators(), fetchActivities()]);
+    const [{ data: ops, error: opsErr }, { data: acts, error: actsErr }, { data: cfg, error: cfgErr }] =
+      await Promise.all([fetchOperators(), fetchActivities(), fetchAdminConfig()]);
 
-    if (opsErr || actsErr) {
-      setConnectionError((opsErr || actsErr)?.message || "Erro desconhecido ao conectar com o banco.");
+    if (opsErr || actsErr || cfgErr) {
+      const firstError = opsErr || actsErr || cfgErr;
+      setConnectionError(firstError?.message || "Erro desconhecido ao conectar com o banco.");
       return;
     }
     setConnectionError(null);
-    // Aceita listas vazias também — se todos os operadores/atividades
-    // forem removidos, a tela deve refletir isso, não travar no cache antigo.
-    setOperators(ops ?? []);
-    setActivities(acts ?? []);
+    // Só substitui os padrões quando o banco realmente devolve algo — uma
+    // tabela vazia (ex: alguém apagou todos os operadores por engano) não
+    // deve travar o quiosque sem ninguém cadastrado.
+    setOperators(ops && ops.length ? ops : DEFAULT_OPERATORS);
+    setActivities(acts && acts.length ? acts : DEFAULT_ACTIVITIES);
+    if (cfg) setAdminPin(cfg.pin);
   }, []);
 
   const loadEntries = useCallback(async () => {
-    const { data } = await fetchEntries();
-    if (data) setEntries(data);
+    const { data, error } = await fetchEntries();
+    if (!error && data) setEntries(data);
   }, []);
 
   const loadActiveSessions = useCallback(async () => {
-    const { data } = await fetchActiveSessions();
-    if (data) setActiveSessions(data);
+    const { data, error } = await fetchActiveSessions();
+    if (!error && data) setActiveSessions(data);
   }, []);
 
   const resetEntries = useCallback(async () => {
-    await resetAllEntries();
+    const { error } = await deleteAllEntries();
+    if (error) {
+      setActionError("Não foi possível apagar o histórico. Tente novamente.");
+      return { error };
+    }
+    setActionError(null);
     await loadEntries();
+    return { error: null };
   }, [loadEntries]);
 
-  // ---------- Login ----------
-  useEffect(() => {
-    getCurrentSession().then(setSession);
-    return onAuthStateChange(setSession);
-  }, []);
-
-  function lockAdmin() {
-    signOut();
-    setTab("kiosk");
-  }
-
-  // ---------- Dados + realtime ----------
   useEffect(() => {
     (async () => {
-      await Promise.all([loadConfig(), loadEntries(), loadActiveSessions()]);
-      setLoaded(true);
+      try {
+        await Promise.all([loadConfig(), loadEntries(), loadActiveSessions()]);
+      } catch (err) {
+        // Blinda contra qualquer erro inesperado na carga inicial — melhor
+        // mostrar o site com o aviso de conexão do que travar em branco.
+        setConnectionError(err?.message || "Erro inesperado ao carregar o aplicativo.");
+      } finally {
+        setLoaded(true);
+      }
     })();
 
-    // Apontamentos e sessões em andamento mudam a cada batida de ponto.
-    const unsubscribeActivity = subscribeToTables(["entries", "active_sessions"], () => {
-      loadEntries();
-      loadActiveSessions();
-    });
-
-    // Equipe e atividades do mês também precisam sincronizar entre
-    // abas/dispositivos — uma tela do quiosque não pode ficar com a lista
-    // de operadores desatualizada depois de uma alteração feita em Equipe
-    // em outra aba.
-    const unsubscribeConfig = subscribeToTables(["operators", "activities"], () => loadConfig());
+    // Mantém tudo sincronizado em tempo real entre abas/dispositivos —
+    // evita telas desatualizadas mostrando operadores ou atividades que
+    // já foram removidos em outro lugar.
+    const channels = [
+      supabase.channel("entries-changes").on("postgres_changes", { event: "*", schema: "public", table: "entries" }, loadEntries).subscribe(),
+      supabase.channel("sessions-changes").on("postgres_changes", { event: "*", schema: "public", table: "active_sessions" }, loadActiveSessions).subscribe(),
+      supabase.channel("operators-changes").on("postgres_changes", { event: "*", schema: "public", table: "operators" }, loadConfig).subscribe(),
+      supabase.channel("activities-changes").on("postgres_changes", { event: "*", schema: "public", table: "activities" }, loadConfig).subscribe(),
+      supabase.channel("admin-config-changes").on("postgres_changes", { event: "*", schema: "public", table: "admin_config" }, loadConfig).subscribe(),
+    ];
 
     return () => {
-      unsubscribeActivity();
-      unsubscribeConfig();
+      channels.forEach((ch) => supabase.removeChannel(ch));
     };
   }, [loadConfig, loadEntries, loadActiveSessions]);
 
-  // ---------- Alerta de sessão em aberto há muito tempo ----------
-  // Roda mesmo se o admin estiver em outra aba (Registrar/Equipe) — não
-  // depende do Painel estar aberto na tela.
-  useEffect(() => {
-    const knownCodes = new Set(activeSessions.map((s) => s.operator_code));
-    // limpa quem já finalizou, para poder notificar de novo se abrir outra sessão longa no futuro
-    for (const code of notifiedRef.current) {
-      if (!knownCodes.has(code)) notifiedRef.current.delete(code);
-    }
-    if (notifPermission !== "granted") return;
-    activeSessions.forEach((s) => {
-      if (isLongSession(s) && !notifiedRef.current.has(s.operator_code)) {
-        notifiedRef.current.add(s.operator_code);
-        try {
-          new Notification("Atividade em aberto há muito tempo", {
-            body: `${s.operator_name} — ${s.activity}${s.detail ? " · " + s.detail : ""} (mais de ${LONG_SESSION_MINUTES} min)`,
-            tag: `long-session-${s.operator_code}`,
-          });
-        } catch {
-          // navegador pode bloquear notificações silenciosamente; sem problema
-        }
-      }
-    });
-  }, [activeSessions, notifPermission]);
-
-  function requestNotifPermission() {
-    if (typeof Notification === "undefined") return;
-    Notification.requestPermission().then(setNotifPermission);
+  function lockAdmin() {
+    setIsAdmin(false);
+    setTab("kiosk");
   }
 
-  if (!loaded || session === undefined) {
+  if (!loaded) {
     return <div className="loading-screen">Carregando...</div>;
   }
 
   return (
     <div className="app-shell">
-      <Sidebar
-        tab={tab}
-        setTab={setTab}
-        isAdmin={isAdmin}
-        onLock={lockAdmin}
-        longSessionCount={activeSessions.filter((s) => isLongSession(s)).length}
-      />
+      <Sidebar tab={tab} setTab={setTab} isAdmin={isAdmin} onLock={lockAdmin} />
 
       <main className="main">
         <div className="topbar-accent" />
@@ -192,11 +156,19 @@ export default function App() {
           </div>
         )}
 
+        {actionError && (
+          <div className="card" style={{ borderColor: "var(--danger)", marginBottom: 20 }}>
+            <span style={{ color: "var(--danger)", fontSize: 13 }}>{actionError}</span>
+          </div>
+        )}
+
         {tab === "kiosk" && (
           <Kiosk operators={operators} activities={activities} refreshEntries={loadEntries} />
         )}
 
-        {(tab === "panel" || tab === "team") && !isAdmin && <AdminGate />}
+        {(tab === "panel" || tab === "team" || tab === "manual") && !isAdmin && (
+          <AdminGate correctPin={adminPin} onUnlock={() => setIsAdmin(true)} />
+        )}
 
         {tab === "panel" && isAdmin && (
           <Panel
@@ -205,16 +177,18 @@ export default function App() {
             operators={operators}
             activeSessions={activeSessions}
             onResetEntries={resetEntries}
-            notifPermission={notifPermission}
-            onRequestNotifPermission={requestNotifPermission}
           />
+        )}
+
+        {tab === "manual" && isAdmin && (
+          <ManualEntry operators={operators} activities={activities} refreshEntries={loadEntries} />
         )}
 
         {tab === "team" && isAdmin && (
           <TeamManager
             operators={operators}
             activities={activities}
-            adminEmail={session?.user?.email}
+            adminPin={adminPin}
             refreshConfig={loadConfig}
           />
         )}

@@ -1,69 +1,109 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
-  insertOperator,
-  deleteOperator,
-  renameOperatorCode,
+  addOperator as apiAddOperator,
   updateOperator,
-  insertActivity,
-  deleteActivity,
+  renameOperatorCode,
+  deleteOperator,
+  addActivity as apiAddActivity,
   renameActivity,
+  updateActivityTarget,
+  deleteActivity as apiDeleteActivity,
+  updateAdminPin,
 } from "../lib/api";
-import { createAdminAccount } from "../lib/auth";
 
-export default function TeamManager({ operators, activities, adminEmail, refreshConfig }) {
+function minutesToSeconds(minStr) {
+  const n = parseInt(minStr, 10);
+  return Number.isNaN(n) || n <= 0 ? null : n * 60;
+}
+
+function secondsToMinutesLabel(sec) {
+  if (!sec) return "";
+  return String(Math.round(sec / 60));
+}
+
+export default function TeamManager({ operators, activities, adminPin, refreshConfig }) {
   const [newOpName, setNewOpName] = useState("");
   const [newOpRole, setNewOpRole] = useState("");
   const [newOpCode, setNewOpCode] = useState("");
-  const [savingNewOp, setSavingNewOp] = useState(false);
   const [newActivity, setNewActivity] = useState("");
-  const [savingNewActivity, setSavingNewActivity] = useState(false);
-  const [newAdminEmail, setNewAdminEmail] = useState("");
-  const [newAdminPassword, setNewAdminPassword] = useState("");
-  const [savingAdmin, setSavingAdmin] = useState(false);
-  const [adminMsg, setAdminMsg] = useState("");
+  const [newActivityTarget, setNewActivityTarget] = useState("");
+  const [newPin, setNewPin] = useState("");
   const [formError, setFormError] = useState("");
+  // Trava a tela inteira enquanto uma operação está em andamento. Isso evita
+  // o bug de "excluir e adicionar de novo dá erro": sem essa trava, era
+  // possível clicar em Adicionar antes da lista terminar de atualizar depois
+  // de uma exclusão, e a validação de duplicado comparava com dados velhos.
+  const [busy, setBusy] = useState(false);
 
   const [editingCode, setEditingCode] = useState(null);
   const [editValues, setEditValues] = useState({ code: "", name: "", role: "" });
-  const [savingEdit, setSavingEdit] = useState(false);
 
   const [editingActivity, setEditingActivity] = useState(null);
-  const [editActivityValue, setEditActivityValue] = useState("");
-  const [savingActivityEdit, setSavingActivityEdit] = useState(false);
+  const [editActivityValues, setEditActivityValues] = useState({ name: "", target: "" });
+
+  // Se o operador/atividade em edição for removido por outra aba (agora
+  // sincronizamos em tempo real), sai do modo de edição sozinho em vez de
+  // deixar um formulário "fantasma" apontando para algo que não existe mais.
+  useEffect(() => {
+    if (editingCode && !operators.some((o) => o.code === editingCode)) {
+      setEditingCode(null);
+    }
+  }, [operators, editingCode]);
+
+  useEffect(() => {
+    if (editingActivity && !activities.some((a) => a.name === editingActivity)) {
+      setEditingActivity(null);
+    }
+  }, [activities, editingActivity]);
 
   function nextFreeCode() {
-    const maxCode = operators.reduce((m, o) => Math.max(m, parseInt(o.code, 10) || 0), 100);
+    const maxCode = operators.reduce((m, o) => {
+      const n = parseInt(o.code, 10);
+      return Number.isNaN(n) ? m : Math.max(m, n);
+    }, 100);
     return String(maxCode + 1);
   }
 
-  async function addOperator() {
-    // Trava o botão enquanto salva: antes, um clique duplo (ou o dedo
-    // escorregando na tela do quiosque/painel) disparava duas inserções
-    // com o mesmo código gerado automaticamente, e a segunda falhava por
-    // violar a chave primária — aparecendo como "erro ao salvar".
-    if (savingNewOp) return;
+  // Executa uma ação de escrita, mostrando erro se falhar e sempre
+  // atualizando a lista (via refreshConfig) só depois da ação confirmar,
+  // nunca antes — é isso que fecha a condição de corrida.
+  async function runAction(action, onSuccess) {
     setFormError("");
+    setBusy(true);
+    try {
+      const { error } = await action();
+      if (error) {
+        setFormError(error.message || "Erro ao salvar. Tente novamente.");
+        return false;
+      }
+      await refreshConfig();
+      onSuccess?.();
+      return true;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function addOperator() {
     const name = newOpName.trim();
     if (!name) return setFormError("Digite o nome do operador.");
     const code = newOpCode.trim() || nextFreeCode();
     if (!/^\d{1,4}$/.test(code)) return setFormError("O código deve conter só números (até 4 dígitos).");
     if (operators.some((o) => o.code === code)) return setFormError(`Já existe um operador com o código ${code}.`);
-
-    setSavingNewOp(true);
-    const { error } = await insertOperator({ code, name, role: newOpRole.trim() });
-    setSavingNewOp(false);
-    if (error) return setFormError("Erro ao salvar. Tente novamente.");
-    setNewOpName("");
-    setNewOpRole("");
-    setNewOpCode("");
-    refreshConfig();
+    const role = newOpRole.trim() || "-";
+    await runAction(
+      () => apiAddOperator({ code, name, role }),
+      () => {
+        setNewOpName("");
+        setNewOpRole("");
+        setNewOpCode("");
+      }
+    );
   }
 
   async function removeOperator(code) {
     if (!window.confirm("Remover este operador? Os registros antigos dele continuam no histórico.")) return;
-    const { error } = await deleteOperator(code);
-    if (error) return setFormError("Erro ao remover. Tente novamente.");
-    refreshConfig();
+    await runAction(() => deleteOperator(code));
   }
 
   function startEdit(op) {
@@ -77,7 +117,6 @@ export default function TeamManager({ operators, activities, adminEmail, refresh
   }
 
   async function saveEdit(originalCode) {
-    setFormError("");
     const code = editValues.code.trim();
     const name = editValues.name.trim();
     if (!name) return setFormError("O nome não pode ficar em branco.");
@@ -85,47 +124,35 @@ export default function TeamManager({ operators, activities, adminEmail, refresh
     if (code !== originalCode && operators.some((o) => o.code === code)) {
       return setFormError(`Já existe um operador com o código ${code}.`);
     }
-    setSavingEdit(true);
-    const role = editValues.role.trim();
-    const { error } =
+    const fields = { name, role: editValues.role.trim() || "-" };
+    const action =
       code !== originalCode
-        ? await renameOperatorCode(originalCode, { code, name, role })
-        : await updateOperator(originalCode, { name, role });
-    setSavingEdit(false);
-    if (error) {
-      setFormError("Erro ao salvar (código pode já estar em uso).");
-      return;
-    }
-    setEditingCode(null);
-    refreshConfig();
+        ? () => renameOperatorCode(originalCode, code, fields)
+        : () => updateOperator(originalCode, fields);
+    await runAction(action, () => setEditingCode(null));
   }
 
   async function addActivity() {
-    if (savingNewActivity) return;
     const name = newActivity.trim();
     if (!name) return;
     if (activities.some((a) => a.name.toLowerCase() === name.toLowerCase())) {
       return setFormError(`A atividade "${name}" já existe.`);
     }
-    setFormError("");
-    setSavingNewActivity(true);
-    const { error } = await insertActivity(name);
-    setSavingNewActivity(false);
-    if (error) return setFormError("Erro ao salvar. Tente novamente.");
-    setNewActivity("");
-    refreshConfig();
+    const target = minutesToSeconds(newActivityTarget);
+    await runAction(() => apiAddActivity(name, target), () => {
+      setNewActivity("");
+      setNewActivityTarget("");
+    });
   }
 
   async function removeActivity(name) {
     if (!window.confirm(`Remover a atividade "${name}" da lista deste mês?`)) return;
-    const { error } = await deleteActivity(name);
-    if (error) return setFormError("Erro ao remover. Tente novamente.");
-    refreshConfig();
+    await runAction(() => apiDeleteActivity(name));
   }
 
   function startEditActivity(act) {
     setEditingActivity(act.name);
-    setEditActivityValue(act.name);
+    setEditActivityValues({ name: act.name, target: secondsToMinutesLabel(act.target_seconds) });
     setFormError("");
   }
 
@@ -133,46 +160,41 @@ export default function TeamManager({ operators, activities, adminEmail, refresh
     setEditingActivity(null);
   }
 
-  async function saveEditActivity(originalName) {
-    const name = editActivityValue.trim();
+  async function saveEditActivity(original) {
+    const name = editActivityValues.name.trim();
     if (!name) return setFormError("O nome da atividade não pode ficar em branco.");
-    if (name.toLowerCase() !== originalName.toLowerCase() && activities.some((a) => a.name.toLowerCase() === name.toLowerCase())) {
+    if (
+      name.toLowerCase() !== original.name.toLowerCase() &&
+      activities.some((a) => a.name.toLowerCase() === name.toLowerCase())
+    ) {
       return setFormError(`Já existe uma atividade chamada "${name}".`);
     }
-    setFormError("");
-    setSavingActivityEdit(true);
-    const { error } = await renameActivity(originalName, name);
-    setSavingActivityEdit(false);
-    if (error) {
-      setFormError("Erro ao renomear (nome pode já estar em uso).");
+    const target = minutesToSeconds(editActivityValues.target);
+    const nameChanged = name !== original.name;
+    const targetChanged = target !== (original.target_seconds ?? null);
+    if (!nameChanged && !targetChanged) {
+      setEditingActivity(null);
       return;
     }
-    setEditingActivity(null);
-    refreshConfig();
+    const action = nameChanged
+      ? () => renameActivity(original.name, name, target)
+      : () => updateActivityTarget(original.name, target);
+    await runAction(action, () => setEditingActivity(null));
   }
 
-  async function addNewAdmin() {
-    const email = newAdminEmail.trim();
-    if (!email || newAdminPassword.length < 6) {
-      return setFormError("Preencha o e-mail e uma senha com pelo menos 6 caracteres.");
-    }
-    setFormError("");
-    setAdminMsg("");
-    setSavingAdmin(true);
-    const { error } = await createAdminAccount(email, newAdminPassword);
-    setSavingAdmin(false);
-    if (error) return setFormError("Erro ao criar a conta: " + error.message);
-    setNewAdminEmail("");
-    setNewAdminPassword("");
-    setAdminMsg("Conta criada. Se a confirmação por e-mail estiver ativa no Supabase, peça para a pessoa confirmar o e-mail antes de entrar.");
+  async function changePin() {
+    const pin = newPin.trim();
+    if (pin.length < 4) return setFormError("O PIN precisa ter pelo menos 4 dígitos.");
+    await runAction(() => updateAdminPin(pin), () => setNewPin(""));
   }
 
   return (
     <div>
       <h1 className="page-title">Equipe e atividades</h1>
       <p className="page-sub">
-        As atividades mudam mês a mês pelo rodízio — atualize a lista aqui sempre que trocar. Registros
-        antigos ficam preservados no histórico com o nome da atividade da época.
+        As atividades mudam mês a mês pelo rodízio — atualize a lista aqui sempre que trocar. A meta de
+        tempo é opcional e aparece no Painel comparando com o desempenho real. Registros antigos ficam
+        preservados no histórico com o nome da atividade da época.
       </p>
 
       {formError && (
@@ -181,31 +203,32 @@ export default function TeamManager({ operators, activities, adminEmail, refresh
         </div>
       )}
 
-      <div className="card" style={{ maxWidth: 420, marginBottom: 20 }}>
-        <div className="card-title">Contas de administrador</div>
-        <p style={{ fontSize: 12, color: "var(--text-faint)", margin: "-6px 0 12px 0" }}>
-          Logado como {adminEmail}. Crie uma conta por pessoa — melhor do que um PIN único compartilhado.
-        </p>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <input className="field" style={{ flex: "1 1 180px" }} type="email" placeholder="E-mail do novo admin" value={newAdminEmail} onChange={(e) => setNewAdminEmail(e.target.value)} />
-          <input className="field" style={{ flex: "1 1 140px" }} type="password" placeholder="Senha (mín. 6)" value={newAdminPassword} onChange={(e) => setNewAdminPassword(e.target.value)} />
-          <button className="btn-small" onClick={addNewAdmin} disabled={savingAdmin}>
-            {savingAdmin ? "Criando..." : "Criar conta"}
+      <div className="card" style={{ maxWidth: 340, marginBottom: 20 }}>
+        <div className="card-title">PIN de administrador</div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <input
+            className="field"
+            style={{ flex: 1 }}
+            placeholder="Novo PIN"
+            value={newPin}
+            onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ""))}
+            disabled={busy}
+          />
+          <button className="btn-small" onClick={changePin} disabled={busy}>
+            {busy ? "..." : "Alterar"}
           </button>
         </div>
-        {adminMsg && <p style={{ fontSize: 12, color: "var(--ok)", marginTop: 8, marginBottom: 0 }}>{adminMsg}</p>}
+        <p style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: 8, marginBottom: 0 }}>PIN atual: {adminPin}</p>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr", gap: 20 }}>
         <div className="card">
           <div className="card-title">Operadores</div>
           <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
-            <input className="field" style={{ width: 64 }} placeholder="Cód." value={newOpCode} onChange={(e) => setNewOpCode(e.target.value.replace(/\D/g, ""))} />
-            <input className="field" style={{ flex: 1, minWidth: 100 }} placeholder="Nome" value={newOpName} onChange={(e) => setNewOpName(e.target.value)} />
-            <input className="field" style={{ width: 140 }} placeholder="Função" value={newOpRole} onChange={(e) => setNewOpRole(e.target.value)} />
-            <button className="btn-small" onClick={addOperator} disabled={savingNewOp}>
-              {savingNewOp ? "Salvando..." : "Adicionar"}
-            </button>
+            <input className="field" style={{ flex: 1, minWidth: 100 }} placeholder="Nome" value={newOpName} onChange={(e) => setNewOpName(e.target.value)} disabled={busy} />
+            <input className="field" style={{ width: 140 }} placeholder="Função" value={newOpRole} onChange={(e) => setNewOpRole(e.target.value)} disabled={busy} />
+            <input className="field" style={{ width: 90 }} placeholder="Código (opc.)" value={newOpCode} onChange={(e) => setNewOpCode(e.target.value.replace(/\D/g, ""))} disabled={busy} />
+            <button className="btn-small" onClick={addOperator} disabled={busy}>Adicionar</button>
           </div>
           <table className="data-table">
             <thead><tr><th>Cód.</th><th>Nome</th><th>Função</th><th></th></tr></thead>
@@ -216,12 +239,12 @@ export default function TeamManager({ operators, activities, adminEmail, refresh
                   <tr key={o.code}>
                     {isEditing ? (
                       <>
-                        <td><input className="field" style={{ width: 52, padding: "4px 6px" }} value={editValues.code} onChange={(e) => setEditValues((v) => ({ ...v, code: e.target.value.replace(/\D/g, "") }))} /></td>
-                        <td><input className="field" style={{ width: "100%", padding: "4px 6px" }} value={editValues.name} onChange={(e) => setEditValues((v) => ({ ...v, name: e.target.value }))} /></td>
-                        <td><input className="field" style={{ width: "100%", padding: "4px 6px" }} value={editValues.role} onChange={(e) => setEditValues((v) => ({ ...v, role: e.target.value }))} /></td>
+                        <td><input className="field" style={{ width: 52, padding: "4px 6px" }} value={editValues.code} onChange={(e) => setEditValues((v) => ({ ...v, code: e.target.value.replace(/\D/g, "") }))} disabled={busy} /></td>
+                        <td><input className="field" style={{ width: "100%", padding: "4px 6px" }} value={editValues.name} onChange={(e) => setEditValues((v) => ({ ...v, name: e.target.value }))} disabled={busy} /></td>
+                        <td><input className="field" style={{ width: "100%", padding: "4px 6px" }} value={editValues.role} onChange={(e) => setEditValues((v) => ({ ...v, role: e.target.value }))} disabled={busy} /></td>
                         <td style={{ whiteSpace: "nowrap" }}>
-                          <button className="btn-small" style={{ padding: "4px 8px", marginRight: 4 }} onClick={() => saveEdit(o.code)} disabled={savingEdit}>Salvar</button>
-                          <button className="btn-small" style={{ padding: "4px 8px" }} onClick={cancelEdit}>Cancelar</button>
+                          <button className="btn-small" style={{ padding: "4px 8px", marginRight: 4 }} onClick={() => saveEdit(o.code)} disabled={busy}>Salvar</button>
+                          <button className="btn-small" style={{ padding: "4px 8px" }} onClick={cancelEdit} disabled={busy}>Cancelar</button>
                         </td>
                       </>
                     ) : (
@@ -230,8 +253,8 @@ export default function TeamManager({ operators, activities, adminEmail, refresh
                         <td style={{ fontFamily: "var(--font-display)" }}>{o.name}</td>
                         <td>{o.role}</td>
                         <td style={{ whiteSpace: "nowrap" }}>
-                          <button className="btn-small" style={{ padding: "4px 8px", marginRight: 4 }} onClick={() => startEdit(o)}>Editar</button>
-                          <button className="btn-small" style={{ padding: "4px 8px" }} onClick={() => removeOperator(o.code)}>Remover</button>
+                          <button className="btn-small" style={{ padding: "4px 8px", marginRight: 4 }} onClick={() => startEdit(o)} disabled={busy}>Editar</button>
+                          <button className="btn-small" style={{ padding: "4px 8px" }} onClick={() => removeOperator(o.code)} disabled={busy}>Remover</button>
                         </td>
                       </>
                     )}
@@ -245,14 +268,13 @@ export default function TeamManager({ operators, activities, adminEmail, refresh
 
         <div className="card">
           <div className="card-title">Atividades do mês</div>
-          <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-            <input className="field" style={{ flex: 1 }} placeholder="Nova atividade" value={newActivity} onChange={(e) => setNewActivity(e.target.value)} />
-            <button className="btn-small" onClick={addActivity} disabled={savingNewActivity}>
-              {savingNewActivity ? "Salvando..." : "Adicionar"}
-            </button>
+          <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+            <input className="field" style={{ flex: 1, minWidth: 100 }} placeholder="Nova atividade" value={newActivity} onChange={(e) => setNewActivity(e.target.value)} disabled={busy} />
+            <input className="field" style={{ width: 84 }} placeholder="Meta (min)" value={newActivityTarget} onChange={(e) => setNewActivityTarget(e.target.value.replace(/\D/g, ""))} disabled={busy} />
+            <button className="btn-small" onClick={addActivity} disabled={busy}>Adicionar</button>
           </div>
           <table className="data-table">
-            <thead><tr><th>Atividade</th><th></th></tr></thead>
+            <thead><tr><th>Atividade</th><th>Meta</th><th></th></tr></thead>
             <tbody>
               {activities.map((a) => {
                 const isEditing = editingActivity === a.name;
@@ -260,25 +282,27 @@ export default function TeamManager({ operators, activities, adminEmail, refresh
                   <tr key={a.name}>
                     {isEditing ? (
                       <>
-                        <td><input className="field" style={{ width: "100%", padding: "4px 6px" }} value={editActivityValue} onChange={(e) => setEditActivityValue(e.target.value)} /></td>
+                        <td><input className="field" style={{ width: "100%", padding: "4px 6px" }} value={editActivityValues.name} onChange={(e) => setEditActivityValues((v) => ({ ...v, name: e.target.value }))} disabled={busy} /></td>
+                        <td><input className="field" style={{ width: 56, padding: "4px 6px" }} placeholder="min" value={editActivityValues.target} onChange={(e) => setEditActivityValues((v) => ({ ...v, target: e.target.value.replace(/\D/g, "") }))} disabled={busy} /></td>
                         <td style={{ whiteSpace: "nowrap" }}>
-                          <button className="btn-small" style={{ padding: "4px 8px", marginRight: 4 }} onClick={() => saveEditActivity(a.name)} disabled={savingActivityEdit}>Salvar</button>
-                          <button className="btn-small" style={{ padding: "4px 8px" }} onClick={cancelEditActivity}>Cancelar</button>
+                          <button className="btn-small" style={{ padding: "4px 8px", marginRight: 4 }} onClick={() => saveEditActivity(a)} disabled={busy}>Salvar</button>
+                          <button className="btn-small" style={{ padding: "4px 8px" }} onClick={cancelEditActivity} disabled={busy}>Cancelar</button>
                         </td>
                       </>
                     ) : (
                       <>
                         <td>{a.name}</td>
+                        <td style={{ color: "var(--text-muted)" }}>{a.target_seconds ? `${secondsToMinutesLabel(a.target_seconds)} min` : "—"}</td>
                         <td style={{ whiteSpace: "nowrap" }}>
-                          <button className="btn-small" style={{ padding: "4px 8px", marginRight: 4 }} onClick={() => startEditActivity(a)}>Editar</button>
-                          <button className="btn-small" style={{ padding: "4px 8px" }} onClick={() => removeActivity(a.name)}>Remover</button>
+                          <button className="btn-small" style={{ padding: "4px 8px", marginRight: 4 }} onClick={() => startEditActivity(a)} disabled={busy}>Editar</button>
+                          <button className="btn-small" style={{ padding: "4px 8px" }} onClick={() => removeActivity(a.name)} disabled={busy}>Remover</button>
                         </td>
                       </>
                     )}
                   </tr>
                 );
               })}
-              {activities.length === 0 && <tr><td colSpan={2}>Nenhuma atividade cadastrada.</td></tr>}
+              {activities.length === 0 && <tr><td colSpan={3}>Nenhuma atividade cadastrada.</td></tr>}
             </tbody>
           </table>
         </div>
