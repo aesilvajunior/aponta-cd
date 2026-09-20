@@ -150,8 +150,13 @@ export async function deleteAllShortages() {
 
 // ---------- Operadores ----------
 
-export async function addOperator({ code, name, role }) {
-  return supabase.from("operators").insert({ code, name, role: role || "-" });
+export async function addOperator({ code, name, role, canScheduleDelivery = false }) {
+  return supabase.from("operators").insert({
+    code,
+    name,
+    role: role || "-",
+    can_schedule_delivery: canScheduleDelivery,
+  });
 }
 
 export async function updateOperator(code, fields) {

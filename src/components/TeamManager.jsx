@@ -42,6 +42,7 @@ export default function TeamManager({
   const [newOpName, setNewOpName] = useState("");
   const [newOpRole, setNewOpRole] = useState("");
   const [newOpCode, setNewOpCode] = useState("");
+  const [newOpCanSchedule, setNewOpCanSchedule] = useState(false);
   const [newActivity, setNewActivity] = useState("");
   const [newActivityTarget, setNewActivityTarget] = useState("");
   const [newPin, setNewPin] = useState("");
@@ -49,7 +50,7 @@ export default function TeamManager({
   const [busy, setBusy] = useState(false);
 
   const [editingCode, setEditingCode] = useState(null);
-  const [editValues, setEditValues] = useState({ code: "", name: "", role: "" });
+  const [editValues, setEditValues] = useState({ code: "", name: "", role: "", canScheduleDelivery: false });
 
   const [editingActivity, setEditingActivity] = useState(null);
   const [editActivityValues, setEditActivityValues] = useState({
@@ -174,14 +175,19 @@ export default function TeamManager({
 
     await runAction(
       async () => {
-        const res = await apiAddOperator({ code, name, role });
+        const res = await apiAddOperator({ code, name, role, canScheduleDelivery: newOpCanSchedule });
         if (!res.error) {
           await audit({
             action: "criar",
             entity: "operator",
             entityId: code,
             details: `Operador "${name}" criado`,
-            afterData: { nome: name, função: role, código: code },
+            afterData: {
+              nome: name,
+              função: role,
+              código: code,
+              pode_agendar: newOpCanSchedule ? "Sim" : "Não",
+            },
           });
         }
         return res;
@@ -190,6 +196,7 @@ export default function TeamManager({
         setNewOpName("");
         setNewOpRole("");
         setNewOpCode("");
+        setNewOpCanSchedule(false);
       }
     );
   }
@@ -205,7 +212,12 @@ export default function TeamManager({
           entity: "operator",
           entityId: code,
           details: `Operador "${op.name}" removido`,
-          beforeData: { nome: op.name, função: op.role, código: op.code },
+          beforeData: {
+            nome: op.name,
+            função: op.role,
+            código: op.code,
+            pode_agendar: op.can_schedule_delivery ? "Sim" : "Não",
+          },
         });
       }
       return res;
@@ -214,7 +226,12 @@ export default function TeamManager({
 
   function startEdit(op) {
     setEditingCode(op.code);
-    setEditValues({ code: op.code, name: op.name, role: op.role || "" });
+    setEditValues({
+      code: op.code,
+      name: op.name,
+      role: op.role || "",
+      canScheduleDelivery: !!op.can_schedule_delivery,
+    });
     setFormError("");
   }
 
@@ -228,7 +245,11 @@ export default function TeamManager({
     if (code !== originalCode && operators.some((o) => o.code === code)) {
       return setFormError(`Já existe um operador com o código ${code}.`);
     }
-    const fields = { name, role: editValues.role.trim() || "-" };
+    const fields = {
+      name,
+      role: editValues.role.trim() || "-",
+      can_schedule_delivery: editValues.canScheduleDelivery,
+    };
     const original = operators.find((o) => o.code === originalCode);
 
     const action = code !== originalCode
@@ -245,8 +266,18 @@ export default function TeamManager({
           details: code !== originalCode
             ? `Operador renomeado de #${originalCode} para #${code}`
             : `Operador "${name}" editado`,
-          beforeData: { nome: original.name, função: original.role, código: original.code },
-          afterData: { nome: name, função: fields.role, código: code },
+          beforeData: {
+            nome: original.name,
+            função: original.role,
+            código: original.code,
+            pode_agendar: original.can_schedule_delivery ? "Sim" : "Não",
+          },
+          afterData: {
+            nome: name,
+            função: fields.role,
+            código: code,
+            pode_agendar: fields.can_schedule_delivery ? "Sim" : "Não",
+          },
         });
       }
       return res;
@@ -563,7 +594,7 @@ export default function TeamManager({
     <div>
       <h1 className="page-title">Equipe e atividades</h1>
       <p className="page-sub">
-        As atividades mudam mês a mês pelo rodízio — atualize a lista aqui sempre que trocar.
+        As atividades mudam mês a mês pelo rodízio. Marque quem pode agendar recebimento no checkbox da coluna "Agenda".
       </p>
 
       {formError && (
@@ -621,12 +652,29 @@ export default function TeamManager({
           <div className="card-title">Operadores</div>
           <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
             <input className="field" style={{ flex: 1, minWidth: 100 }} placeholder="Nome" value={newOpName} onChange={(e) => setNewOpName(e.target.value)} disabled={busy} />
-            <input className="field" style={{ width: 140 }} placeholder="Função" value={newOpRole} onChange={(e) => setNewOpRole(e.target.value)} disabled={busy} />
-            <input className="field" style={{ width: 90 }} placeholder="Código (opc.)" value={newOpCode} onChange={(e) => setNewOpCode(e.target.value.replace(/\D/g, ""))} disabled={busy} />
+            <input className="field" style={{ width: 120 }} placeholder="Função" value={newOpRole} onChange={(e) => setNewOpRole(e.target.value)} disabled={busy} />
+            <input className="field" style={{ width: 80 }} placeholder="Cód. (opc.)" value={newOpCode} onChange={(e) => setNewOpCode(e.target.value.replace(/\D/g, ""))} disabled={busy} />
             <button className="btn-small" onClick={addOperator} disabled={busy}>Adicionar</button>
           </div>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-muted)", marginBottom: 12 }}>
+            <input
+              type="checkbox"
+              checked={newOpCanSchedule}
+              onChange={(e) => setNewOpCanSchedule(e.target.checked)}
+              disabled={busy}
+            />
+            Pode agendar recebimento
+          </label>
           <table className="data-table">
-            <thead><tr><th>Cód.</th><th>Nome</th><th>Função</th><th></th></tr></thead>
+            <thead>
+              <tr>
+                <th>Cód.</th>
+                <th>Nome</th>
+                <th>Função</th>
+                <th title="Pode agendar recebimento">Agenda</th>
+                <th></th>
+              </tr>
+            </thead>
             <tbody>
               {operators.map((o) => {
                 const isEditing = editingCode === o.code;
@@ -634,9 +682,18 @@ export default function TeamManager({
                   <tr key={o.code}>
                     {isEditing ? (
                       <>
-                        <td><input className="field" style={{ width: 52, padding: "4px 6px" }} value={editValues.code} onChange={(e) => setEditValues((v) => ({ ...v, code: e.target.value.replace(/\D/g, "") }))} disabled={busy} /></td>
+                        <td><input className="field" style={{ width: 48, padding: "4px 6px" }} value={editValues.code} onChange={(e) => setEditValues((v) => ({ ...v, code: e.target.value.replace(/\D/g, "") }))} disabled={busy} /></td>
                         <td><input className="field" style={{ width: "100%", padding: "4px 6px" }} value={editValues.name} onChange={(e) => setEditValues((v) => ({ ...v, name: e.target.value }))} disabled={busy} /></td>
                         <td><input className="field" style={{ width: "100%", padding: "4px 6px" }} value={editValues.role} onChange={(e) => setEditValues((v) => ({ ...v, role: e.target.value }))} disabled={busy} /></td>
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={editValues.canScheduleDelivery}
+                            onChange={(e) => setEditValues((v) => ({ ...v, canScheduleDelivery: e.target.checked }))}
+                            disabled={busy}
+                            title="Pode agendar recebimento"
+                          />
+                        </td>
                         <td style={{ whiteSpace: "nowrap" }}>
                           <button className="btn-small" style={{ padding: "4px 8px", marginRight: 4 }} onClick={() => saveEdit(o.code)} disabled={busy}>Salvar</button>
                           <button className="btn-small" style={{ padding: "4px 8px" }} onClick={cancelEdit} disabled={busy}>Cancelar</button>
@@ -647,6 +704,13 @@ export default function TeamManager({
                         <td>{o.code}</td>
                         <td style={{ fontFamily: "var(--font-display)" }}>{o.name}</td>
                         <td>{o.role}</td>
+                        <td style={{ textAlign: "center" }}>
+                          {o.can_schedule_delivery ? (
+                            <span title="Pode agendar recebimento" style={{ color: "var(--ok)", fontWeight: 700 }}>✓</span>
+                          ) : (
+                            <span style={{ color: "var(--text-faint)" }}>—</span>
+                          )}
+                        </td>
                         <td style={{ whiteSpace: "nowrap" }}>
                           <button className="btn-small" style={{ padding: "4px 8px", marginRight: 4 }} onClick={() => startEdit(o)} disabled={busy}>Editar</button>
                           <button className="btn-small" style={{ padding: "4px 8px" }} onClick={() => removeOperator(o.code)} disabled={busy}>Remover</button>
@@ -656,7 +720,7 @@ export default function TeamManager({
                   </tr>
                 );
               })}
-              {operators.length === 0 && <tr><td colSpan={4}>Nenhum operador cadastrado.</td></tr>}
+              {operators.length === 0 && <tr><td colSpan={5}>Nenhum operador cadastrado.</td></tr>}
             </tbody>
           </table>
         </div>

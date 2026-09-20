@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchSchedules,
   addSchedule,
@@ -18,6 +18,10 @@ const MONTHS = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
 ];
+
+const CODE_LENGTH = 3;
+const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+const SESSION_KEY = "aponta_schedule_operator";
 
 function todayISO() {
   const d = new Date();
@@ -65,16 +69,22 @@ function isWithinBusinessHours(iso) {
   return true;
 }
 
-const MAX_VISIBLE = 2; // quantos agendamentos mostrar no quadrado do dia
+const MAX_VISIBLE = 2;
 
 // ============================================================
 // Componente
 // ============================================================
 
-export default function ScheduleManager({ currentOperator, isAdmin, isReceiving }) {
+export default function ScheduleManager({ operators, isAdmin }) {
   const [schedules, setSchedules] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  // Login do operador (sessionStorage — some ao fechar o navegador)
+  const [loggedOperator, setLoggedOperator] = useState(null);
+  const [codeInput, setCodeInput] = useState("");
+  const [loginError, setLoginError] = useState("");
+  const [checkingLogin, setCheckingLogin] = useState(false);
 
   const today = new Date();
   const [viewYear, setViewYear] = useState(today.getFullYear());
@@ -99,6 +109,42 @@ export default function ScheduleManager({ currentOperator, isAdmin, isReceiving 
   const [formBusy, setFormBusy] = useState(false);
   const [formError, setFormError] = useState("");
 
+  const lastInteractionRef = useRef(Date.now());
+
+  function bump() {
+    lastInteractionRef.current = Date.now();
+  }
+
+  // -------- Login: restaurar da sessão ao abrir --------
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(SESSION_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        // Confere se ainda existe na lista de operadores
+        const found = operators.find((o) => o.code === parsed.code);
+        if (found && found.can_schedule_delivery) {
+          setLoggedOperator(found);
+        } else {
+          sessionStorage.removeItem(SESSION_KEY);
+        }
+      }
+    } catch {}
+  }, [operators]);
+
+  // -------- Timeout de inatividade --------
+  useEffect(() => {
+    const iv = setInterval(() => {
+      if (!loggedOperator) return;
+      if (Date.now() - lastInteractionRef.current > IDLE_TIMEOUT_MS) {
+        logout();
+      }
+    }, 1000);
+    return () => clearInterval(iv);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loggedOperator]);
+
+  // -------- Carrega agendamentos --------
   async function load() {
     setLoading(true);
     const { data, error } = await fetchSchedules({ limit: 2000 });
@@ -121,6 +167,48 @@ export default function ScheduleManager({ currentOperator, isAdmin, isReceiving 
     return () => supabase.removeChannel(ch);
   }, []);
 
+  // -------- Ações de login --------
+  function handleDigit(d) {
+    bump();
+    if (codeInput.length < CODE_LENGTH) setCodeInput(codeInput + d);
+  }
+  function handleBackspace() {
+    bump();
+    setCodeInput((p) => p.slice(0, -1));
+  }
+  function handleLogin() {
+    const current = codeInput.trim();
+    if (current.length < CODE_LENGTH) return;
+    setCheckingLogin(true);
+    const op = operators.find((o) => o.code === current);
+    if (!op) {
+      setLoginError("Código não encontrado.");
+      setCodeInput("");
+      setCheckingLogin(false);
+      return;
+    }
+    if (!op.can_schedule_delivery) {
+      setLoginError("Você não tem permissão pra agendar recebimento. Fale com o admin.");
+      setCodeInput("");
+      setCheckingLogin(false);
+      return;
+    }
+    setLoggedOperator(op);
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify({ code: op.code, name: op.name }));
+    setCodeInput("");
+    setLoginError("");
+    setCheckingLogin(false);
+    bump();
+  }
+  function logout() {
+    setLoggedOperator(null);
+    setCodeInput("");
+    setLoginError("");
+    try {
+      sessionStorage.removeItem(SESSION_KEY);
+    } catch {}
+  }
+
   const monthGrid = useMemo(() => buildMonthGrid(viewYear, viewMonth), [viewYear, viewMonth]);
 
   const byDay = useMemo(() => {
@@ -130,27 +218,26 @@ export default function ScheduleManager({ currentOperator, isAdmin, isReceiving 
       if (!map[key]) map[key] = [];
       map[key].push(s);
     });
-    // Ordena cada dia por hora
     Object.values(map).forEach((arr) =>
       arr.sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at))
     );
     return map;
   }, [schedules]);
 
-  const daySchedules = useMemo(() => {
-    return byDay[selectedDate] || [];
-  }, [byDay, selectedDate]);
+  const daySchedules = useMemo(() => byDay[selectedDate] || [], [byDay, selectedDate]);
 
   const upcoming = useMemo(() => {
     const today = todayISO();
-    return schedules
-      .filter((s) => s.scheduled_date >= today)
-      .slice(0, 8);
+    return schedules.filter((s) => s.scheduled_date >= today).slice(0, 8);
   }, [schedules]);
 
-  const canCreate = isAdmin || isReceiving;
+  // Quem pode fazer o quê
+  const canCreate = isAdmin || (loggedOperator?.can_schedule_delivery);
+  const operatorCodeForSave = loggedOperator?.code || null;
+  const operatorNameForSave = loggedOperator?.name || "Admin";
 
   function openCreateModal() {
+    bump();
     setEditingId(null);
     setFormData({
       scheduled_date: selectedDate,
@@ -170,6 +257,12 @@ export default function ScheduleManager({ currentOperator, isAdmin, isReceiving 
   }
 
   function openEditModal(s) {
+    bump();
+    // Admin edita tudo. Operador só edita o que ele criou.
+    if (!isAdmin && s.created_by_code !== loggedOperator?.code) {
+      alert("Você só pode editar agendamentos que você mesmo criou.");
+      return;
+    }
     setEditingId(s.id);
     setFormData({
       scheduled_date: s.scheduled_date,
@@ -195,6 +288,7 @@ export default function ScheduleManager({ currentOperator, isAdmin, isReceiving 
   }
 
   function updateField(field, value) {
+    bump();
     setFormData((prev) => ({ ...prev, [field]: value }));
   }
 
@@ -224,14 +318,9 @@ export default function ScheduleManager({ currentOperator, isAdmin, isReceiving 
 
     setFormBusy(true);
 
-    const scheduledAt = new Date(
-      `${formData.scheduled_date}T${formData.scheduled_time}:00`
-    ).toISOString();
+    const scheduledAt = new Date(`${formData.scheduled_date}T${formData.scheduled_time}:00`).toISOString();
 
-    const { data: hasConflict, error: conflictErr } = await checkScheduleConflict(
-      scheduledAt,
-      editingId
-    );
+    const { data: hasConflict, error: conflictErr } = await checkScheduleConflict(scheduledAt, editingId);
     if (conflictErr) {
       setFormBusy(false);
       setFormError("Erro ao verificar conflito: " + conflictErr.message);
@@ -256,8 +345,8 @@ export default function ScheduleManager({ currentOperator, isAdmin, isReceiving 
       observation: formData.observation.trim() || null,
       isException: formData.is_exception,
       exceptionReason: formData.exception_reason.trim() || null,
-      createdByCode: currentOperator?.code || null,
-      createdByName: currentOperator?.name || "Admin",
+      createdByCode: operatorCodeForSave,
+      createdByName: operatorNameForSave,
     };
 
     let savedId = editingId;
@@ -333,9 +422,12 @@ export default function ScheduleManager({ currentOperator, isAdmin, isReceiving 
   }
 
   async function removeSchedule(s) {
-    if (!window.confirm(`Remover o agendamento de "${s.supplier_name}" em ${fmtDateBR(s.scheduled_date)} às ${fmtTime(s.scheduled_at)}?`)) {
+    bump();
+    if (!isAdmin && s.created_by_code !== loggedOperator?.code) {
+      alert("Você só pode remover agendamentos que você mesmo criou.");
       return;
     }
+    if (!window.confirm(`Remover o agendamento de "${s.supplier_name}" em ${fmtDateBR(s.scheduled_date)} às ${fmtTime(s.scheduled_at)}?`)) return;
     try {
       if (s.google_event_id) {
         await fetch("/api/schedule-event", {
@@ -349,13 +441,72 @@ export default function ScheduleManager({ currentOperator, isAdmin, isReceiving 
     await load();
   }
 
+  // ============================================================
+  // Render: se não tá logado E não é admin → tela de login
+  // ============================================================
+  const needsLogin = !isAdmin && !loggedOperator;
+
+  if (needsLogin) {
+    return (
+      <div>
+        <div className="page-header-row" style={{ marginBottom: 22 }}>
+          <div>
+            <h1 className="page-title">Agendamentos de recebimento</h1>
+            <p className="page-sub" style={{ marginBottom: 0 }}>
+              Digite seu código pra agendar uma entrega
+            </p>
+          </div>
+        </div>
+
+        <div className="schedule-login-wrap">
+          <div className="schedule-login-card">
+            <div className="schedule-login-title">Digite seu código</div>
+            <div className="schedule-login-dots">
+              {Array.from({ length: CODE_LENGTH }).map((_, i) => (
+                <div key={i} className={`kiosk-dot ${i < codeInput.length ? "filled" : ""}`} />
+              ))}
+            </div>
+            <div className="kiosk-keypad" style={{ opacity: checkingLogin ? 0.55 : 1, pointerEvents: checkingLogin ? "none" : "auto" }}>
+              {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((d) => (
+                <button key={d} className="kiosk-key" onClick={() => handleDigit(d)}>{d}</button>
+              ))}
+              <button className="kiosk-key kiosk-key-muted" onClick={handleBackspace}>⌫</button>
+              <button className="kiosk-key" onClick={() => handleDigit("0")}>0</button>
+              <button className="kiosk-key kiosk-key-primary" onClick={handleLogin}>
+                {checkingLogin ? "..." : "OK"}
+              </button>
+            </div>
+            {loginError ? (
+              <p className="kiosk-terminal-error">{loginError}</p>
+            ) : (
+              <p className="kiosk-terminal-hint">teclado do computador também funciona</p>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ============================================================
+  // Render: logado (ou admin) → tela normal
+  // ============================================================
   return (
     <div>
       <div className="page-header-row" style={{ marginBottom: 22 }}>
         <div>
           <h1 className="page-title">Agendamentos de recebimento</h1>
           <p className="page-sub" style={{ marginBottom: 0 }}>
-            {schedules.length} agendamento{schedules.length !== 1 ? "s" : ""} cadastrado{schedules.length !== 1 ? "s" : ""}
+            {schedules.length} agendamento{schedules.length !== 1 ? "s" : ""}
+            {loggedOperator && (
+              <span style={{ marginLeft: 8, color: "var(--accent)", fontWeight: 600 }}>
+                · Operador: {loggedOperator.name} #{loggedOperator.code}
+              </span>
+            )}
+            {isAdmin && !loggedOperator && (
+              <span style={{ marginLeft: 8, color: "var(--accent)", fontWeight: 600 }}>
+                · Admin
+              </span>
+            )}
           </p>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -364,15 +515,19 @@ export default function ScheduleManager({ currentOperator, isAdmin, isReceiving 
               + Novo agendamento
             </button>
           )}
+          {loggedOperator && (
+            <button className="btn-small" onClick={logout}>
+              🚪 Sair
+            </button>
+          )}
           {isAdmin && (
             <a
               className="btn-small"
               href="https://calendar.google.com"
               target="_blank"
               rel="noopener noreferrer"
-              title="Abrir o Google Calendar numa nova aba"
             >
-              📅 Abrir Google Calendar
+              📅 Google Calendar
             </a>
           )}
         </div>
@@ -385,63 +540,25 @@ export default function ScheduleManager({ currentOperator, isAdmin, isReceiving 
       )}
 
       {/* Calendário visual */}
-      <div className="schedule-calendar">
+      <div className="schedule-calendar" onClick={bump}>
         <div className="schedule-calendar-header">
           <div className="schedule-calendar-title">
             {MONTHS[viewMonth]} {viewYear}
           </div>
           <div className="schedule-calendar-nav">
-            <button
-              onClick={() => {
-                if (viewMonth === 0) {
-                  setViewMonth(11);
-                  setViewYear(viewYear - 1);
-                } else {
-                  setViewMonth(viewMonth - 1);
-                }
-              }}
-              title="Mês anterior"
-            >
-              ‹
-            </button>
-            <button
-              className="today-btn"
-              onClick={() => {
-                const t = new Date();
-                setViewYear(t.getFullYear());
-                setViewMonth(t.getMonth());
-                setSelectedDate(todayISO());
-              }}
-              title="Ir pra hoje"
-            >
-              Hoje
-            </button>
-            <button
-              onClick={() => {
-                if (viewMonth === 11) {
-                  setViewMonth(0);
-                  setViewYear(viewYear + 1);
-                } else {
-                  setViewMonth(viewMonth + 1);
-                }
-              }}
-              title="Próximo mês"
-            >
-              ›
-            </button>
+            <button onClick={() => { bump(); if (viewMonth === 0) { setViewMonth(11); setViewYear(viewYear - 1); } else setViewMonth(viewMonth - 1); }}>‹</button>
+            <button className="today-btn" onClick={() => { bump(); const t = new Date(); setViewYear(t.getFullYear()); setViewMonth(t.getMonth()); setSelectedDate(todayISO()); }}>Hoje</button>
+            <button onClick={() => { bump(); if (viewMonth === 11) { setViewMonth(0); setViewYear(viewYear + 1); } else setViewMonth(viewMonth + 1); }}>›</button>
           </div>
         </div>
 
         <div className="schedule-weekdays">
-          {WEEKDAYS.map((d) => (
-            <div key={d} className="schedule-weekday">{d}</div>
-          ))}
+          {WEEKDAYS.map((d) => <div key={d} className="schedule-weekday">{d}</div>)}
         </div>
 
         <div className="schedule-grid">
           {monthGrid.map((cell, i) => {
             if (!cell) return <div key={`empty-${i}`} className="schedule-day empty" />;
-
             const dayList = byDay[cell.iso] || [];
             const isToday = cell.iso === todayISO();
             const isSelected = cell.iso === selectedDate;
@@ -453,10 +570,9 @@ export default function ScheduleManager({ currentOperator, isAdmin, isReceiving 
               <div
                 key={cell.iso}
                 className={`schedule-day ${isToday ? "today" : ""} ${isSelected ? "selected" : ""} ${hasException ? "has-exception" : ""}`}
-                onClick={() => setSelectedDate(cell.iso)}
+                onClick={() => { bump(); setSelectedDate(cell.iso); }}
               >
                 <div className="schedule-day-num">{cell.day}</div>
-
                 {visible.length > 0 && (
                   <div className="schedule-day-events">
                     {visible.map((s) => (
@@ -465,7 +581,8 @@ export default function ScheduleManager({ currentOperator, isAdmin, isReceiving 
                         className={`schedule-day-event ${s.is_exception ? "exception" : ""}`}
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (isAdmin || s.created_by_code === currentOperator?.code) {
+                          bump();
+                          if (isAdmin || s.created_by_code === loggedOperator?.code) {
                             openEditModal(s);
                           } else {
                             setSelectedDate(cell.iso);
@@ -473,20 +590,12 @@ export default function ScheduleManager({ currentOperator, isAdmin, isReceiving 
                         }}
                         title={`${fmtTime(s.scheduled_at)} — ${s.supplier_name} · NF ${s.invoice_number}`}
                       >
-                        <div className="schedule-day-event-time">
-                          {fmtTime(s.scheduled_at)}
-                        </div>
-                        <div className="schedule-day-event-name">
-                          {s.supplier_name}
-                        </div>
-                        <div className="schedule-day-event-invoice">
-                          NF {s.invoice_number}
-                        </div>
+                        <div className="schedule-day-event-time">{fmtTime(s.scheduled_at)}</div>
+                        <div className="schedule-day-event-name">{s.supplier_name}</div>
+                        <div className="schedule-day-event-invoice">NF {s.invoice_number}</div>
                       </div>
                     ))}
-                    {remaining > 0 && (
-                      <div className="schedule-day-more">+{remaining} mais…</div>
-                    )}
+                    {remaining > 0 && <div className="schedule-day-more">+{remaining} mais…</div>}
                   </div>
                 )}
               </div>
@@ -496,7 +605,7 @@ export default function ScheduleManager({ currentOperator, isAdmin, isReceiving 
       </div>
 
       {/* Lista do dia */}
-      <div className="card" style={{ marginBottom: 20 }}>
+      <div className="card" style={{ marginBottom: 20 }} onClick={bump}>
         <div className="card-title">
           📅 {fmtDateBR(selectedDate)} — {daySchedules.length} agendamento{daySchedules.length !== 1 ? "s" : ""}
         </div>
@@ -508,11 +617,7 @@ export default function ScheduleManager({ currentOperator, isAdmin, isReceiving 
             <div className="schedule-empty-icon">📭</div>
             <div>Nenhum agendamento nesse dia.</div>
             {canCreate && (
-              <button
-                className="btn-small"
-                style={{ marginTop: 14 }}
-                onClick={openCreateModal}
-              >
+              <button className="btn-small" style={{ marginTop: 14 }} onClick={openCreateModal}>
                 + Criar agendamento pra {fmtDateBR(selectedDate)}
               </button>
             )}
@@ -522,15 +627,10 @@ export default function ScheduleManager({ currentOperator, isAdmin, isReceiving 
             {daySchedules.map((s) => (
               <div key={s.id} className="schedule-item">
                 <div className="schedule-item-time">{fmtTime(s.scheduled_at)}</div>
-
                 <div className="schedule-item-content">
                   <div className="schedule-item-supplier">
                     {s.supplier_name}
-                    {s.is_exception && (
-                      <span className="schedule-item-badge exception" style={{ marginLeft: 8 }}>
-                        ⚠ Exceção
-                      </span>
-                    )}
+                    {s.is_exception && <span className="schedule-item-badge exception" style={{ marginLeft: 8 }}>⚠ Exceção</span>}
                   </div>
                   <div className="schedule-item-details">
                     <span>📄 NF {s.invoice_number}</span>
@@ -551,15 +651,10 @@ export default function ScheduleManager({ currentOperator, isAdmin, isReceiving 
                     </div>
                   )}
                 </div>
-
-                {(isAdmin || s.created_by_code === currentOperator?.code) && (
+                {(isAdmin || s.created_by_code === loggedOperator?.code) && (
                   <div className="schedule-item-actions">
-                    <button className="btn-small" onClick={() => openEditModal(s)}>
-                      Editar
-                    </button>
-                    <button className="btn-danger-outline" onClick={() => removeSchedule(s)}>
-                      Remover
-                    </button>
+                    <button className="btn-small" onClick={() => openEditModal(s)}>Editar</button>
+                    <button className="btn-danger-outline" onClick={() => removeSchedule(s)}>Remover</button>
                   </div>
                 )}
               </div>
@@ -570,19 +665,12 @@ export default function ScheduleManager({ currentOperator, isAdmin, isReceiving 
 
       {/* Próximos agendamentos */}
       {upcoming.length > 0 && (
-        <div className="card">
+        <div className="card" onClick={bump}>
           <div className="card-title">⏭ Próximos agendamentos</div>
           <div style={{ overflowX: "auto" }}>
             <table className="data-table">
               <thead>
-                <tr>
-                  <th>Data</th>
-                  <th>Hora</th>
-                  <th>Fornecedor</th>
-                  <th>NF</th>
-                  <th>Responsável</th>
-                  <th>Status</th>
-                </tr>
+                <tr><th>Data</th><th>Hora</th><th>Fornecedor</th><th>NF</th><th>Responsável</th><th>Status</th></tr>
               </thead>
               <tbody>
                 {upcoming.map((s) => (
@@ -593,11 +681,7 @@ export default function ScheduleManager({ currentOperator, isAdmin, isReceiving 
                     <td style={{ fontFamily: "var(--font-mono)" }}>{s.invoice_number}</td>
                     <td>{s.responsible_name}</td>
                     <td>
-                      {s.is_exception ? (
-                        <span className="schedule-item-badge exception">Exceção</span>
-                      ) : (
-                        <span className="schedule-item-badge regular">Regular</span>
-                      )}
+                      {s.is_exception ? <span className="schedule-item-badge exception">Exceção</span> : <span className="schedule-item-badge regular">Regular</span>}
                     </td>
                   </tr>
                 ))}
@@ -613,12 +697,8 @@ export default function ScheduleManager({ currentOperator, isAdmin, isReceiving 
           <div className="kiosk-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 620 }}>
             <div className="kiosk-modal-header">
               <div>
-                <div className="kiosk-modal-title">
-                  {editingId ? "Editar agendamento" : "Novo agendamento"}
-                </div>
-                <div className="kiosk-modal-sub">
-                  Preencha os dados da entrega do fornecedor
-                </div>
+                <div className="kiosk-modal-title">{editingId ? "Editar agendamento" : "Novo agendamento"}</div>
+                <div className="kiosk-modal-sub">Preencha os dados da entrega do fornecedor</div>
               </div>
               <button className="kiosk-modal-close" onClick={closeModal}>✕</button>
             </div>
@@ -627,139 +707,58 @@ export default function ScheduleManager({ currentOperator, isAdmin, isReceiving 
               <div className="schedule-modal-grid">
                 <div>
                   <label className="schedule-modal-label">Data *</label>
-                  <input
-                    type="date"
-                    className="schedule-modal-field"
-                    value={formData.scheduled_date}
-                    onChange={(e) => updateField("scheduled_date", e.target.value)}
-                    disabled={formBusy}
-                  />
+                  <input type="date" className="schedule-modal-field" value={formData.scheduled_date} onChange={(e) => updateField("scheduled_date", e.target.value)} disabled={formBusy} />
                 </div>
                 <div>
                   <label className="schedule-modal-label">Horário *</label>
-                  <input
-                    type="time"
-                    className="schedule-modal-field"
-                    value={formData.scheduled_time}
-                    onChange={(e) => updateField("scheduled_time", e.target.value)}
-                    disabled={formBusy}
-                  />
+                  <input type="time" className="schedule-modal-field" value={formData.scheduled_time} onChange={(e) => updateField("scheduled_time", e.target.value)} disabled={formBusy} />
                 </div>
-
                 <div className="schedule-modal-full">
                   <label className="schedule-modal-label">Fornecedor *</label>
-                  <input
-                    className="schedule-modal-field"
-                    placeholder="Nome do fornecedor"
-                    value={formData.supplier_name}
-                    onChange={(e) => updateField("supplier_name", e.target.value)}
-                    disabled={formBusy}
-                  />
+                  <input className="schedule-modal-field" placeholder="Nome do fornecedor" value={formData.supplier_name} onChange={(e) => updateField("supplier_name", e.target.value)} disabled={formBusy} />
                 </div>
-
                 <div>
                   <label className="schedule-modal-label">Nº da nota fiscal *</label>
-                  <input
-                    className="schedule-modal-field"
-                    placeholder="Ex: 12345"
-                    value={formData.invoice_number}
-                    onChange={(e) => updateField("invoice_number", e.target.value)}
-                    disabled={formBusy}
-                  />
+                  <input className="schedule-modal-field" placeholder="Ex: 12345" value={formData.invoice_number} onChange={(e) => updateField("invoice_number", e.target.value)} disabled={formBusy} />
                 </div>
                 <div>
                   <label className="schedule-modal-label">Transportadora</label>
-                  <input
-                    className="schedule-modal-field"
-                    placeholder="Opcional"
-                    value={formData.carrier}
-                    onChange={(e) => updateField("carrier", e.target.value)}
-                    disabled={formBusy}
-                  />
+                  <input className="schedule-modal-field" placeholder="Opcional" value={formData.carrier} onChange={(e) => updateField("carrier", e.target.value)} disabled={formBusy} />
                 </div>
-
                 <div>
                   <label className="schedule-modal-label">Nº pedido de compra</label>
-                  <input
-                    className="schedule-modal-field"
-                    placeholder="Opcional"
-                    value={formData.purchase_order}
-                    onChange={(e) => updateField("purchase_order", e.target.value)}
-                    disabled={formBusy}
-                  />
+                  <input className="schedule-modal-field" placeholder="Opcional" value={formData.purchase_order} onChange={(e) => updateField("purchase_order", e.target.value)} disabled={formBusy} />
                 </div>
                 <div>
                   <label className="schedule-modal-label">Volume / Peso *</label>
-                  <input
-                    className="schedule-modal-field"
-                    placeholder="Ex: 3 pallets · 500kg"
-                    value={formData.volume_weight}
-                    onChange={(e) => updateField("volume_weight", e.target.value)}
-                    disabled={formBusy}
-                  />
+                  <input className="schedule-modal-field" placeholder="Ex: 3 pallets · 500kg" value={formData.volume_weight} onChange={(e) => updateField("volume_weight", e.target.value)} disabled={formBusy} />
                 </div>
-
                 <div className="schedule-modal-full">
                   <label className="schedule-modal-label">Responsável pelo recebimento *</label>
-                  <input
-                    className="schedule-modal-field"
-                    placeholder="Quem vai receber o caminhão"
-                    value={formData.responsible_name}
-                    onChange={(e) => updateField("responsible_name", e.target.value)}
-                    disabled={formBusy}
-                  />
+                  <input className="schedule-modal-field" placeholder="Quem vai receber o caminhão" value={formData.responsible_name} onChange={(e) => updateField("responsible_name", e.target.value)} disabled={formBusy} />
                 </div>
-
                 <div className="schedule-modal-full">
                   <label className="schedule-modal-label">Observação</label>
-                  <textarea
-                    className="schedule-modal-field"
-                    placeholder="Opcional"
-                    rows={2}
-                    style={{ resize: "none" }}
-                    value={formData.observation}
-                    onChange={(e) => updateField("observation", e.target.value)}
-                    disabled={formBusy}
-                  />
+                  <textarea className="schedule-modal-field" placeholder="Opcional" rows={2} style={{ resize: "none" }} value={formData.observation} onChange={(e) => updateField("observation", e.target.value)} disabled={formBusy} />
                 </div>
               </div>
 
               {formData.is_exception && (
                 <div className="schedule-exception-box">
-                  <div className="title">
-                    ⚠ Agendamento fora do horário padrão
-                  </div>
+                  <div className="title">⚠ Agendamento fora do horário padrão</div>
                   <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 10px 0" }}>
-                    O horário padrão de recebimento é <strong>segunda a sexta, das 08h às 15h</strong>. Justifique o motivo abaixo.
+                    O horário padrão é <strong>segunda a sexta, 08h às 15h</strong>. Justifique o motivo abaixo.
                   </p>
-                  <textarea
-                    className="schedule-modal-field"
-                    placeholder="Motivo da exceção (obrigatório)"
-                    rows={2}
-                    style={{ resize: "none" }}
-                    value={formData.exception_reason}
-                    onChange={(e) => updateField("exception_reason", e.target.value)}
-                    disabled={formBusy}
-                  />
+                  <textarea className="schedule-modal-field" placeholder="Motivo da exceção (obrigatório)" rows={2} style={{ resize: "none" }} value={formData.exception_reason} onChange={(e) => updateField("exception_reason", e.target.value)} disabled={formBusy} />
                 </div>
               )}
 
-              {formError && (
-                <p style={{ color: "var(--danger)", fontSize: 13, marginTop: 12, marginBottom: 0 }}>
-                  {formError}
-                </p>
-              )}
+              {formError && <p style={{ color: "var(--danger)", fontSize: 13, marginTop: 12, marginBottom: 0 }}>{formError}</p>}
             </div>
 
             <div className="kiosk-modal-footer">
-              <button className="kiosk-btn kiosk-btn-secondary" onClick={closeModal} disabled={formBusy}>
-                Cancelar
-              </button>
-              <button
-                className="kiosk-btn kiosk-btn-primary"
-                onClick={saveSchedule}
-                disabled={formBusy}
-              >
+              <button className="kiosk-btn kiosk-btn-secondary" onClick={closeModal} disabled={formBusy}>Cancelar</button>
+              <button className="kiosk-btn kiosk-btn-primary" onClick={saveSchedule} disabled={formBusy}>
                 {formBusy ? "Salvando..." : editingId ? "Salvar alterações" : "Criar agendamento"}
               </button>
             </div>

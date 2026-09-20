@@ -3714,3 +3714,39 @@ textarea.field::placeholder {
     display: none;
   }
 }
+/* ==================================================================
+   Agendamentos — tela de login do operador
+   ================================================================== */
+
+.schedule-login-wrap {
+  display: flex;
+  justify-content: center;
+  padding: 40px 20px;
+}
+
+.schedule-login-card {
+  width: 100%;
+  max-width: 400px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 32px 28px 24px 28px;
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.schedule-login-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 20px;
+}
+
+.schedule-login-dots {
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  margin-bottom: 26px;
+}
