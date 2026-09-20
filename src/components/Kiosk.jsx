@@ -169,7 +169,7 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
       autoReturnTimeoutRef.current = setTimeout(reset, AUTO_RETURN_MS);
     } else {
       setMsgType("error");
-      setMsg("Erro ao iniciar. Tente novamente.");
+      setMsg(`Erro ao iniciar. ${error.message || "Tente novamente."}`);
     }
   }
 
@@ -269,7 +269,7 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
       autoReturnTimeoutRef.current = setTimeout(reset, AUTO_RETURN_MS);
     } else {
       setMsgType("error");
-      setMsg("Erro ao salvar. Tente novamente.");
+      setMsg(`Erro ao salvar. ${error.message || "Tente novamente."}`);
     }
   }
 

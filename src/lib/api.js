@@ -194,6 +194,10 @@ export async function logSeparationError({ operatorCode, operatorName, errorType
   });
 }
 
+export async function deleteAllSeparationErrors() {
+  return supabase.from("separation_errors").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+}
+
 // ---------- Tipos de erro (editável pelo admin) ----------
 
 export async function fetchErrorTypes() {

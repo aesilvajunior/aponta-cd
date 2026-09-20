@@ -9,6 +9,7 @@ import {
   fetchSeparationErrors,
   fetchErrorTypes,
   deleteAllEntries,
+  deleteAllSeparationErrors,
   SEPARATION_ERROR_TYPES,
 } from "./lib/api";
 import Sidebar from "./components/Sidebar";
@@ -113,6 +114,17 @@ export default function App() {
     return { error: null };
   }, [loadEntries]);
 
+  const resetSeparationErrors = useCallback(async () => {
+    const { error } = await deleteAllSeparationErrors();
+    if (error) {
+      setActionError("Não foi possível apagar os erros de separação. Tente novamente.");
+      return { error };
+    }
+    setActionError(null);
+    await loadSeparationErrors();
+    return { error: null };
+  }, [loadSeparationErrors]);
+
   useEffect(() => {
     (async () => {
       try {
@@ -202,6 +214,7 @@ export default function App() {
             activeSessions={activeSessions}
             separationErrors={separationErrors}
             onResetEntries={resetEntries}
+            onResetSeparationErrors={resetSeparationErrors}
           />
         )}
 

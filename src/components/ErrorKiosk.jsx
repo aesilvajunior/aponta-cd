@@ -125,7 +125,7 @@ export default function ErrorKiosk({ operators, errorTypes }) {
       setConfirmation({ errorType });
       autoReturnTimeoutRef.current = setTimeout(reset, AUTO_RETURN_MS);
     } else {
-      setMsg("Erro ao salvar. Tente novamente.");
+      setMsg(`Erro ao salvar. ${error.message || "Tente novamente."}`);
     }
   }
 

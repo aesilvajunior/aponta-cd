@@ -15,7 +15,7 @@ function todayLocalISODate() {
   return new Date(d - tz).toISOString().slice(0, 10);
 }
 
-export default function Panel({ entries, activities, operators, activeSessions, separationErrors = [], onResetEntries }) {
+export default function Panel({ entries, activities, operators, activeSessions, separationErrors = [], onResetEntries, onResetSeparationErrors }) {
   const [filterOperator, setFilterOperator] = useState("");
   const [filterActivity, setFilterActivity] = useState("");
   const [filterShift, setFilterShift] = useState("");
@@ -26,6 +26,10 @@ export default function Panel({ entries, activities, operators, activeSessions, 
   const [confirmingReset, setConfirmingReset] = useState(false);
   const [resetPhrase, setResetPhrase] = useState("");
   const [resetting, setResetting] = useState(false);
+
+  const [confirmingResetErrors, setConfirmingResetErrors] = useState(false);
+  const [resetErrorsPhrase, setResetErrorsPhrase] = useState("");
+  const [resettingErrors, setResettingErrors] = useState(false);
 
   const [copyLabel, setCopyLabel] = useState("Copiar resumo do dia");
   const [soundEnabled, setSoundEnabled] = useState(false);
@@ -391,6 +395,15 @@ export default function Panel({ entries, activities, operators, activeSessions, 
     setResetPhrase("");
   }
 
+  async function confirmResetErrors() {
+    if (resetErrorsPhrase.trim().toUpperCase() !== "ZERAR") return;
+    setResettingErrors(true);
+    await onResetSeparationErrors?.();
+    setResettingErrors(false);
+    setConfirmingResetErrors(false);
+    setResetErrorsPhrase("");
+  }
+
   const hasFilters = filterOperator || filterActivity || filterShift || filterStation || dateFrom || dateTo;
 
   return (
@@ -665,8 +678,42 @@ export default function Panel({ entries, activities, operators, activeSessions, 
       <div className="card" style={{ marginBottom: 20 }}>
         <div className="page-header-row" style={{ marginBottom: 14 }}>
           <div className="card-title" style={{ marginBottom: 0 }}>Erros de separação no período</div>
-          <button className="btn-small" onClick={exportErrorsCSV}>Exportar CSV</button>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button className="btn-small" onClick={exportErrorsCSV}>Exportar CSV</button>
+            <button className="btn-danger-outline" onClick={() => setConfirmingResetErrors((v) => !v)}>
+              Zerar erros
+            </button>
+          </div>
         </div>
+
+        {confirmingResetErrors && (
+          <div className="confirm-box" style={{ marginBottom: 14 }}>
+            <strong style={{ color: "var(--danger)", fontSize: 14 }}>Isso apaga todo o histórico de erros de separação, permanentemente.</strong>
+            <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "6px 0 12px 0" }}>
+              Não afeta o histórico de atividades nem a lista de operadores. Para confirmar, digite <strong>ZERAR</strong> abaixo.
+            </p>
+            <div style={{ display: "flex", gap: 8 }}>
+              <input
+                className="field"
+                style={{ flex: 1 }}
+                placeholder="Digite ZERAR"
+                value={resetErrorsPhrase}
+                onChange={(e) => setResetErrorsPhrase(e.target.value)}
+              />
+              <button
+                className="btn-danger-outline"
+                onClick={confirmResetErrors}
+                disabled={resetErrorsPhrase.trim().toUpperCase() !== "ZERAR" || resettingErrors}
+              >
+                {resettingErrors ? "Apagando..." : "Confirmar exclusão"}
+              </button>
+              <button className="btn-small" onClick={() => { setConfirmingResetErrors(false); setResetErrorsPhrase(""); }}>
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )}
+
         {errorsByType.length > 0 ? (
           <>
             <ResponsiveContainer width="100%" height={160}>
