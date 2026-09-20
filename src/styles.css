@@ -3574,3 +3574,143 @@ textarea.field::placeholder {
     min-height: 48px;
   }
 }
+/* ==================================================================
+   Agendamentos — atualização do calendário (nome + hora + NF)
+   ================================================================== */
+
+/* Aumenta um pouco a altura do quadrado do dia */
+.schedule-day {
+  aspect-ratio: auto;
+  min-height: 110px;
+  padding: 6px 6px 8px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+
+/* Borda amarela se o dia tiver pelo menos 1 exceção */
+.schedule-day.has-exception {
+  border-color: var(--warning);
+}
+
+.schedule-day.selected.has-exception {
+  border-color: var(--accent);
+}
+
+/* Lista de eventos dentro do quadrado */
+.schedule-day-events {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.schedule-day-event {
+  background: var(--accent-soft);
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  padding: 3px 5px;
+  font-size: 10.5px;
+  line-height: 1.25;
+  cursor: pointer;
+  transition: all 120ms ease;
+  overflow: hidden;
+}
+
+.schedule-day-event:hover {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.schedule-day-event:hover .schedule-day-event-time,
+.schedule-day-event:hover .schedule-day-event-name,
+.schedule-day-event:hover .schedule-day-event-invoice {
+  color: var(--accent-ink);
+}
+
+.schedule-day-event.exception {
+  background: var(--warning-soft);
+  border-left-color: var(--warning);
+}
+
+.schedule-day-event.exception:hover {
+  background: var(--warning);
+  color: #1a1305;
+}
+
+.schedule-day-event.exception:hover .schedule-day-event-time,
+.schedule-day-event.exception:hover .schedule-day-event-name,
+.schedule-day-event.exception:hover .schedule-day-event-invoice {
+  color: #1a1305;
+}
+
+.schedule-day-event-time {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--accent);
+  font-size: 10.5px;
+}
+
+.schedule-day-event.exception .schedule-day-event-time {
+  color: var(--warning);
+}
+
+.schedule-day-event-name {
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.schedule-day-event-invoice {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.schedule-day-more {
+  font-size: 10px;
+  color: var(--text-faint);
+  text-align: center;
+  padding: 2px 0;
+  font-weight: 600;
+}
+
+.schedule-day.selected .schedule-day-event {
+  background: rgba(255, 255, 255, 0.18);
+  border-left-color: var(--accent-ink);
+}
+
+.schedule-day.selected .schedule-day-event-time,
+.schedule-day.selected .schedule-day-event-name {
+  color: var(--accent-ink);
+}
+
+.schedule-day.selected .schedule-day-event-invoice {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.schedule-day.selected .schedule-day-more {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* Responsivo */
+@media (max-width: 720px) {
+  .schedule-day {
+    min-height: 70px;
+  }
+  .schedule-day-event {
+    font-size: 9.5px;
+    padding: 2px 4px;
+  }
+  .schedule-day-event-invoice {
+    display: none;
+  }
+}

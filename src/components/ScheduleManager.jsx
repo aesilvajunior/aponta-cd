@@ -65,6 +65,8 @@ function isWithinBusinessHours(iso) {
   return true;
 }
 
+const MAX_VISIBLE = 2; // quantos agendamentos mostrar no quadrado do dia
+
 // ============================================================
 // Componente
 // ============================================================
@@ -128,13 +130,15 @@ export default function ScheduleManager({ currentOperator, isAdmin, isReceiving 
       if (!map[key]) map[key] = [];
       map[key].push(s);
     });
+    // Ordena cada dia por hora
+    Object.values(map).forEach((arr) =>
+      arr.sort((a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at))
+    );
     return map;
   }, [schedules]);
 
   const daySchedules = useMemo(() => {
-    return (byDay[selectedDate] || []).sort(
-      (a, b) => new Date(a.scheduled_at) - new Date(b.scheduled_at)
-    );
+    return byDay[selectedDate] || [];
   }, [byDay, selectedDate]);
 
   const upcoming = useMemo(() => {
@@ -292,7 +296,6 @@ export default function ScheduleManager({ currentOperator, isAdmin, isReceiving 
       savedId = inserted?.id;
     }
 
-    // Chama Edge Function do Google Calendar
     try {
       const method = editingId ? "PUT" : "POST";
       const res = await fetch("/api/schedule-event", {
@@ -438,28 +441,53 @@ export default function ScheduleManager({ currentOperator, isAdmin, isReceiving 
         <div className="schedule-grid">
           {monthGrid.map((cell, i) => {
             if (!cell) return <div key={`empty-${i}`} className="schedule-day empty" />;
-            const daySchedulesForCell = byDay[cell.iso] || [];
+
+            const dayList = byDay[cell.iso] || [];
             const isToday = cell.iso === todayISO();
             const isSelected = cell.iso === selectedDate;
+            const hasException = dayList.some((s) => s.is_exception);
+            const visible = dayList.slice(0, MAX_VISIBLE);
+            const remaining = dayList.length - visible.length;
+
             return (
               <div
                 key={cell.iso}
-                className={`schedule-day ${isToday ? "today" : ""} ${isSelected ? "selected" : ""}`}
+                className={`schedule-day ${isToday ? "today" : ""} ${isSelected ? "selected" : ""} ${hasException ? "has-exception" : ""}`}
                 onClick={() => setSelectedDate(cell.iso)}
               >
                 <div className="schedule-day-num">{cell.day}</div>
-                {daySchedulesForCell.length > 0 && (
-                  <>
-                    <div className="schedule-day-dots">
-                      {daySchedulesForCell.slice(0, 3).map((s, idx) => (
-                        <div
-                          key={idx}
-                          className={`schedule-day-dot ${s.is_exception ? "exception" : ""}`}
-                        />
-                      ))}
-                    </div>
-                    <div className="schedule-day-count">{daySchedulesForCell.length}</div>
-                  </>
+
+                {visible.length > 0 && (
+                  <div className="schedule-day-events">
+                    {visible.map((s) => (
+                      <div
+                        key={s.id}
+                        className={`schedule-day-event ${s.is_exception ? "exception" : ""}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (isAdmin || s.created_by_code === currentOperator?.code) {
+                            openEditModal(s);
+                          } else {
+                            setSelectedDate(cell.iso);
+                          }
+                        }}
+                        title={`${fmtTime(s.scheduled_at)} — ${s.supplier_name} · NF ${s.invoice_number}`}
+                      >
+                        <div className="schedule-day-event-time">
+                          {fmtTime(s.scheduled_at)}
+                        </div>
+                        <div className="schedule-day-event-name">
+                          {s.supplier_name}
+                        </div>
+                        <div className="schedule-day-event-invoice">
+                          NF {s.invoice_number}
+                        </div>
+                      </div>
+                    ))}
+                    {remaining > 0 && (
+                      <div className="schedule-day-more">+{remaining} mais…</div>
+                    )}
+                  </div>
                 )}
               </div>
             );
