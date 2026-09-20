@@ -4,16 +4,18 @@ export function pad(n) {
 
 export function fmtClock(iso) {
   const d = new Date(iso);
+  if (isNaN(d.getTime())) return "--:--:--";
   return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
 export function fmtDate(iso) {
   const d = new Date(iso);
+  if (isNaN(d.getTime())) return "--/--/----";
   return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
 }
 
 export function fmtDuration(sec) {
-  if (sec == null) return "-";
+  if (sec == null || isNaN(sec)) return "-";
   const h = Math.floor(sec / 3600);
   const m = Math.floor((sec % 3600) / 60);
   const s = Math.floor(sec % 60);
@@ -23,6 +25,7 @@ export function fmtDuration(sec) {
 
 export function shiftFor(iso) {
   const d = new Date(iso);
+  if (isNaN(d.getTime())) return "Manhã";
   const totalMin = d.getHours() * 60 + d.getMinutes();
   return totalMin < 13 * 60 + 30 ? "Manhã" : "Tarde";
 }

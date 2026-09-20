@@ -1,12 +1,25 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { logSeparationError } from "../lib/api";
 import { fmtClock, fmtDate, shiftFor } from "../lib/format";
 import { getStationName, promptForStationName } from "../lib/station";
+import { playSuccess, playError, playKey } from "../utils/sound";
 import logo from "../assets/logo.png";
 
 const CODE_LENGTH = 3;
 const AUTO_RETURN_MS = 2200;
-const IDLE_TIMEOUT_MS = 20000;
+const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+const TRANSFER_ZONES = ["AP", "ZN"];
+
+// Ícone por tipo de erro
+function errorIcon(name) {
+  const n = (name || "").toLowerCase();
+  if (n.includes("sobra")) return "📦";
+  if (n.includes("não tem") || n.includes("nao tem") || n.includes("pedido")) return "❓";
+  if (n.includes("falta")) return "⚠️";
+  if (n.includes("avaria") || n.includes("quebr")) return "💥";
+  if (n.includes("troca") || n.includes("errad")) return "🔀";
+  return "🚨";
+}
 
 export default function ErrorKiosk({ operators, errorTypes }) {
   const [codeInput, setCodeInput] = useState("");
@@ -19,9 +32,15 @@ export default function ErrorKiosk({ operators, errorTypes }) {
   const [now, setNow] = useState(Date.now());
   const [stationName, setStationNameState] = useState(getStationName());
 
-  function editStation() {
-    setStationNameState(promptForStationName());
-  }
+  // Campos de pedido/transferência
+  const [orderType, setOrderType] = useState(null); // null | "pedido" | "transferencia"
+  const [orderNumber, setOrderNumber] = useState("");
+  const [transferZone, setTransferZone] = useState(""); // "" | "AP" | "ZN"
+
+  // Operador que errou
+  const [errorOperatorCode, setErrorOperatorCode] = useState("");
+  const [showOperatorPicker, setShowOperatorPicker] = useState(false);
+  const [operatorSearch, setOperatorSearch] = useState("");
 
   const codeInputRef = useRef(codeInput);
   codeInputRef.current = codeInput;
@@ -31,6 +50,23 @@ export default function ErrorKiosk({ operators, errorTypes }) {
   function bump() {
     lastInteractionRef.current = Date.now();
   }
+
+  function editStation() {
+    setStationNameState(promptForStationName());
+  }
+
+  const errorOperator = useMemo(
+    () => operators.find((o) => o.code === errorOperatorCode) || null,
+    [operators, errorOperatorCode]
+  );
+
+  const filteredOperators = useMemo(() => {
+    const q = operatorSearch.trim().toLowerCase();
+    if (!q) return operators;
+    return operators.filter(
+      (o) => o.name.toLowerCase().includes(q) || o.code.includes(q)
+    );
+  }, [operators, operatorSearch]);
 
   useEffect(() => {
     const iv = setInterval(() => setNow(Date.now()), 1000);
@@ -78,11 +114,23 @@ export default function ErrorKiosk({ operators, errorTypes }) {
     setNote("");
     setMsg("");
     setConfirmation(null);
+    setOrderType(null);
+    setOrderNumber("");
+    setTransferZone("");
+    setErrorOperatorCode("");
+    setShowOperatorPicker(false);
+    setOperatorSearch("");
   }
 
   function handleDigit(d) {
     bump();
+    playKey();
     if (codeInputRef.current.length < CODE_LENGTH) setCodeInput(codeInputRef.current + d);
+  }
+
+  function handleBackspace() {
+    bump();
+    setCodeInput((p) => p.slice(0, -1));
   }
 
   function triggerShake() {
@@ -95,10 +143,12 @@ export default function ErrorKiosk({ operators, errorTypes }) {
     if (current.length < CODE_LENGTH) return;
     const op = operators.find((o) => o.code === current);
     if (!op) {
+      playError();
       setMsgAndShake("Código não encontrado.");
       return;
     }
     bump();
+    playSuccess();
     setMsg("");
     setLoggedOperator(op);
   }
@@ -111,136 +161,417 @@ export default function ErrorKiosk({ operators, errorTypes }) {
 
   async function reportError(errorType) {
     if (busy) return;
+
+    // Validações
+    if (!orderType) {
+      playError();
+      setMsg("Escolha se é Pedido ou Transferência.");
+      return;
+    }
+    if (!/^\d{4}$/.test(orderNumber)) {
+      playError();
+      setMsg("Digite os 4 últimos dígitos do pedido/transferência.");
+      return;
+    }
+    if (orderType === "transferencia" && !transferZone) {
+      playError();
+      setMsg("Escolha se a transferência era AP ou ZN.");
+      return;
+    }
+    if (!errorOperatorCode) {
+      playError();
+      setMsg("Informe quem errou na separação.");
+      return;
+    }
+
     bump();
     setBusy(true);
+
+    // Monta o valor final do order_number:
+    // - Pedido: só "1234"
+    // - Transferência: "AP 1234" ou "ZN 1234"
+    const finalOrderNumber =
+      orderType === "transferencia" && transferZone
+        ? `${transferZone} ${orderNumber}`
+        : orderNumber;
+
     const { error } = await logSeparationError({
       operatorCode: loggedOperator.code,
       operatorName: loggedOperator.name,
       errorType,
       note: note.trim(),
       station: stationName || null,
+      orderType,
+      orderNumber: finalOrderNumber,
+      errorOperatorCode: errorOperator?.code || null,
+      errorOperatorName: errorOperator?.name || null,
     });
     setBusy(false);
     if (!error) {
+      playSuccess();
       setConfirmation({ errorType });
       autoReturnTimeoutRef.current = setTimeout(reset, AUTO_RETURN_MS);
     } else {
+      playError();
       setMsg(`Erro ao salvar. ${error.message || "Tente novamente."}`);
     }
   }
 
   const dots = Array.from({ length: CODE_LENGTH }, (_, i) => i < codeInput.length);
 
+  // ============================================================
+  // RENDER
+  // ============================================================
   return (
-    <div onClick={bump} style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-      <h1 className="page-title">Registrar erro de separação</h1>
-      <p className="page-sub">Digite seu código e escolha o tipo de erro encontrado.</p>
-
-      <div style={{ display: "flex", gap: 24, flexWrap: "wrap", alignItems: "flex-start" }}>
-        {!loggedOperator && (
-          <div className={`terminal ${shake ? "shake" : ""}`}>
-            <div className="terminal-dots">
-              {dots.map((filled, i) => (
-                <div key={i} className={`terminal-dot ${filled ? "filled" : ""}`} />
-              ))}
-            </div>
-            <div className="keypad">
-              {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((d) => (
-                <button key={d} className="keypad-key" onClick={() => handleDigit(d)}>
-                  {d}
-                </button>
-              ))}
-              <button className="keypad-key" onClick={() => { bump(); setCodeInput((p) => p.slice(0, -1)); }}>
-                ⌫
-              </button>
-              <button className="keypad-key" onClick={() => handleDigit("0")}>
-                0
-              </button>
-              <button className="keypad-key accent" onClick={handleLogin}>
-                OK
-              </button>
-            </div>
-            {msg ? (
-              <p className="terminal-error">{msg}</p>
-            ) : (
-              <p className="terminal-hint">teclado do computador também funciona</p>
-            )}
-          </div>
-        )}
-
-        {loggedOperator && confirmation && (
-          <div className="terminal" style={{ textAlign: "center", padding: "36px 24px" }}>
-            <div
-              style={{
-                width: 44, height: 44, borderRadius: "50%", display: "flex", alignItems: "center",
-                justifyContent: "center", margin: "0 auto 16px auto", background: "var(--danger-dim)",
-                color: "var(--danger)", fontSize: 18,
-              }}
-            >
-              ✓
-            </div>
-            <div style={{ fontSize: 17, fontWeight: 600 }}>Erro registrado</div>
-            <div style={{ color: "var(--text-muted)", fontSize: 12.5, marginTop: 6 }}>{confirmation.errorType}</div>
-          </div>
-        )}
-
-        {loggedOperator && !confirmation && (
-          <div className="card" style={{ width: 420 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-              <div>
-                <div style={{ fontSize: 17, fontWeight: 600 }}>{loggedOperator.name}</div>
-                <div style={{ color: "var(--text-muted)", fontSize: 12 }}>
-                  {loggedOperator.role} · #{loggedOperator.code}
-                </div>
-              </div>
-              <button className="btn-small" onClick={reset}>Trocar</button>
-            </div>
-
-            <p style={{ color: "var(--text-muted)", fontSize: 13, marginBottom: 8 }}>Tipo de erro:</p>
-            {errorTypes.length > 0 ? (
-              <div className="activity-grid" style={{ opacity: busy ? 0.6 : 1, pointerEvents: busy ? "none" : "auto" }}>
-                {errorTypes.map((t) => (
-                  <div key={t.name} className="activity-btn" onClick={() => reportError(t.name)}>
-                    {t.name}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
-                Nenhum tipo de erro cadastrado. Peça ao administrador para adicionar em "Equipe".
-              </p>
-            )}
-            <textarea
-              className="field"
-              placeholder="Observação (opcional)"
-              value={note}
-              onChange={(e) => { bump(); setNote(e.target.value); }}
-              rows={2}
-              style={{ width: "100%", resize: "none", marginTop: 12, fontFamily: "inherit" }}
-            />
-            {msg && <p style={{ color: "var(--danger)", fontSize: 12.5, textAlign: "center", marginTop: 10 }}>{msg}</p>}
-          </div>
-        )}
-
-        <div className="side-panel">
-          <div className="side-clock">{fmtClock(now)}</div>
-          <div className="side-date">{fmtDate(now)}</div>
-          <div className="side-shift-badge">
-            <span className="side-shift-dot" />
-            Turno {shiftFor(now)}
-          </div>
-          <div className="side-divider" />
-          <img src={logo} alt="" className="side-logo" />
-          <div className="side-motto">"joga junto e cresce todo dia"</div>
-          <div
-            onClick={editStation}
-            style={{ marginTop: 14, fontSize: 10.5, color: "var(--text-faint)", cursor: "pointer" }}
-            title="Clique para nomear esta estação/terminal"
-          >
-            {stationName ? `📍 ${stationName}` : "📍 nomear esta estação"}
+    <div className="kiosk-page">
+      {/* HEADER */}
+      <header className="kiosk-header">
+        <div className="kiosk-header-left">
+          <img src={logo} alt="" className="kiosk-header-logo" />
+          <div>
+            <div className="kiosk-header-title">Aponta CD</div>
+            <div className="kiosk-header-sub">Hidráulica Tropeiro</div>
           </div>
         </div>
-      </div>
+
+        <div className="kiosk-header-right">
+          <div className="kiosk-header-clock">
+            <div className="kiosk-header-time">{fmtClock(now)}</div>
+            <div className="kiosk-header-date">{fmtDate(now)}</div>
+          </div>
+          <div className="kiosk-header-shift">
+            <span className="kiosk-header-shift-dot" />
+            Turno {shiftFor(now)}
+          </div>
+          <button
+            className={`kiosk-header-station ${!stationName ? "kiosk-header-station-alert" : ""}`}
+            onClick={editStation}
+            title="Clique para nomear esta estação/terminal"
+          >
+            📍 {stationName || "Nomear estação"}
+          </button>
+        </div>
+      </header>
+
+      {/* CONTEÚDO */}
+      <main className="kiosk-main">
+        {!confirmation && (
+          <div style={{ textAlign: "center", marginBottom: 24, width: "100%", maxWidth: 900 }}>
+            <h1 style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-0.02em", color: "var(--text)", margin: 0 }}>
+              Registrar erro de separação
+            </h1>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, marginTop: 6 }}>
+              {!loggedOperator ? "Digite seu código para começar." : "Preencha as informações abaixo."}
+            </p>
+          </div>
+        )}
+
+        {/* DESLOGADO */}
+        {!loggedOperator && (
+          <div className={`kiosk-terminal-wrap ${shake ? "shake" : ""}`}>
+            <div className="kiosk-terminal-title">Digite seu código</div>
+            <div className="kiosk-terminal-dots">
+              {dots.map((filled, i) => (
+                <div key={i} className={`kiosk-dot ${filled ? "filled" : ""}`} />
+              ))}
+            </div>
+            <div className="kiosk-keypad">
+              {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((d) => (
+                <button key={d} className="kiosk-key" onClick={() => handleDigit(d)}>{d}</button>
+              ))}
+              <button className="kiosk-key kiosk-key-muted" onClick={handleBackspace}>⌫</button>
+              <button className="kiosk-key" onClick={() => handleDigit("0")}>0</button>
+              <button className="kiosk-key kiosk-key-primary" onClick={handleLogin}>OK</button>
+            </div>
+            {msg ? (
+              <p className="kiosk-terminal-error">{msg}</p>
+            ) : (
+              <p className="kiosk-terminal-hint">teclado do computador também funciona</p>
+            )}
+          </div>
+        )}
+
+        {/* CONFIRMAÇÃO */}
+        {loggedOperator && confirmation && (
+          <div className="kiosk-confirm">
+            <div className="kiosk-confirm-icon" style={{ background: "var(--ok-soft)", color: "var(--ok)" }}>✓</div>
+            <div className="kiosk-confirm-title">Erro registrado</div>
+            <div className="kiosk-confirm-sub">{confirmation.errorType}</div>
+          </div>
+        )}
+
+        {/* LOGADO */}
+        {loggedOperator && !confirmation && (
+          <div className="kiosk-logged">
+            <div className="kiosk-operator-bar">
+              <div className="kiosk-operator-info">
+                <div className="kiosk-operator-avatar" style={{ background: "var(--danger)", color: "#fff" }}>
+                  {loggedOperator.name.charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <div className="kiosk-operator-name">{loggedOperator.name}</div>
+                  <div className="kiosk-operator-role">{loggedOperator.role} · #{loggedOperator.code}</div>
+                </div>
+              </div>
+              <button className="kiosk-operator-change" onClick={reset}>Trocar operador</button>
+            </div>
+
+            <div className="kiosk-activities">
+              {/* BLOCO 1 — Pedido / Transferência */}
+              <div className="kiosk-error-block">
+                <div className="kiosk-error-step">
+                  <span className="kiosk-error-step-num">1</span>
+                  <span className="kiosk-error-step-title">É pedido ou transferência?</span>
+                </div>
+                <div className="kiosk-error-row-2">
+                  <button
+                    className={`kiosk-toggle-btn ${orderType === "pedido" ? "active" : ""}`}
+                    onClick={() => {
+                      bump();
+                      setOrderType("pedido");
+                      setTransferZone("");
+                    }}
+                  >
+                    📦 Pedido
+                  </button>
+                  <button
+                    className={`kiosk-toggle-btn ${orderType === "transferencia" ? "active" : ""}`}
+                    onClick={() => {
+                      bump();
+                      setOrderType("transferencia");
+                    }}
+                  >
+                    🔄 Transferência
+                  </button>
+                </div>
+
+                {/* AP / ZN — só quando transferência */}
+                {orderType === "transferencia" && (
+                  <div style={{ marginTop: 12 }}>
+                    <div
+                      style={{
+                        fontSize: 12.5,
+                        fontWeight: 600,
+                        color: "var(--text-muted)",
+                        marginBottom: 8,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.05em",
+                      }}
+                    >
+                      Zona da transferência
+                    </div>
+                    <div className="kiosk-error-row-2">
+                      {TRANSFER_ZONES.map((z) => (
+                        <button
+                          key={z}
+                          className={`kiosk-toggle-btn ${transferZone === z ? "active" : ""}`}
+                          onClick={() => {
+                            bump();
+                            setTransferZone(z);
+                          }}
+                        >
+                          {z}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {orderType && (
+                  <input
+                    className="kiosk-field"
+                    style={{
+                      marginTop: 10,
+                      fontFamily: "var(--font-mono)",
+                      letterSpacing: 3,
+                      textAlign: "center",
+                      fontSize: 22,
+                    }}
+                    placeholder={`4 últimos dígitos ${orderType === "pedido" ? "do pedido" : "da transferência"}`}
+                    value={orderNumber}
+                    maxLength={4}
+                    onChange={(e) => {
+                      bump();
+                      setOrderNumber(e.target.value.replace(/\D/g, "").slice(0, 4));
+                    }}
+                    autoFocus={orderType === "pedido" || transferZone !== ""}
+                  />
+                )}
+              </div>
+
+              {/* BLOCO 2 — Quem errou */}
+              <div className="kiosk-error-block">
+                <div className="kiosk-error-step">
+                  <span className="kiosk-error-step-num">2</span>
+                  <span className="kiosk-error-step-title">Quem errou na separação?</span>
+                </div>
+
+                {errorOperator ? (
+                  <div className="kiosk-error-selected-operator">
+                    <div className="kiosk-error-selected-info">
+                      <div className="kiosk-error-selected-avatar">
+                        {errorOperator.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <div className="kiosk-error-selected-name">{errorOperator.name}</div>
+                        <div className="kiosk-error-selected-role">
+                          {errorOperator.role} · #{errorOperator.code}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      className="kiosk-btn-small-danger"
+                      onClick={() => {
+                        bump();
+                        setErrorOperatorCode("");
+                      }}
+                    >
+                      Trocar
+                    </button>
+                  </div>
+                ) : (
+                  <div className="kiosk-error-operator-input">
+                    <input
+                      className="kiosk-field"
+                      style={{
+                        fontFamily: "var(--font-mono)",
+                        letterSpacing: 2,
+                        textAlign: "center",
+                        fontSize: 18,
+                        flex: 1,
+                      }}
+                      placeholder="Código (ex: 101)"
+                      value={errorOperatorCode}
+                      maxLength={4}
+                      onChange={(e) => {
+                        bump();
+                        setErrorOperatorCode(e.target.value.replace(/\D/g, "").slice(0, 4));
+                      }}
+                    />
+                    <button
+                      className="kiosk-btn kiosk-btn-secondary"
+                      onClick={() => {
+                        bump();
+                        setOperatorSearch("");
+                        setShowOperatorPicker(true);
+                      }}
+                      style={{ padding: "14px 18px" }}
+                    >
+                      Ver lista
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* BLOCO 3 — Tipo de erro */}
+              <div className="kiosk-error-block">
+                <div className="kiosk-error-step">
+                  <span className="kiosk-error-step-num">3</span>
+                  <span className="kiosk-error-step-title">O que aconteceu?</span>
+                </div>
+                {errorTypes.length > 0 ? (
+                  <div className="kiosk-error-grid">
+                    {errorTypes.map((t) => (
+                      <button
+                        key={t.name}
+                        className="kiosk-error-card"
+                        onClick={() => reportError(t.name)}
+                        disabled={busy}
+                      >
+                        <span className="kiosk-error-icon">{errorIcon(t.name)}</span>
+                        <span className="kiosk-error-name">{t.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="kiosk-form-empty">
+                    Nenhum tipo de erro cadastrado. Peça ao admin pra adicionar em "Equipe".
+                  </p>
+                )}
+              </div>
+
+              {/* BLOCO 4 — Observação */}
+              <div className="kiosk-error-block">
+                <div className="kiosk-error-step">
+                  <span className="kiosk-error-step-num">4</span>
+                  <span className="kiosk-error-step-title">Observação (opcional)</span>
+                </div>
+                <textarea
+                  className="kiosk-field kiosk-field-textarea"
+                  placeholder="Descreva o problema se precisar..."
+                  value={note}
+                  onChange={(e) => {
+                    bump();
+                    setNote(e.target.value);
+                  }}
+                  rows={2}
+                />
+              </div>
+
+              {msg && <p className="kiosk-form-error" style={{ marginTop: 14 }}>{msg}</p>}
+            </div>
+          </div>
+        )}
+      </main>
+
+      {/* MODAL: escolher operador que errou */}
+      {showOperatorPicker && (
+        <div className="kiosk-modal-backdrop" onClick={() => setShowOperatorPicker(false)}>
+          <div className="kiosk-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="kiosk-modal-header">
+              <div>
+                <div className="kiosk-modal-title">Quem errou?</div>
+                <div className="kiosk-modal-sub">Escolha o operador responsável pelo erro</div>
+              </div>
+              <button
+                className="kiosk-modal-close"
+                onClick={() => setShowOperatorPicker(false)}
+                aria-label="Fechar"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="kiosk-modal-body">
+              <input
+                className="kiosk-field"
+                placeholder="🔍 Buscar por nome ou código..."
+                value={operatorSearch}
+                onChange={(e) => setOperatorSearch(e.target.value)}
+                autoFocus
+              />
+              <div className="kiosk-operator-picker-list">
+                {filteredOperators.length === 0 ? (
+                  <p className="kiosk-form-empty">Nenhum operador encontrado.</p>
+                ) : (
+                  filteredOperators.map((op) => (
+                    <button
+                      key={op.code}
+                      className="kiosk-operator-picker-item"
+                      onClick={() => {
+                        bump();
+                        setErrorOperatorCode(op.code);
+                        setShowOperatorPicker(false);
+                        setOperatorSearch("");
+                      }}
+                    >
+                      <div className="kiosk-operator-picker-avatar">
+                        {op.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div className="kiosk-operator-picker-info">
+                        <div className="kiosk-operator-picker-name">{op.name}</div>
+                        <div className="kiosk-operator-picker-role">
+                          {op.role} · #{op.code}
+                        </div>
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

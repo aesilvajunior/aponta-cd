@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { supabase } from "./supabaseClient";
+import { supabase, missingConfig } from "./supabaseClient";
 import {
   fetchOperators,
   fetchActivities,
@@ -8,9 +8,11 @@ import {
   fetchActiveSessions,
   fetchSeparationErrors,
   fetchErrorTypes,
+  fetchVehicles,
+  fetchShortages,
   deleteAllEntries,
   deleteAllSeparationErrors,
-  SEPARATION_ERROR_TYPES,
+  deleteAllShortages,
 } from "./lib/api";
 import Sidebar from "./components/Sidebar";
 import Kiosk from "./components/Kiosk";
@@ -19,36 +21,18 @@ import AdminGate from "./components/AdminGate";
 import Panel from "./components/Panel";
 import TeamManager from "./components/TeamManager";
 import ManualEntry from "./components/ManualEntry";
+import AuditLog from "./components/AuditLog";
+import CommandPalette from "./components/CommandPalette";
+import ExecutiveView from "./components/ExecutiveView";
+import ScheduleManager from "./components/ScheduleManager";
 import logo from "./assets/logo.png";
+import {
+  DEFAULT_OPERATORS,
+  DEFAULT_ACTIVITIES,
+  DEFAULT_ERROR_TYPES,
+} from "./constants/defaults";
 
-const DEFAULT_OPERATORS = [
-  { code: "101", name: "Adeildo Junior", role: "Líder" },
-  { code: "102", name: "Matheus", role: "Analista" },
-  { code: "103", name: "Juliana", role: "Auxiliar" },
-  { code: "104", name: "Alex Sander", role: "Recebimento" },
-  { code: "105", name: "Gustavo", role: "Recebimento" },
-  { code: "106", name: "César", role: "Conferência" },
-  { code: "107", name: "Davi", role: "Conferência" },
-  { code: "108", name: "Bryan", role: "Separação/Conferência (manhã)" },
-  { code: "109", name: "Lucca", role: "Separação/Conferência (tarde)" },
-  { code: "110", name: "Cauã", role: "Separação (manhã)" },
-  { code: "111", name: "Felipe", role: "Separação (tarde)" },
-  { code: "112", name: "Kauã", role: "Separação (manhã)" },
-  { code: "113", name: "Pedro Paulo", role: "Separação (tarde)" },
-  { code: "114", name: "Lucas", role: "Separação" },
-  { code: "115", name: "João Victor", role: "Separação" },
-  { code: "116", name: "Breno", role: "Separação" },
-  { code: "117", name: "Klévio", role: "Separação" },
-  { code: "118", name: "Leandro", role: "Separação" },
-  { code: "119", name: "Lo-Ami", role: "Híbrido" },
-];
-
-const DEFAULT_ACTIVITIES = [
-  "Recebimento", "Conferência", "Separação", "Embalagem",
-  "Expedição", "Reposição", "Inventário", "Outros",
-].map((name) => ({ name, active: true }));
-
-const DEFAULT_ERROR_TYPES = SEPARATION_ERROR_TYPES.map((name) => ({ name, active: true }));
+const DEFAULT_ALERT_THRESHOLD = 1800;
 
 export default function App() {
   const [tab, setTab] = useState("kiosk");
@@ -56,36 +40,62 @@ export default function App() {
   const [loaded, setLoaded] = useState(false);
   const [connectionError, setConnectionError] = useState(null);
   const [actionError, setActionError] = useState(null);
+  const [usingDefaults, setUsingDefaults] = useState(false);
+
+  // Command Palette
+  const [cmdOpen, setCmdOpen] = useState(false);
+  const [globalFilter, setGlobalFilter] = useState(null);
+  const [profileOperator, setProfileOperator] = useState(null);
 
   const [operators, setOperators] = useState(DEFAULT_OPERATORS);
   const [activities, setActivities] = useState(DEFAULT_ACTIVITIES);
   const [errorTypes, setErrorTypes] = useState(DEFAULT_ERROR_TYPES);
+  const [vehicles, setVehicles] = useState([]);
+  const [shortages, setShortages] = useState([]);
   const [adminPin, setAdminPin] = useState("2026");
+  const [alertThreshold, setAlertThreshold] = useState(DEFAULT_ALERT_THRESHOLD);
   const [entries, setEntries] = useState([]);
   const [activeSessions, setActiveSessions] = useState([]);
   const [separationErrors, setSeparationErrors] = useState([]);
 
-  const loadConfig = useCallback(async () => {
-    const [
-      { data: ops, error: opsErr },
-      { data: acts, error: actsErr },
-      { data: cfg, error: cfgErr },
-      { data: errTypes, error: errTypesErr },
-    ] = await Promise.all([fetchOperators(), fetchActivities(), fetchAdminConfig(), fetchErrorTypes()]);
+  const loadOperators = useCallback(async () => {
+    const { data, error } = await fetchOperators();
+    if (error) return error;
+    setOperators(data && data.length ? data : DEFAULT_OPERATORS);
+    return null;
+  }, []);
 
-    if (opsErr || actsErr || cfgErr || errTypesErr) {
-      const firstError = opsErr || actsErr || cfgErr || errTypesErr;
-      setConnectionError(firstError?.message || "Erro desconhecido ao conectar com o banco.");
-      return;
+  const loadActivities = useCallback(async () => {
+    const { data, error } = await fetchActivities();
+    if (error) return error;
+    setActivities(data && data.length ? data : DEFAULT_ACTIVITIES);
+    return null;
+  }, []);
+
+  const loadErrorTypes = useCallback(async () => {
+    const { data, error } = await fetchErrorTypes();
+    if (error) return error;
+    setErrorTypes(data && data.length ? data : DEFAULT_ERROR_TYPES);
+    return null;
+  }, []);
+
+  const loadVehicles = useCallback(async () => {
+    const { data, error } = await fetchVehicles();
+    if (error) return error;
+    setVehicles(data || []);
+    return null;
+  }, []);
+
+  const loadAdminConfig = useCallback(async () => {
+    const { data, error } = await fetchAdminConfig();
+    if (error) return error;
+    if (data) {
+      setAdminPin(data.pin);
+      if (data.alert_threshold_seconds) {
+        setAlertThreshold(data.alert_threshold_seconds);
+      }
     }
-    setConnectionError(null);
-    // Só substitui os padrões quando o banco realmente devolve algo — uma
-    // tabela vazia (ex: alguém apagou todos os operadores por engano) não
-    // deve travar o quiosque sem ninguém cadastrado.
-    setOperators(ops && ops.length ? ops : DEFAULT_OPERATORS);
-    setActivities(acts && acts.length ? acts : DEFAULT_ACTIVITIES);
-    setErrorTypes(errTypes && errTypes.length ? errTypes : DEFAULT_ERROR_TYPES);
-    if (cfg) setAdminPin(cfg.pin);
+    return null;
   }, []);
 
   const loadEntries = useCallback(async () => {
@@ -103,6 +113,31 @@ export default function App() {
     if (!error && data) setSeparationErrors(data);
   }, []);
 
+  const loadShortages = useCallback(async () => {
+    const { data, error } = await fetchShortages();
+    if (!error && data) setShortages(data);
+  }, []);
+
+  const loadAll = useCallback(async () => {
+    const results = await Promise.all([
+      loadOperators(), loadActivities(), loadErrorTypes(), loadVehicles(), loadAdminConfig(),
+    ]);
+    const firstError = results.find((e) => e);
+    if (firstError) {
+      setConnectionError(firstError.message || "Erro desconhecido ao conectar com o banco.");
+      setUsingDefaults(true);
+    } else {
+      setConnectionError(null);
+      setUsingDefaults(false);
+    }
+    await Promise.all([
+      loadEntries(),
+      loadActiveSessions(),
+      loadSeparationErrors(),
+      loadShortages(),
+    ]);
+  }, [loadOperators, loadActivities, loadErrorTypes, loadVehicles, loadAdminConfig, loadEntries, loadActiveSessions, loadSeparationErrors, loadShortages]);
+
   const resetEntries = useCallback(async () => {
     const { error } = await deleteAllEntries();
     if (error) {
@@ -110,9 +145,9 @@ export default function App() {
       return { error };
     }
     setActionError(null);
-    await loadEntries();
+    await Promise.all([loadEntries(), loadShortages()]);
     return { error: null };
-  }, [loadEntries]);
+  }, [loadEntries, loadShortages]);
 
   const resetSeparationErrors = useCallback(async () => {
     const { error } = await deleteAllSeparationErrors();
@@ -125,118 +160,240 @@ export default function App() {
     return { error: null };
   }, [loadSeparationErrors]);
 
+  const resetShortages = useCallback(async () => {
+    const { error } = await deleteAllShortages();
+    if (error) {
+      setActionError("Não foi possível apagar as faltas. Tente novamente.");
+      return { error };
+    }
+    setActionError(null);
+    await loadShortages();
+    return { error: null };
+  }, [loadShortages]);
+
   useEffect(() => {
     (async () => {
       try {
-        await Promise.all([loadConfig(), loadEntries(), loadActiveSessions(), loadSeparationErrors()]);
+        await loadAll();
       } catch (err) {
-        // Blinda contra qualquer erro inesperado na carga inicial — melhor
-        // mostrar o site com o aviso de conexão do que travar em branco.
         setConnectionError(err?.message || "Erro inesperado ao carregar o aplicativo.");
       } finally {
         setLoaded(true);
       }
     })();
 
-    // Mantém tudo sincronizado em tempo real entre abas/dispositivos —
-    // evita telas desatualizadas mostrando operadores ou atividades que
-    // já foram removidos em outro lugar.
+    const debounced = (fn, ms = 250) => {
+      let t = null;
+      return () => {
+        if (t) clearTimeout(t);
+        t = setTimeout(fn, ms);
+      };
+    };
+
+    const reloadOperators = debounced(loadOperators);
+    const reloadActivities = debounced(loadActivities);
+    const reloadErrorTypes = debounced(loadErrorTypes);
+    const reloadVehicles = debounced(loadVehicles);
+    const reloadAdminConfig = debounced(loadAdminConfig);
+    const reloadEntries = debounced(loadEntries);
+    const reloadSessions = debounced(loadActiveSessions);
+    const reloadSepErrors = debounced(loadSeparationErrors);
+    const reloadShortages = debounced(loadShortages);
+
     const channels = [
-      supabase.channel("entries-changes").on("postgres_changes", { event: "*", schema: "public", table: "entries" }, loadEntries).subscribe(),
-      supabase.channel("sessions-changes").on("postgres_changes", { event: "*", schema: "public", table: "active_sessions" }, loadActiveSessions).subscribe(),
-      supabase.channel("operators-changes").on("postgres_changes", { event: "*", schema: "public", table: "operators" }, loadConfig).subscribe(),
-      supabase.channel("activities-changes").on("postgres_changes", { event: "*", schema: "public", table: "activities" }, loadConfig).subscribe(),
-      supabase.channel("error-types-changes").on("postgres_changes", { event: "*", schema: "public", table: "error_types" }, loadConfig).subscribe(),
-      supabase.channel("admin-config-changes").on("postgres_changes", { event: "*", schema: "public", table: "admin_config" }, loadConfig).subscribe(),
-      supabase.channel("separation-errors-changes").on("postgres_changes", { event: "*", schema: "public", table: "separation_errors" }, loadSeparationErrors).subscribe(),
+      supabase.channel("entries-changes")
+        .on("postgres_changes", { event: "*", schema: "public", table: "entries" }, () => {
+          reloadEntries();
+          reloadShortages();
+        }).subscribe(),
+      supabase.channel("sessions-changes")
+        .on("postgres_changes", { event: "*", schema: "public", table: "active_sessions" }, reloadSessions).subscribe(),
+      supabase.channel("operators-changes")
+        .on("postgres_changes", { event: "*", schema: "public", table: "operators" }, reloadOperators).subscribe(),
+      supabase.channel("activities-changes")
+        .on("postgres_changes", { event: "*", schema: "public", table: "activities" }, reloadActivities).subscribe(),
+      supabase.channel("error-types-changes")
+        .on("postgres_changes", { event: "*", schema: "public", table: "error_types" }, reloadErrorTypes).subscribe(),
+      supabase.channel("vehicles-changes")
+        .on("postgres_changes", { event: "*", schema: "public", table: "vehicles" }, reloadVehicles).subscribe(),
+      supabase.channel("admin-config-changes")
+        .on("postgres_changes", { event: "*", schema: "public", table: "admin_config" }, reloadAdminConfig).subscribe(),
+      supabase.channel("separation-errors-changes")
+        .on("postgres_changes", { event: "*", schema: "public", table: "separation_errors" }, reloadSepErrors).subscribe(),
+      supabase.channel("shortages-changes")
+        .on("postgres_changes", { event: "*", schema: "public", table: "entry_shortages" }, reloadShortages).subscribe(),
     ];
 
     return () => {
       channels.forEach((ch) => supabase.removeChannel(ch));
     };
-  }, [loadConfig, loadEntries, loadActiveSessions, loadSeparationErrors]);
+  }, [loadOperators, loadActivities, loadErrorTypes, loadVehicles, loadAdminConfig, loadEntries, loadActiveSessions, loadSeparationErrors, loadShortages, loadAll]);
+
+  useEffect(() => {
+    function onKeyDown(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setCmdOpen((v) => !v);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   function lockAdmin() {
     setIsAdmin(false);
     setTab("kiosk");
   }
 
+  function handleViewOperator(op) {
+    setProfileOperator(op);
+    setTab("panel");
+  }
+
+  function handleApplyFilter({ type, value }) {
+    setGlobalFilter({ type, value, ts: Date.now() });
+  }
+
+  // Operador "logado" pra agendamentos (usado quando admin está logado)
+  // Quando não há operador específico, o admin age como "Admin"
+  const currentOperator = null;
+  const isReceiving = false;
+
   if (!loaded) {
-    return <div className="loading-screen">Carregando...</div>;
+    return (
+      <div className="loading-screen">
+        <div className="loading-spinner" />
+        <div>Carregando…</div>
+      </div>
+    );
   }
 
   return (
     <div className="app-shell">
+      {missingConfig && (
+        <div className="global-banner">
+          ⚠️ Supabase NÃO está configurado — nenhum dado está sendo salvo. Configure as variáveis de ambiente e refaça o deploy.
+        </div>
+      )}
+
       <Sidebar tab={tab} setTab={setTab} isAdmin={isAdmin} onLock={lockAdmin} />
 
       <main className="main">
-        <div className="topbar-accent" />
-
         {connectionError && (
-          <div className="card" style={{ borderColor: "var(--danger)", marginBottom: 20 }}>
-            <strong style={{ color: "var(--danger)" }}>Sem conexão com o banco de dados.</strong>
-            <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "6px 0 10px 0" }}>
+          <div className="alert-card alert-danger">
+            <strong>Sem conexão com o banco de dados.</strong>
+            <p className="alert-detail">
               Detalhe técnico: <code>{connectionError}</code>
               <br />
               Causas comuns: o script <code>supabase/schema.sql</code> ainda não foi rodado no Supabase,
               ou as variáveis <code>VITE_SUPABASE_URL</code> / <code>VITE_SUPABASE_ANON_KEY</code> estão
               erradas na hospedagem. Exibindo dados padrão por enquanto.
             </p>
-            <button className="btn-small" onClick={() => { loadConfig(); loadEntries(); loadActiveSessions(); loadSeparationErrors(); }}>
-              Tentar novamente
-            </button>
+            <button className="btn btn-secondary btn-sm" onClick={loadAll}>Tentar novamente</button>
+          </div>
+        )}
+
+        {usingDefaults && !connectionError && (
+          <div className="alert-card alert-warning">
+            ⚠️ Exibindo dados padrão — o banco está vazio. Nada será salvo até que o banco tenha operadores/atividades.
           </div>
         )}
 
         {actionError && (
-          <div className="card" style={{ borderColor: "var(--danger)", marginBottom: 20 }}>
-            <span style={{ color: "var(--danger)", fontSize: 13 }}>{actionError}</span>
+          <div className="alert-card alert-danger">
+            {actionError}
           </div>
         )}
 
-        {tab === "kiosk" && (
-          <Kiosk operators={operators} activities={activities} refreshEntries={loadEntries} />
-        )}
+        <div key={tab}>
+          {tab === "kiosk" && (
+            <Kiosk
+              operators={operators}
+              activities={activities}
+              vehicles={vehicles}
+              refreshEntries={loadEntries}
+            />
+          )}
+          {tab === "errors-kiosk" && (
+            <ErrorKiosk operators={operators} errorTypes={errorTypes} />
+          )}
 
-        {tab === "errors-kiosk" && (
-          <ErrorKiosk operators={operators} errorTypes={errorTypes} />
-        )}
+          {/* Agendamentos: livre pra qualquer um ver, mas só admin/recebimento criam */}
+          {tab === "schedules" && (
+            <ScheduleManager
+              currentOperator={currentOperator}
+              isAdmin={isAdmin}
+              isReceiving={isReceiving}
+            />
+          )}
 
-        {(tab === "panel" || tab === "team" || tab === "manual") && !isAdmin && (
-          <AdminGate correctPin={adminPin} onUnlock={() => setIsAdmin(true)} />
-        )}
-
-        {tab === "panel" && isAdmin && (
-          <Panel
-            entries={entries}
-            activities={activities}
-            operators={operators}
-            activeSessions={activeSessions}
-            separationErrors={separationErrors}
-            onResetEntries={resetEntries}
-            onResetSeparationErrors={resetSeparationErrors}
-          />
-        )}
-
-        {tab === "manual" && isAdmin && (
-          <ManualEntry operators={operators} activities={activities} refreshEntries={loadEntries} />
-        )}
-
-        {tab === "team" && isAdmin && (
-          <TeamManager
-            operators={operators}
-            activities={activities}
-            errorTypes={errorTypes}
-            adminPin={adminPin}
-            refreshConfig={loadConfig}
-          />
-        )}
+          {(tab === "executive" || tab === "panel" || tab === "team" || tab === "manual" || tab === "audit") && !isAdmin && (
+            <AdminGate correctPin={adminPin} onUnlock={() => setIsAdmin(true)} />
+          )}
+          {tab === "executive" && isAdmin && (
+            <ExecutiveView
+              entries={entries}
+              activities={activities}
+              operators={operators}
+              activeSessions={activeSessions}
+              separationErrors={separationErrors}
+              shortages={shortages}
+              onViewOperator={handleViewOperator}
+            />
+          )}
+          {tab === "panel" && isAdmin && (
+            <Panel
+              entries={entries}
+              activities={activities}
+              operators={operators}
+              activeSessions={activeSessions}
+              separationErrors={separationErrors}
+              shortages={shortages}
+              alertThreshold={alertThreshold}
+              onResetEntries={resetEntries}
+              onResetSeparationErrors={resetSeparationErrors}
+              onResetShortages={resetShortages}
+              externalProfileOperator={profileOperator}
+              onExternalProfileHandled={() => setProfileOperator(null)}
+              externalFilter={globalFilter}
+              onExternalFilterHandled={() => setGlobalFilter(null)}
+            />
+          )}
+          {tab === "manual" && isAdmin && (
+            <ManualEntry operators={operators} activities={activities} refreshEntries={loadEntries} />
+          )}
+          {tab === "team" && isAdmin && (
+            <TeamManager
+              operators={operators}
+              activities={activities}
+              errorTypes={errorTypes}
+              vehicles={vehicles}
+              adminPin={adminPin}
+              alertThreshold={alertThreshold}
+              refreshConfig={loadAll}
+            />
+          )}
+          {tab === "audit" && isAdmin && (
+            <AuditLog />
+          )}
+        </div>
 
         <div className="footer-note">
           <img src={logo} alt="" width={14} height={14} style={{ verticalAlign: "middle", marginRight: 6, borderRadius: "50%" }} />
           Hidráulica Tropeiro · Aponta CD
         </div>
       </main>
+
+      <CommandPalette
+        open={cmdOpen}
+        onClose={() => setCmdOpen(false)}
+        operators={operators}
+        entries={entries}
+        activities={activities}
+        onNavigate={setTab}
+        onViewOperator={handleViewOperator}
+        onApplyFilter={handleApplyFilter}
+      />
     </div>
   );
 }

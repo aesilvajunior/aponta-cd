@@ -12,7 +12,12 @@ import {
   addErrorType as apiAddErrorType,
   renameErrorType,
   deleteErrorType as apiDeleteErrorType,
+  addVehicle as apiAddVehicle,
+  updateVehicle,
+  deleteVehicle as apiDeleteVehicle,
   updateAdminPin,
+  updateAlertThreshold,
+  logAudit,
 } from "../lib/api";
 
 function minutesToSeconds(minStr) {
@@ -25,7 +30,15 @@ function secondsToMinutesLabel(sec) {
   return String(Math.round(sec / 60));
 }
 
-export default function TeamManager({ operators, activities, errorTypes, adminPin, refreshConfig }) {
+export default function TeamManager({
+  operators,
+  activities,
+  errorTypes,
+  vehicles = [],
+  adminPin,
+  alertThreshold = 1800,
+  refreshConfig,
+}) {
   const [newOpName, setNewOpName] = useState("");
   const [newOpRole, setNewOpRole] = useState("");
   const [newOpCode, setNewOpCode] = useState("");
@@ -33,42 +46,51 @@ export default function TeamManager({ operators, activities, errorTypes, adminPi
   const [newActivityTarget, setNewActivityTarget] = useState("");
   const [newPin, setNewPin] = useState("");
   const [formError, setFormError] = useState("");
-  // Trava a tela inteira enquanto uma operação está em andamento. Isso evita
-  // o bug de "excluir e adicionar de novo dá erro": sem essa trava, era
-  // possível clicar em Adicionar antes da lista terminar de atualizar depois
-  // de uma exclusão, e a validação de duplicado comparava com dados velhos.
   const [busy, setBusy] = useState(false);
 
   const [editingCode, setEditingCode] = useState(null);
   const [editValues, setEditValues] = useState({ code: "", name: "", role: "" });
 
   const [editingActivity, setEditingActivity] = useState(null);
-  const [editActivityValues, setEditActivityValues] = useState({ name: "", target: "", requiresOrderInfo: false, extraFieldType: "pedido" });
+  const [editActivityValues, setEditActivityValues] = useState({
+    name: "",
+    target: "",
+    requiresOrderInfo: false,
+    extraFieldType: "pedido",
+    asksShortage: null,
+  });
 
   const [newErrorType, setNewErrorType] = useState("");
   const [editingErrorType, setEditingErrorType] = useState(null);
   const [editErrorTypeValue, setEditErrorTypeValue] = useState("");
 
-  // Se o operador/atividade em edição for removido por outra aba (agora
-  // sincronizamos em tempo real), sai do modo de edição sozinho em vez de
-  // deixar um formulário "fantasma" apontando para algo que não existe mais.
+  const [newVehiclePlate, setNewVehiclePlate] = useState("");
+  const [newVehicleModel, setNewVehicleModel] = useState("");
+  const [editingVehiclePlate, setEditingVehiclePlate] = useState(null);
+  const [editVehicleValues, setEditVehicleValues] = useState({ plate: "", model: "" });
+
+  const [thresholdInput, setThresholdInput] = useState(String(Math.round(alertThreshold / 60)));
+  const [savingThreshold, setSavingThreshold] = useState(false);
+
   useEffect(() => {
-    if (editingCode && !operators.some((o) => o.code === editingCode)) {
-      setEditingCode(null);
-    }
+    setThresholdInput(String(Math.round(alertThreshold / 60)));
+  }, [alertThreshold]);
+
+  useEffect(() => {
+    if (editingCode && !operators.some((o) => o.code === editingCode)) setEditingCode(null);
   }, [operators, editingCode]);
 
   useEffect(() => {
-    if (editingActivity && !activities.some((a) => a.name === editingActivity)) {
-      setEditingActivity(null);
-    }
+    if (editingActivity && !activities.some((a) => a.name === editingActivity)) setEditingActivity(null);
   }, [activities, editingActivity]);
 
   useEffect(() => {
-    if (editingErrorType && !errorTypes.some((t) => t.name === editingErrorType)) {
-      setEditingErrorType(null);
-    }
+    if (editingErrorType && !errorTypes.some((t) => t.name === editingErrorType)) setEditingErrorType(null);
   }, [errorTypes, editingErrorType]);
+
+  useEffect(() => {
+    if (editingVehiclePlate && !vehicles.some((v) => v.plate === editingVehiclePlate)) setEditingVehiclePlate(null);
+  }, [vehicles, editingVehiclePlate]);
 
   function nextFreeCode() {
     const maxCode = operators.reduce((m, o) => {
@@ -78,9 +100,21 @@ export default function TeamManager({ operators, activities, errorTypes, adminPi
     return String(maxCode + 1);
   }
 
-  // Executa uma ação de escrita, mostrando erro se falhar e sempre
-  // atualizando a lista (via refreshConfig) só depois da ação confirmar,
-  // nunca antes — é isso que fecha a condição de corrida.
+  async function audit({ action, entity, entityId, details, beforeData, afterData }) {
+    try {
+      await logAudit({
+        actorCode: "admin",
+        actorName: "Admin (PIN)",
+        action,
+        entity,
+        entityId,
+        details,
+        beforeData,
+        afterData,
+      });
+    } catch {}
+  }
+
   async function runAction(action, onSuccess) {
     setFormError("");
     setBusy(true);
@@ -98,6 +132,38 @@ export default function TeamManager({ operators, activities, errorTypes, adminPi
     }
   }
 
+  async function saveThreshold() {
+    const min = parseInt(thresholdInput, 10);
+    if (Number.isNaN(min) || min < 1) {
+      setFormError("O tempo mínimo precisa ser pelo menos 1 minuto.");
+      return;
+    }
+    if (min > 480) {
+      setFormError("O tempo mínimo não pode passar de 480 minutos (8 horas).");
+      return;
+    }
+    setSavingThreshold(true);
+    const before = alertThreshold;
+    const after = min * 60;
+    const { error } = await updateAlertThreshold(after);
+    setSavingThreshold(false);
+    if (error) {
+      setFormError(error.message || "Erro ao salvar o tempo mínimo.");
+      return;
+    }
+    await audit({
+      action: "editar",
+      entity: "admin_config",
+      entityId: "alert_threshold",
+      details: `Tempo mínimo para alerta`,
+      beforeData: { valor: `${Math.round(before / 60)} min` },
+      afterData: { valor: `${min} min` },
+    });
+    await refreshConfig();
+  }
+
+  // ---------- Operadores ----------
+
   async function addOperator() {
     const name = newOpName.trim();
     if (!name) return setFormError("Digite o nome do operador.");
@@ -105,8 +171,21 @@ export default function TeamManager({ operators, activities, errorTypes, adminPi
     if (!/^\d{1,4}$/.test(code)) return setFormError("O código deve conter só números (até 4 dígitos).");
     if (operators.some((o) => o.code === code)) return setFormError(`Já existe um operador com o código ${code}.`);
     const role = newOpRole.trim() || "-";
+
     await runAction(
-      () => apiAddOperator({ code, name, role }),
+      async () => {
+        const res = await apiAddOperator({ code, name, role });
+        if (!res.error) {
+          await audit({
+            action: "criar",
+            entity: "operator",
+            entityId: code,
+            details: `Operador "${name}" criado`,
+            afterData: { nome: name, função: role, código: code },
+          });
+        }
+        return res;
+      },
       () => {
         setNewOpName("");
         setNewOpRole("");
@@ -117,7 +196,20 @@ export default function TeamManager({ operators, activities, errorTypes, adminPi
 
   async function removeOperator(code) {
     if (!window.confirm("Remover este operador? Os registros antigos dele continuam no histórico.")) return;
-    await runAction(() => deleteOperator(code));
+    const op = operators.find((o) => o.code === code);
+    await runAction(async () => {
+      const res = await deleteOperator(code);
+      if (!res.error && op) {
+        await audit({
+          action: "remover",
+          entity: "operator",
+          entityId: code,
+          details: `Operador "${op.name}" removido`,
+          beforeData: { nome: op.name, função: op.role, código: op.code },
+        });
+      }
+      return res;
+    });
   }
 
   function startEdit(op) {
@@ -126,9 +218,7 @@ export default function TeamManager({ operators, activities, errorTypes, adminPi
     setFormError("");
   }
 
-  function cancelEdit() {
-    setEditingCode(null);
-  }
+  function cancelEdit() { setEditingCode(null); }
 
   async function saveEdit(originalCode) {
     const code = editValues.code.trim();
@@ -139,12 +229,31 @@ export default function TeamManager({ operators, activities, errorTypes, adminPi
       return setFormError(`Já existe um operador com o código ${code}.`);
     }
     const fields = { name, role: editValues.role.trim() || "-" };
-    const action =
-      code !== originalCode
-        ? () => renameOperatorCode(originalCode, code, fields)
-        : () => updateOperator(originalCode, fields);
-    await runAction(action, () => setEditingCode(null));
+    const original = operators.find((o) => o.code === originalCode);
+
+    const action = code !== originalCode
+      ? () => renameOperatorCode(originalCode, code, fields)
+      : () => updateOperator(originalCode, fields);
+
+    await runAction(async () => {
+      const res = await action();
+      if (!res.error && original) {
+        await audit({
+          action: "editar",
+          entity: "operator",
+          entityId: code,
+          details: code !== originalCode
+            ? `Operador renomeado de #${originalCode} para #${code}`
+            : `Operador "${name}" editado`,
+          beforeData: { nome: original.name, função: original.role, código: original.code },
+          afterData: { nome: name, função: fields.role, código: code },
+        });
+      }
+      return res;
+    }, () => setEditingCode(null));
   }
+
+  // ---------- Atividades ----------
 
   async function addActivity() {
     const name = newActivity.trim();
@@ -153,15 +262,37 @@ export default function TeamManager({ operators, activities, errorTypes, adminPi
       return setFormError(`A atividade "${name}" já existe.`);
     }
     const target = minutesToSeconds(newActivityTarget);
-    await runAction(() => apiAddActivity(name, target), () => {
-      setNewActivity("");
-      setNewActivityTarget("");
-    });
+    await runAction(async () => {
+      const res = await apiAddActivity(name, target, null);
+      if (!res.error) {
+        await audit({
+          action: "criar",
+          entity: "activity",
+          entityId: name,
+          details: `Atividade "${name}" criada`,
+          afterData: { nome: name, meta: target ? `${Math.round(target / 60)} min` : "—" },
+        });
+      }
+      return res;
+    }, () => { setNewActivity(""); setNewActivityTarget(""); });
   }
 
   async function removeActivity(name) {
     if (!window.confirm(`Remover a atividade "${name}" da lista deste mês?`)) return;
-    await runAction(() => apiDeleteActivity(name));
+    const act = activities.find((a) => a.name === name);
+    await runAction(async () => {
+      const res = await apiDeleteActivity(name);
+      if (!res.error && act) {
+        await audit({
+          action: "remover",
+          entity: "activity",
+          entityId: name,
+          details: `Atividade "${name}" removida`,
+          beforeData: { nome: act.name, meta: act.target_seconds ? `${Math.round(act.target_seconds / 60)} min` : "—" },
+        });
+      }
+      return res;
+    });
   }
 
   function startEditActivity(act) {
@@ -171,47 +302,82 @@ export default function TeamManager({ operators, activities, errorTypes, adminPi
       target: secondsToMinutesLabel(act.target_seconds),
       requiresOrderInfo: !!act.requires_order_info,
       extraFieldType: act.extra_field_type || "pedido",
+      asksShortage: act.asks_shortage ?? null,
     });
     setFormError("");
   }
 
-  function cancelEditActivity() {
-    setEditingActivity(null);
-  }
+  function cancelEditActivity() { setEditingActivity(null); }
 
   async function saveEditActivity(original) {
     const name = editActivityValues.name.trim();
     if (!name) return setFormError("O nome da atividade não pode ficar em branco.");
-    if (
-      name.toLowerCase() !== original.name.toLowerCase() &&
-      activities.some((a) => a.name.toLowerCase() === name.toLowerCase())
-    ) {
+    if (name.toLowerCase() !== original.name.toLowerCase() && activities.some((a) => a.name.toLowerCase() === name.toLowerCase())) {
       return setFormError(`Já existe uma atividade chamada "${name}".`);
     }
     const target = minutesToSeconds(editActivityValues.target);
     const requiresOrderInfo = editActivityValues.requiresOrderInfo;
     const extraFieldType = editActivityValues.extraFieldType;
+    const asksShortage = editActivityValues.asksShortage;
+
     const nameChanged = name !== original.name;
     const targetChanged = target !== (original.target_seconds ?? null);
     const requiresChanged = requiresOrderInfo !== !!original.requires_order_info;
     const extraFieldTypeChanged = extraFieldType !== (original.extra_field_type || "pedido");
-    if (!nameChanged && !targetChanged && !requiresChanged && !extraFieldTypeChanged) {
+    const asksShortageChanged = asksShortage !== (original.asks_shortage ?? null);
+
+    if (!nameChanged && !targetChanged && !requiresChanged && !extraFieldTypeChanged && !asksShortageChanged) {
       setEditingActivity(null);
       return;
     }
-    const action = nameChanged
-      ? () => renameActivity(original.name, name, {
+
+    const action = async () => {
+      if (nameChanged) {
+        const upd = await updateActivity(original.name, {
           target_seconds: target,
           requires_order_info: requiresOrderInfo,
           extra_field_type: extraFieldType,
-          sort_order: original.sort_order,
-        })
-      : () => updateActivity(original.name, {
-          target_seconds: target,
-          requires_order_info: requiresOrderInfo,
-          extra_field_type: extraFieldType,
+          asks_shortage: asksShortage,
         });
-    await runAction(action, () => setEditingActivity(null));
+        if (upd.error) return upd;
+        return renameActivity(original.name, name);
+      }
+      return updateActivity(original.name, {
+        target_seconds: target,
+        requires_order_info: requiresOrderInfo,
+        extra_field_type: extraFieldType,
+        asks_shortage: asksShortage,
+      });
+    };
+
+    await runAction(async () => {
+      const res = await action();
+      if (!res.error) {
+        await audit({
+          action: "editar",
+          entity: "activity",
+          entityId: name,
+          details: nameChanged
+            ? `Atividade renomeada de "${original.name}" para "${name}"`
+            : `Atividade "${name}" editada`,
+          beforeData: {
+            nome: original.name,
+            meta: original.target_seconds ? `${Math.round(original.target_seconds / 60)} min` : "—",
+            pede_info: original.requires_order_info ? "Sim" : "Não",
+            tipo_info: original.extra_field_type || "pedido",
+            pergunta_falta: original.asks_shortage === true ? "Sempre" : original.asks_shortage === false ? "Nunca" : "Automático",
+          },
+          afterData: {
+            nome: name,
+            meta: target ? `${Math.round(target / 60)} min` : "—",
+            pede_info: requiresOrderInfo ? "Sim" : "Não",
+            tipo_info: extraFieldType,
+            pergunta_falta: asksShortage === true ? "Sempre" : asksShortage === false ? "Nunca" : "Automático",
+          },
+        });
+      }
+      return res;
+    }, () => setEditingActivity(null));
   }
 
   async function moveActivity(index, direction) {
@@ -221,18 +387,44 @@ export default function TeamManager({ operators, activities, errorTypes, adminPi
     await runAction(() => swapActivityOrder(current.name, current.sort_order, target.name, target.sort_order));
   }
 
+  // ---------- Tipos de erro ----------
+
   async function addErrorType() {
     const name = newErrorType.trim();
     if (!name) return;
     if (errorTypes.some((t) => t.name.toLowerCase() === name.toLowerCase())) {
       return setFormError(`O tipo de erro "${name}" já existe.`);
     }
-    await runAction(() => apiAddErrorType(name), () => setNewErrorType(""));
+    await runAction(async () => {
+      const res = await apiAddErrorType(name);
+      if (!res.error) {
+        await audit({
+          action: "criar",
+          entity: "error_type",
+          entityId: name,
+          details: `Tipo de erro "${name}" criado`,
+          afterData: { nome: name },
+        });
+      }
+      return res;
+    }, () => setNewErrorType(""));
   }
 
   async function removeErrorType(name) {
     if (!window.confirm(`Remover o tipo de erro "${name}"?`)) return;
-    await runAction(() => apiDeleteErrorType(name));
+    await runAction(async () => {
+      const res = await apiDeleteErrorType(name);
+      if (!res.error) {
+        await audit({
+          action: "remover",
+          entity: "error_type",
+          entityId: name,
+          details: `Tipo de erro "${name}" removido`,
+          beforeData: { nome: name },
+        });
+      }
+      return res;
+    });
   }
 
   function startEditErrorType(t) {
@@ -241,39 +433,137 @@ export default function TeamManager({ operators, activities, errorTypes, adminPi
     setFormError("");
   }
 
-  function cancelEditErrorType() {
-    setEditingErrorType(null);
-  }
+  function cancelEditErrorType() { setEditingErrorType(null); }
 
   async function saveEditErrorType(originalName) {
     const name = editErrorTypeValue.trim();
     if (!name) return setFormError("O nome do tipo de erro não pode ficar em branco.");
-    if (
-      name.toLowerCase() !== originalName.toLowerCase() &&
-      errorTypes.some((t) => t.name.toLowerCase() === name.toLowerCase())
-    ) {
+    if (name.toLowerCase() !== originalName.toLowerCase() && errorTypes.some((t) => t.name.toLowerCase() === name.toLowerCase())) {
       return setFormError(`Já existe um tipo de erro chamado "${name}".`);
     }
-    if (name === originalName) {
-      setEditingErrorType(null);
+    if (name === originalName) { setEditingErrorType(null); return; }
+    await runAction(async () => {
+      const res = await renameErrorType(originalName, name);
+      if (!res.error) {
+        await audit({
+          action: "editar",
+          entity: "error_type",
+          entityId: name,
+          details: `Tipo de erro renomeado de "${originalName}" para "${name}"`,
+          beforeData: { nome: originalName },
+          afterData: { nome: name },
+        });
+      }
+      return res;
+    }, () => setEditingErrorType(null));
+  }
+
+  // ---------- Veículos ----------
+
+  async function addVehicle() {
+    const plate = newVehiclePlate.trim().toUpperCase();
+    const model = newVehicleModel.trim();
+    if (!plate) return setFormError("Digite a placa do veículo.");
+    if (!model) return setFormError("Digite o modelo do veículo.");
+    if (vehicles.some((v) => v.plate.toUpperCase() === plate)) {
+      return setFormError(`Já existe um veículo com a placa ${plate}.`);
+    }
+    await runAction(async () => {
+      const res = await apiAddVehicle({ plate, model });
+      if (!res.error) {
+        await audit({
+          action: "criar",
+          entity: "vehicle",
+          entityId: plate,
+          details: `Veículo ${plate} (${model}) adicionado`,
+          afterData: { placa: plate, modelo: model },
+        });
+      }
+      return res;
+    }, () => { setNewVehiclePlate(""); setNewVehicleModel(""); });
+  }
+
+  async function removeVehicle(plate) {
+    if (!window.confirm(`Remover o veículo ${plate}?`)) return;
+    const v = vehicles.find((x) => x.plate === plate);
+    await runAction(async () => {
+      const res = await apiDeleteVehicle(plate);
+      if (!res.error && v) {
+        await audit({
+          action: "remover",
+          entity: "vehicle",
+          entityId: plate,
+          details: `Veículo ${plate} (${v.model}) removido`,
+          beforeData: { placa: plate, modelo: v.model },
+        });
+      }
+      return res;
+    });
+  }
+
+  function startEditVehicle(v) {
+    setEditingVehiclePlate(v.plate);
+    setEditVehicleValues({ plate: v.plate, model: v.model });
+    setFormError("");
+  }
+
+  function cancelEditVehicle() { setEditingVehiclePlate(null); }
+
+  async function saveEditVehicle(originalPlate) {
+    const plate = editVehicleValues.plate.trim().toUpperCase();
+    const model = editVehicleValues.model.trim();
+    if (!plate) return setFormError("A placa não pode ficar em branco.");
+    if (!model) return setFormError("O modelo não pode ficar em branco.");
+    if (plate !== originalPlate && vehicles.some((v) => v.plate.toUpperCase() === plate)) {
+      return setFormError(`Já existe um veículo com a placa ${plate}.`);
+    }
+    const original = vehicles.find((v) => v.plate === originalPlate);
+    if (plate === originalPlate && model === original?.model) {
+      setEditingVehiclePlate(null);
       return;
     }
-    await runAction(() => renameErrorType(originalName, name), () => setEditingErrorType(null));
+    await runAction(async () => {
+      const res = await updateVehicle(originalPlate, { plate, model });
+      if (!res.error && original) {
+        await audit({
+          action: "editar",
+          entity: "vehicle",
+          entityId: plate,
+          details: `Veículo ${originalPlate} editado`,
+          beforeData: { placa: original.plate, modelo: original.model },
+          afterData: { placa: plate, modelo: model },
+        });
+      }
+      return res;
+    }, () => setEditingVehiclePlate(null));
   }
+
+  // ---------- PIN ----------
 
   async function changePin() {
     const pin = newPin.trim();
     if (pin.length < 4) return setFormError("O PIN precisa ter pelo menos 4 dígitos.");
-    await runAction(() => updateAdminPin(pin), () => setNewPin(""));
+    await runAction(async () => {
+      const res = await updateAdminPin(pin);
+      if (!res.error) {
+        await audit({
+          action: "editar",
+          entity: "admin_config",
+          entityId: "pin",
+          details: "PIN de administrador alterado",
+          beforeData: { valor: "****" },
+          afterData: { valor: "****" },
+        });
+      }
+      return res;
+    }, () => setNewPin(""));
   }
 
   return (
     <div>
       <h1 className="page-title">Equipe e atividades</h1>
       <p className="page-sub">
-        As atividades mudam mês a mês pelo rodízio — atualize a lista aqui sempre que trocar. A meta de
-        tempo é opcional e aparece no Painel comparando com o desempenho real. Registros antigos ficam
-        preservados no histórico com o nome da atividade da época.
+        As atividades mudam mês a mês pelo rodízio — atualize a lista aqui sempre que trocar.
       </p>
 
       {formError && (
@@ -282,25 +572,51 @@ export default function TeamManager({ operators, activities, errorTypes, adminPi
         </div>
       )}
 
-      <div className="card" style={{ maxWidth: 340, marginBottom: 20 }}>
-        <div className="card-title">PIN de administrador</div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <input
-            className="field"
-            style={{ flex: 1 }}
-            placeholder="Novo PIN"
-            value={newPin}
-            onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ""))}
-            disabled={busy}
-          />
-          <button className="btn-small" onClick={changePin} disabled={busy}>
-            {busy ? "..." : "Alterar"}
-          </button>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20, maxWidth: 720 }}>
+        <div className="card">
+          <div className="card-title">PIN de administrador</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input
+              className="field"
+              style={{ flex: 1 }}
+              placeholder="Novo PIN"
+              value={newPin}
+              onChange={(e) => setNewPin(e.target.value.replace(/\D/g, ""))}
+              disabled={busy}
+            />
+            <button className="btn-small" onClick={changePin} disabled={busy}>
+              {busy ? "..." : "Alterar"}
+            </button>
+          </div>
+          <p style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: 8, marginBottom: 0 }}>PIN atual: {adminPin}</p>
         </div>
-        <p style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: 8, marginBottom: 0 }}>PIN atual: {adminPin}</p>
+
+        <div className="card">
+          <div className="card-title">⏱ Tempo mínimo para alerta</div>
+          <p style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: -8, marginBottom: 10 }}>
+            Atividades com meta própria usam a meta. As outras usam esse tempo.
+          </p>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input
+              className="field"
+              style={{ width: 90, fontFamily: "var(--font-mono)", textAlign: "center" }}
+              type="number"
+              min="1"
+              max="480"
+              value={thresholdInput}
+              onChange={(e) => setThresholdInput(e.target.value.replace(/\D/g, ""))}
+              disabled={savingThreshold}
+            />
+            <span style={{ fontSize: 13, color: "var(--text-muted)" }}>minutos</span>
+            <button className="btn-small" onClick={saveThreshold} disabled={savingThreshold} style={{ marginLeft: "auto" }}>
+              {savingThreshold ? "Salvando..." : "Salvar"}
+            </button>
+          </div>
+        </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr", gap: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr", gap: 20, marginBottom: 20 }}>
+        {/* OPERADORES */}
         <div className="card">
           <div className="card-title">Operadores</div>
           <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
@@ -345,6 +661,7 @@ export default function TeamManager({ operators, activities, errorTypes, adminPi
           </table>
         </div>
 
+        {/* ATIVIDADES */}
         <div className="card">
           <div className="card-title">Atividades do mês</div>
           <p style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: -8, marginBottom: 12 }}>
@@ -379,15 +696,36 @@ export default function TeamManager({ operators, activities, errorTypes, adminPi
                           {editActivityValues.requiresOrderInfo && (
                             <select
                               className="field"
-                              style={{ width: "100%", fontSize: 11.5, padding: "4px 6px" }}
+                              style={{ width: "100%", fontSize: 11.5, padding: "4px 6px", marginBottom: 6 }}
                               value={editActivityValues.extraFieldType}
                               onChange={(e) => setEditActivityValues((v) => ({ ...v, extraFieldType: e.target.value }))}
                               disabled={busy}
                             >
-                              <option value="pedido">Pedido + Cliente/Transferência</option>
-                              <option value="veiculo">Veículo + Placa</option>
+                              <option value="pedido">Pedido / Encaixe / Transferência</option>
+                              <option value="veiculo">Veículo + Placa (frota)</option>
+                              <option value="fornecedor">Fornecedor + Nota Fiscal</option>
                             </select>
                           )}
+                          <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4, fontWeight: 600 }}>
+                            Pergunta sobre falta ao finalizar:
+                          </div>
+                          <select
+                            className="field"
+                            style={{ width: "100%", fontSize: 11.5, padding: "4px 6px" }}
+                            value={editActivityValues.asksShortage === null ? "auto" : editActivityValues.asksShortage ? "yes" : "no"}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setEditActivityValues((prev) => ({
+                                ...prev,
+                                asksShortage: v === "auto" ? null : v === "yes",
+                              }));
+                            }}
+                            disabled={busy}
+                          >
+                            <option value="auto">Automático (se pediu pedido/cliente)</option>
+                            <option value="yes">Sempre pergunta</option>
+                            <option value="no">Nunca pergunta</option>
+                          </select>
                         </td>
                         <td><input className="field" style={{ width: 56, padding: "4px 6px" }} placeholder="min" value={editActivityValues.target} onChange={(e) => setEditActivityValues((v) => ({ ...v, target: e.target.value.replace(/\D/g, "") }))} disabled={busy} /></td>
                         <td style={{ whiteSpace: "nowrap" }}>
@@ -405,7 +743,17 @@ export default function TeamManager({ operators, activities, errorTypes, adminPi
                           {a.name}
                           {a.requires_order_info && (
                             <span style={{ marginLeft: 6, fontSize: 10.5, color: "var(--accent)" }}>
-                              {a.extra_field_type === "veiculo" ? "🚚 pede veículo/placa" : "📦 pede pedido/cliente"}
+                              {a.extra_field_type === "veiculo" ? "🚚" : a.extra_field_type === "fornecedor" ? "📥" : "📦"}
+                            </span>
+                          )}
+                          {a.asks_shortage === true && (
+                            <span style={{ marginLeft: 6, fontSize: 10.5, color: "var(--danger)" }} title="Sempre pergunta sobre falta">
+                              ⚠
+                            </span>
+                          )}
+                          {a.asks_shortage === false && (
+                            <span style={{ marginLeft: 6, fontSize: 10.5, color: "var(--text-faint)" }} title="Nunca pergunta sobre falta">
+                              🚫
                             </span>
                           )}
                         </td>
@@ -424,6 +772,7 @@ export default function TeamManager({ operators, activities, errorTypes, adminPi
           </table>
         </div>
 
+        {/* TIPOS DE ERRO */}
         <div className="card">
           <div className="card-title">Tipos de erro</div>
           <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
@@ -461,6 +810,66 @@ export default function TeamManager({ operators, activities, errorTypes, adminPi
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* VEÍCULOS */}
+      <div className="card">
+        <div className="card-title">Veículos (frota)</div>
+        <p style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: -8, marginBottom: 12 }}>
+          Cadastre aqui os caminhões/veículos. Eles aparecem como botões clicáveis no quiosque quando
+          a atividade é do tipo "Veículo + Placa".
+        </p>
+        <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+          <input
+            className="field"
+            style={{ width: 140, fontFamily: "var(--font-mono)", textTransform: "uppercase" }}
+            placeholder="Placa (ex: ABC-1234)"
+            value={newVehiclePlate}
+            onChange={(e) => setNewVehiclePlate(e.target.value.toUpperCase())}
+            disabled={busy}
+          />
+          <input
+            className="field"
+            style={{ flex: 1, minWidth: 150 }}
+            placeholder="Modelo (ex: Volkswagen)"
+            value={newVehicleModel}
+            onChange={(e) => setNewVehicleModel(e.target.value)}
+            disabled={busy}
+          />
+          <button className="btn-small" onClick={addVehicle} disabled={busy}>Adicionar</button>
+        </div>
+        <table className="data-table">
+          <thead><tr><th>Placa</th><th>Modelo</th><th></th></tr></thead>
+          <tbody>
+            {vehicles.map((v) => {
+              const isEditing = editingVehiclePlate === v.plate;
+              return (
+                <tr key={v.plate}>
+                  {isEditing ? (
+                    <>
+                      <td><input className="field" style={{ width: 130, padding: "4px 6px", fontFamily: "var(--font-mono)", textTransform: "uppercase" }} value={editVehicleValues.plate} onChange={(e) => setEditVehicleValues((s) => ({ ...s, plate: e.target.value.toUpperCase() }))} disabled={busy} /></td>
+                      <td><input className="field" style={{ width: "100%", padding: "4px 6px" }} value={editVehicleValues.model} onChange={(e) => setEditVehicleValues((s) => ({ ...s, model: e.target.value }))} disabled={busy} /></td>
+                      <td style={{ whiteSpace: "nowrap" }}>
+                        <button className="btn-small" style={{ padding: "4px 8px", marginRight: 4 }} onClick={() => saveEditVehicle(v.plate)} disabled={busy}>Salvar</button>
+                        <button className="btn-small" style={{ padding: "4px 8px" }} onClick={cancelEditVehicle} disabled={busy}>Cancelar</button>
+                      </td>
+                    </>
+                  ) : (
+                    <>
+                      <td style={{ fontFamily: "var(--font-mono)" }}>{v.plate}</td>
+                      <td>{v.model}</td>
+                      <td style={{ whiteSpace: "nowrap" }}>
+                        <button className="btn-small" style={{ padding: "4px 8px", marginRight: 4 }} onClick={() => startEditVehicle(v)} disabled={busy}>Editar</button>
+                        <button className="btn-small" style={{ padding: "4px 8px" }} onClick={() => removeVehicle(v.plate)} disabled={busy}>Remover</button>
+                      </td>
+                    </>
+                  )}
+                </tr>
+              );
+            })}
+            {vehicles.length === 0 && <tr><td colSpan={3}>Nenhum veículo cadastrado.</td></tr>}
+          </tbody>
+        </table>
       </div>
     </div>
   );

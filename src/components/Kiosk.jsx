@@ -1,15 +1,25 @@
 import React, { useEffect, useRef, useState } from "react";
-import { fetchActiveSessionFor, startSession, finishSession } from "../lib/api";
+import { fetchActiveSessionFor, startSession, finishSession, saveShortages } from "../lib/api";
 import { fmtDuration, fmtClock, fmtDate, shiftFor } from "../lib/format";
 import { getStationName, promptForStationName } from "../lib/station";
+import { playSuccess, playError, playKey } from "../utils/sound";
 import logo from "../assets/logo.png";
 
 const CODE_LENGTH = 3;
 const AUTO_RETURN_MS = 2200;
-const IDLE_TIMEOUT_MS = 20000;
+const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 const TRANSFER_TYPES = ["AP", "ZN"];
 
-export default function Kiosk({ operators, activities, refreshEntries }) {
+function shouldAskShortage(session, activities) {
+  if (!session) return false;
+  const config = activities.find((a) => a.name === session.activity);
+  if (config && config.asks_shortage === true) return true;
+  if (config && config.asks_shortage === false) return false;
+  const askedForOrder = !!(session.order_number || session.customer_name || session.transfer_type);
+  return askedForOrder;
+}
+
+export default function Kiosk({ operators, activities, vehicles = [], refreshEntries }) {
   const [codeInput, setCodeInput] = useState("");
   const [loggedOperator, setLoggedOperator] = useState(null);
   const [session, setSession] = useState(null);
@@ -22,30 +32,30 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
   const [confirmation, setConfirmation] = useState(null);
   const [noteInput, setNoteInput] = useState("");
 
-  // Sub-formulário de informação extra ao iniciar, exigido só pelas
-  // atividades marcadas com requires_order_info — o formato do formulário
-  // (pedido/cliente/transferência OU veículo/placa) depende do
-  // extra_field_type configurado pelo admin para aquela atividade.
   const [orderFormActivity, setOrderFormActivity] = useState(null);
   const [orderFieldType, setOrderFieldType] = useState("pedido");
-  const [orderBranch, setOrderBranch] = useState(null); // null | "pedido" | "transferencia"
+  const [orderBranch, setOrderBranch] = useState(null);
   const [orderNumber, setOrderNumber] = useState("");
   const [customerFirstName, setCustomerFirstName] = useState("");
   const [customerLastName, setCustomerLastName] = useState("");
   const [transferType, setTransferType] = useState("");
-  const [vehicleInput, setVehicleInput] = useState("");
-  const [plateInput, setPlateInput] = useState("");
+  const [transferUrgent, setTransferUrgent] = useState(false);
+  const [transferNumber, setTransferNumber] = useState("");
+  const [supplierInput, setSupplierInput] = useState("");
+  const [invoiceInput, setInvoiceInput] = useState("");
   const [orderError, setOrderError] = useState("");
   const [stationName, setStationNameState] = useState(getStationName());
 
-  function editStation() {
-    setStationNameState(promptForStationName());
-  }
+  const [showFinishModal, setShowFinishModal] = useState(false);
+  const [finishHadShortage, setFinishHadShortage] = useState(null);
+  const [shortages, setShortages] = useState([]);
+  const [finishNote, setFinishNote] = useState("");
 
   const codeInputRef = useRef(codeInput);
   codeInputRef.current = codeInput;
   const lastInteractionRef = useRef(Date.now());
   const autoReturnTimeoutRef = useRef(null);
+  const finishModalOpenRef = useRef(false);
 
   function bump() {
     lastInteractionRef.current = Date.now();
@@ -56,18 +66,21 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
     return () => clearInterval(iv);
   }, []);
 
-  // Devolve o teclado sozinho se alguém ficar logado sem mexer no quiosque.
   useEffect(() => {
     if (!loggedOperator) return;
     const iv = setInterval(() => {
+      if (finishModalOpenRef.current) return;
       if (Date.now() - lastInteractionRef.current > IDLE_TIMEOUT_MS) reset();
     }, 1000);
     return () => clearInterval(iv);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loggedOperator]);
 
-  // Limpa qualquer timer pendente ao desmontar (evita setState depois de
-  // trocar de aba no meio da contagem de "devolvendo o teclado").
+  useEffect(() => {
+    finishModalOpenRef.current = showFinishModal;
+    if (showFinishModal) lastInteractionRef.current = Date.now();
+  }, [showFinishModal]);
+
   useEffect(() => {
     return () => {
       if (autoReturnTimeoutRef.current) clearTimeout(autoReturnTimeoutRef.current);
@@ -101,12 +114,22 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
     setMsg("");
     setConfirmation(null);
     setNoteInput("");
+    setShowFinishModal(false);
+    setFinishHadShortage(null);
+    setShortages([]);
+    setFinishNote("");
     cancelOrderForm();
   }
 
   function handleDigit(d) {
     bump();
+    playKey();
     if (codeInputRef.current.length < CODE_LENGTH) setCodeInput(codeInputRef.current + d);
+  }
+
+  function handleBackspace() {
+    bump();
+    setCodeInput((p) => p.slice(0, -1));
   }
 
   function triggerShake() {
@@ -119,6 +142,7 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
     if (current.length < CODE_LENGTH || checkingLogin) return;
     const op = operators.find((o) => o.code === current);
     if (!op) {
+      playError();
       setMsgType("error");
       setMsg("Código não encontrado.");
       triggerShake();
@@ -128,15 +152,15 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
     bump();
     setMsg("");
     setCheckingLogin(true);
-    // Busca a sessão ANTES de logar visualmente — evita piscar a tela de
-    // "escolher atividade" por um instante quando já existe uma em andamento.
     const { data, error } = await fetchActiveSessionFor(op.code);
     if (error) {
+      playError();
       setMsgType("error");
       setMsg("Erro ao verificar sessão. Tente de novo.");
       setCheckingLogin(false);
       return;
     }
+    playSuccess();
     setSession(data || null);
     setLoggedOperator(op);
     setCheckingLogin(false);
@@ -154,23 +178,58 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
       orderNumber: extra.orderNumber || null,
       customerName: extra.customerName || null,
       transferType: extra.transferType || null,
+      transferUrgent: extra.transferUrgent ?? null,
+      transferNumber: extra.transferNumber || null,
       vehicle: extra.vehicle || null,
       plate: extra.plate || null,
       station: stationName || null,
+      isEncaixe: extra.isEncaixe || false,
+      supplierName: extra.supplierName || null,
+      invoiceNumber: extra.invoiceNumber || null,
     });
     setBusy(false);
+
     if (!error) {
+      playSuccess();
+      const detailParts = [];
+      if (extra.isEncaixe) detailParts.push("⚡ ENCAIXE");
+      if (extra.transferType) {
+        detailParts.push(`${extra.transferType} #${extra.transferNumber}${extra.transferUrgent ? " · 🔴 Urgente" : ""}`);
+      } else if (extra.customerName) {
+        detailParts.push(extra.customerName);
+      } else if (extra.vehicle) {
+        detailParts.push(`${extra.vehicle} · ${extra.plate}`);
+      } else if (extra.supplierName) {
+        detailParts.push(`${extra.supplierName}${extra.invoiceNumber ? ` · NF ${extra.invoiceNumber}` : ""}`);
+      }
+
       setConfirmation({
         kind: "started",
         activity: activityName,
         time: fmtClock(startedAt),
-        detail: extra.transferType || extra.customerName || (extra.vehicle ? `${extra.vehicle} · ${extra.plate}` : null),
+        detail: detailParts.join(" · ") || null,
       });
       autoReturnTimeoutRef.current = setTimeout(reset, AUTO_RETURN_MS);
-    } else {
-      setMsgType("error");
-      setMsg(`Erro ao iniciar. ${error.message || "Tente novamente."}`);
+      return;
     }
+
+    playError();
+
+    if ((error.message || "").includes("OPERATOR_ALREADY_ACTIVE")) {
+      const { data } = await fetchActiveSessionFor(loggedOperator.code);
+      if (data) {
+        setSession(data);
+        setMsgType("info");
+        setMsg("Você já tinha uma atividade em andamento — ela foi carregada aqui.");
+      } else {
+        setMsgType("error");
+        setMsg("Sessão já ativa. Tente novamente em instantes.");
+      }
+      return;
+    }
+
+    setMsgType("error");
+    setMsg(`Erro ao iniciar. ${error.message || "Tente novamente."}`);
   }
 
   function handleActivityClick(activity) {
@@ -183,8 +242,10 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
       setCustomerFirstName("");
       setCustomerLastName("");
       setTransferType("");
-      setVehicleInput("");
-      setPlateInput("");
+      setTransferUrgent(false);
+      setTransferNumber("");
+      setSupplierInput("");
+      setInvoiceInput("");
       setOrderError("");
     } else {
       startActivity(activity.name);
@@ -198,345 +259,687 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
     setCustomerFirstName("");
     setCustomerLastName("");
     setTransferType("");
-    setVehicleInput("");
-    setPlateInput("");
+    setTransferUrgent(false);
+    setTransferNumber("");
+    setSupplierInput("");
+    setInvoiceInput("");
     setOrderError("");
+  }
+
+  function resetOrderFields() {
+    setOrderNumber("");
+    setCustomerFirstName("");
+    setCustomerLastName("");
+    setTransferType("");
+    setTransferUrgent(false);
+    setTransferNumber("");
+    setSupplierInput("");
+    setInvoiceInput("");
+    setOrderError("");
+  }
+
+  function selectBranch(branch) {
+    bump();
+    setOrderBranch(branch);
+    resetOrderFields();
+  }
+
+  async function chooseVehicleAndStart(v) {
+    if (busy) return;
+    const activityName = orderFormActivity;
+    playKey();
+    cancelOrderForm();
+    await startActivity(activityName, { vehicle: v.model, plate: v.plate });
+  }
+
+  async function confirmSupplierStart() {
+    const activityName = orderFormActivity;
+    if (!supplierInput.trim()) return setOrderError("Digite o nome do fornecedor.");
+    if (!invoiceInput.trim()) return setOrderError("Digite o número da nota fiscal.");
+    const extra = {
+      supplierName: supplierInput.trim(),
+      invoiceNumber: invoiceInput.trim(),
+    };
+    cancelOrderForm();
+    await startActivity(activityName, extra);
   }
 
   async function confirmOrderStart() {
     const activityName = orderFormActivity;
 
-    if (orderFieldType === "veiculo") {
-      if (!vehicleInput.trim()) {
-        setOrderError("Digite o veículo.");
-        return;
-      }
-      if (!plateInput.trim()) {
-        setOrderError("Digite a placa.");
-        return;
-      }
-      const extra = { vehicle: vehicleInput.trim(), plate: plateInput.trim().toUpperCase() };
+    if (orderBranch === "encaixe") {
+      if (!/^\d{4}$/.test(orderNumber)) return setOrderError("Digite os 4 últimos dígitos do pedido.");
+      if (!customerFirstName.trim() || !customerLastName.trim()) return setOrderError("Digite o nome e o sobrenome do cliente.");
+      const extra = { orderNumber, customerName: `${customerFirstName.trim()} ${customerLastName.trim()}`, isEncaixe: true };
       cancelOrderForm();
       await startActivity(activityName, extra);
       return;
     }
 
-    // Tipo "pedido": primeiro escolhe Pedido ou Transferência, depois
-    // preenche os campos específicos de cada um.
     if (orderBranch === "pedido") {
-      if (!/^\d{4}$/.test(orderNumber)) {
-        setOrderError("Digite os 4 últimos dígitos do pedido.");
-        return;
-      }
-      if (!customerFirstName.trim() || !customerLastName.trim()) {
-        setOrderError("Digite o nome e o sobrenome do cliente.");
-        return;
-      }
-      const extra = {
-        orderNumber,
-        customerName: `${customerFirstName.trim()} ${customerLastName.trim()}`,
-      };
+      if (!/^\d{4}$/.test(orderNumber)) return setOrderError("Digite os 4 últimos dígitos do pedido.");
+      if (!customerFirstName.trim() || !customerLastName.trim()) return setOrderError("Digite o nome e o sobrenome do cliente.");
+      const extra = { orderNumber, customerName: `${customerFirstName.trim()} ${customerLastName.trim()}`, isEncaixe: false };
       cancelOrderForm();
       await startActivity(activityName, extra);
       return;
     }
 
     if (orderBranch === "transferencia") {
-      if (!transferType) {
-        setOrderError("Selecione se é AP ou ZN.");
-        return;
-      }
-      const extra = { transferType };
+      if (!transferType) return setOrderError("Selecione se é AP ou ZN.");
+      if (!/^\d{4}$/.test(transferNumber)) return setOrderError("Digite os 4 últimos dígitos da transferência.");
+      const extra = { transferType, transferUrgent, transferNumber };
       cancelOrderForm();
       await startActivity(activityName, extra);
       return;
     }
 
-    setOrderError("Selecione se é Pedido ou Transferência.");
+    setOrderError("Escolha uma opção acima.");
   }
 
-  async function finishActivity() {
+  async function finishDirectly() {
     if (!session || busy) return;
     bump();
     setBusy(true);
     const duration = Math.round((Date.now() - new Date(session.start_time).getTime()) / 1000);
-    const { error } = await finishSession(session, duration, shiftFor(session.start_time), noteInput.trim());
+    const { error } = await finishSession(session, duration, shiftFor(session.start_time), noteInput.trim(), !!session.is_encaixe);
     setBusy(false);
     if (!error) {
+      playSuccess();
       refreshEntries?.();
       setSession(null);
+      setNoteInput("");
       setConfirmation({ kind: "finished", activity: session.activity, extra: fmtDuration(duration) });
       autoReturnTimeoutRef.current = setTimeout(reset, AUTO_RETURN_MS);
     } else {
+      playError();
       setMsgType("error");
       setMsg(`Erro ao salvar. ${error.message || "Tente novamente."}`);
     }
   }
 
+  function openFinishModal() {
+    bump();
+    setFinishHadShortage(null);
+    setShortages([]);
+    setFinishNote(noteInput);
+    setShowFinishModal(true);
+  }
+
+  async function handleFinishClick() {
+    bump();
+    if (shouldAskShortage(session, activities)) {
+      openFinishModal();
+    } else {
+      await finishDirectly();
+    }
+  }
+
+  function closeFinishModal() {
+    bump();
+    setShowFinishModal(false);
+    setFinishHadShortage(null);
+    setShortages([]);
+  }
+
+  function addShortageRow() {
+    bump();
+    setShortages((prev) => [...prev, { productCode: "", quantity: 1 }]);
+  }
+  function updateShortageRow(index, field, value) {
+    bump();
+    setShortages((prev) => {
+      const copy = [...prev];
+      copy[index] = { ...copy[index], [field]: value };
+      return copy;
+    });
+  }
+  function removeShortageRow(index) {
+    bump();
+    setShortages((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  async function confirmFinish() {
+    if (busy) return;
+    if (finishHadShortage === null) return;
+    if (finishHadShortage === true) {
+      const valid = shortages.filter((s) => s.productCode.trim().length > 0);
+      if (valid.length === 0) {
+        setMsgType("error");
+        setMsg("Adicione pelo menos uma falta com código do produto.");
+        return;
+      }
+    }
+
+    setBusy(true);
+    const duration = Math.round((Date.now() - new Date(session.start_time).getTime()) / 1000);
+    const shift = shiftFor(session.start_time);
+    const finalNote = finishNote.trim();
+
+    const { data: newEntryId, error } = await finishSession(
+      session,
+      duration,
+      shift,
+      finalNote,
+      !!session.is_encaixe
+    );
+
+    if (error) {
+      setBusy(false);
+      playError();
+      setMsgType("error");
+      setMsg(`Erro ao finalizar. ${error.message || "Tente novamente."}`);
+      return;
+    }
+
+    if (finishHadShortage === true) {
+      const validShortages = shortages
+        .filter((s) => s.productCode.trim().length > 0)
+        .map((s) => ({
+          productCode: s.productCode.trim(),
+          quantity: Number(s.quantity) || 1,
+        }));
+
+      const { error: errShortage } = await saveShortages(newEntryId, validShortages);
+      if (errShortage) {
+        setBusy(false);
+        playError();
+        setMsgType("error");
+        setMsg(`Atividade salva, mas houve erro ao salvar faltas: ${errShortage.message}`);
+        setSession(null);
+        setNoteInput("");
+        refreshEntries?.();
+        return;
+      }
+    }
+
+    setBusy(false);
+    playSuccess();
+    refreshEntries?.();
+    setSession(null);
+    setNoteInput("");
+    setConfirmation({
+      kind: "finished",
+      activity: session.activity,
+      extra: fmtDuration(duration),
+    });
+    closeFinishModal();
+    autoReturnTimeoutRef.current = setTimeout(reset, AUTO_RETURN_MS);
+  }
+
+  function editStation() {
+    setStationNameState(promptForStationName());
+  }
+
   const dots = Array.from({ length: CODE_LENGTH }, (_, i) => i < codeInput.length);
 
   return (
-    <div onClick={bump} style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-      <h1 className="page-title">Registrar atividade</h1>
-      <p className="page-sub">Digite seu código para iniciar ou finalizar uma atividade.</p>
+    <div className="kiosk-page">
+      <header className="kiosk-header">
+        <div className="kiosk-header-left">
+          <img src={logo} alt="" className="kiosk-header-logo" />
+          <div>
+            <div className="kiosk-header-title">Aponta CD</div>
+            <div className="kiosk-header-sub">Hidráulica Tropeiro</div>
+          </div>
+        </div>
 
-      <div style={{ display: "flex", gap: 24, flexWrap: "wrap", alignItems: "flex-start" }}>
+        <div className="kiosk-header-right">
+          <div className="kiosk-header-clock">
+            <div className="kiosk-header-time">{fmtClock(now)}</div>
+            <div className="kiosk-header-date">{fmtDate(now)}</div>
+          </div>
+          <div className="kiosk-header-shift">
+            <span className="kiosk-header-shift-dot" />
+            Turno {shiftFor(now)}
+          </div>
+          <button
+            className={`kiosk-header-station ${!stationName ? "kiosk-header-station-alert" : ""}`}
+            onClick={editStation}
+            title="Clique para nomear esta estação/terminal"
+          >
+            📍 {stationName || "Nomear estação"}
+          </button>
+        </div>
+      </header>
+
+      <main className="kiosk-main">
         {!loggedOperator && (
-          <div className={`terminal ${shake ? "shake" : ""}`}>
-            <div className="terminal-dots">
+          <div className={`kiosk-terminal-wrap ${shake ? "shake" : ""}`}>
+            <div className="kiosk-terminal-title">Digite seu código</div>
+            <div className="kiosk-terminal-dots">
               {dots.map((filled, i) => (
-                <div key={i} className={`terminal-dot ${filled ? "filled" : ""}`} />
+                <div key={i} className={`kiosk-dot ${filled ? "filled" : ""}`} />
               ))}
             </div>
-            <div className="keypad" style={{ opacity: checkingLogin ? 0.55 : 1, pointerEvents: checkingLogin ? "none" : "auto" }}>
+            <div className="kiosk-keypad" style={{ opacity: checkingLogin ? 0.55 : 1, pointerEvents: checkingLogin ? "none" : "auto" }}>
               {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((d) => (
-                <button key={d} className="keypad-key" onClick={() => handleDigit(d)}>
+                <button key={d} className="kiosk-key" onClick={() => handleDigit(d)}>
                   {d}
                 </button>
               ))}
-              <button className="keypad-key" onClick={() => { bump(); setCodeInput((p) => p.slice(0, -1)); }}>
+              <button className="kiosk-key kiosk-key-muted" onClick={handleBackspace}>
                 ⌫
               </button>
-              <button className="keypad-key" onClick={() => handleDigit("0")}>
+              <button className="kiosk-key" onClick={() => handleDigit("0")}>
                 0
               </button>
-              <button className="keypad-key accent" onClick={handleLogin}>
+              <button className="kiosk-key kiosk-key-primary" onClick={handleLogin}>
                 {checkingLogin ? "..." : "OK"}
               </button>
             </div>
             {msg ? (
-              <p className="terminal-error">{msg}</p>
+              <p className="kiosk-terminal-error">{msg}</p>
             ) : (
-              <p className="terminal-hint">teclado do computador também funciona</p>
+              <p className="kiosk-terminal-hint">teclado do computador também funciona</p>
             )}
           </div>
         )}
 
         {loggedOperator && confirmation && (
-          <div className="terminal" style={{ textAlign: "center", padding: "36px 24px" }}>
+          <div className="kiosk-confirm">
             <div
+              className="kiosk-confirm-icon"
               style={{
-                width: 44,
-                height: 44,
-                borderRadius: "50%",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                margin: "0 auto 16px auto",
-                background: confirmation.kind === "started" ? "var(--accent-dim)" : "var(--ok-dim)",
+                background: confirmation.kind === "started" ? "var(--accent-soft)" : "var(--ok-soft)",
                 color: confirmation.kind === "started" ? "var(--accent)" : "var(--ok)",
-                fontSize: 18,
               }}
             >
               {confirmation.kind === "started" ? "▶" : "✓"}
             </div>
-            <div style={{ fontSize: 17, fontWeight: 600 }}>
+            <div className="kiosk-confirm-title">
               {confirmation.activity} {confirmation.kind === "started" ? "iniciada" : "finalizada"}
             </div>
-            <div style={{ color: "var(--text-muted)", fontSize: 12.5, marginTop: 6 }}>
+            <div className="kiosk-confirm-sub">
               {confirmation.kind === "started"
-                ? `às ${confirmation.time}${confirmation.detail ? ` · ${confirmation.detail}` : ""} · volte depois para finalizar`
+                ? `às ${confirmation.time}${confirmation.detail ? ` · ${confirmation.detail}` : ""}`
                 : `duração: ${confirmation.extra}`}
             </div>
           </div>
         )}
 
         {loggedOperator && !confirmation && (
-          <div className="card" style={{ width: 420 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-              <div>
-                <div style={{ fontSize: 17, fontWeight: 600 }}>{loggedOperator.name}</div>
-                <div style={{ color: "var(--text-muted)", fontSize: 12 }}>
-                  {loggedOperator.role} · #{loggedOperator.code}
+          <div className="kiosk-logged">
+            <div className="kiosk-operator-bar">
+              <div className="kiosk-operator-info">
+                <div className="kiosk-operator-avatar">
+                  {loggedOperator.name.charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <div className="kiosk-operator-name">{loggedOperator.name}</div>
+                  <div className="kiosk-operator-role">
+                    {loggedOperator.role} · #{loggedOperator.code}
+                  </div>
                 </div>
               </div>
-              <button className="btn-small" onClick={reset}>
-                Trocar
+              <button className="kiosk-operator-change" onClick={reset}>
+                Trocar operador
               </button>
             </div>
 
             {!session && activities.length > 0 && !orderFormActivity && (
-              <div className="activity-grid" style={{ opacity: busy ? 0.6 : 1, pointerEvents: busy ? "none" : "auto" }}>
-                {activities.map((a) => (
-                  <div key={a.name} className="activity-btn" onClick={() => handleActivityClick(a)}>
-                    {a.name}
-                  </div>
-                ))}
+              <div className="kiosk-activities">
+                <div className="kiosk-section-title">Escolha uma atividade</div>
+                <div className="kiosk-activities-grid">
+                  {activities.map((a) => (
+                    <button
+                      key={a.name}
+                      className="kiosk-activity-card"
+                      onClick={() => handleActivityClick(a)}
+                      disabled={busy}
+                    >
+                      <span className="kiosk-activity-icon">
+                        {a.name.toLowerCase().includes("receb") ? "📥"
+                          : a.name.toLowerCase().includes("confer") ? "✅"
+                          : a.name.toLowerCase().includes("separ") ? "📦"
+                          : a.name.toLowerCase().includes("embal") ? "🎁"
+                          : a.name.toLowerCase().includes("exped") ? "🚚"
+                          : a.name.toLowerCase().includes("reposi") ? "🔄"
+                          : a.name.toLowerCase().includes("invent") ? "📋"
+                          : a.name.toLowerCase().includes("limp") ? "🧹"
+                          : a.name.toLowerCase().includes("organiz") ? "📊"
+                          : a.name.toLowerCase().includes("carreg") ? "🚛"
+                          : "🔧"}
+                      </span>
+                      <span className="kiosk-activity-name">{a.name}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
 
             {!session && orderFormActivity && (
-              <div>
-                <p style={{ color: "var(--text-muted)", fontSize: 13, marginBottom: 10 }}>
-                  {orderFormActivity} — {orderFieldType === "veiculo" ? "informe o veículo:" : "informe o pedido:"}
-                </p>
+              <div className="kiosk-form">
+                <div className="kiosk-form-header">
+                  <div className="kiosk-section-title">{orderFormActivity}</div>
+                  <button className="kiosk-form-cancel" onClick={cancelOrderForm} disabled={busy}>
+                    ✕ Cancelar
+                  </button>
+                </div>
 
                 {orderFieldType === "veiculo" ? (
                   <>
+                    <div className="kiosk-form-hint">Escolha o veículo:</div>
+                    {vehicles.length > 0 ? (
+                      <div className="kiosk-activities-grid">
+                        {vehicles.map((v) => (
+                          <button
+                            key={v.plate}
+                            className="kiosk-activity-card kiosk-vehicle-card"
+                            onClick={() => chooseVehicleAndStart(v)}
+                            disabled={busy}
+                          >
+                            <span className="kiosk-activity-icon">🚛</span>
+                            <span className="kiosk-activity-name">{v.plate}</span>
+                            <span className="kiosk-vehicle-model">{v.model}</span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="kiosk-form-empty">Nenhum veículo cadastrado. Peça ao admin pra adicionar em "Equipe".</p>
+                    )}
+                  </>
+                ) : orderFieldType === "fornecedor" ? (
+                  <div className="kiosk-form-fields">
+                    <div className="kiosk-form-hint">Informe o fornecedor e a nota fiscal:</div>
                     <input
-                      className="field"
-                      style={{ width: "100%", marginBottom: 10 }}
-                      placeholder="Veículo (ex: Volkswagen)"
-                      value={vehicleInput}
-                      onChange={(e) => { bump(); setVehicleInput(e.target.value); }}
+                      className="kiosk-field"
+                      placeholder="Nome do fornecedor"
+                      value={supplierInput}
+                      onChange={(e) => { bump(); setSupplierInput(e.target.value); }}
+                      autoFocus
                     />
                     <input
-                      className="field"
-                      style={{ width: "100%", marginBottom: 10, fontFamily: "var(--font-mono)", letterSpacing: 1, textTransform: "uppercase" }}
-                      placeholder="Placa"
-                      value={plateInput}
-                      onChange={(e) => { bump(); setPlateInput(e.target.value); }}
+                      className="kiosk-field"
+                      style={{ fontFamily: "var(--font-mono)" }}
+                      placeholder="Número da nota fiscal"
+                      value={invoiceInput}
+                      onChange={(e) => { bump(); setInvoiceInput(e.target.value); }}
                     />
+                    {orderError && <p className="kiosk-form-error">{orderError}</p>}
+                    <div className="kiosk-form-actions">
+                      <button
+                        className="kiosk-btn kiosk-btn-secondary"
+                        onClick={cancelOrderForm}
+                        disabled={busy}
+                      >
+                        ← Cancelar
+                      </button>
+                      <button
+                        className="kiosk-btn kiosk-btn-primary"
+                        onClick={confirmSupplierStart}
+                        disabled={busy}
+                      >
+                        {busy ? "Iniciando..." : "Iniciar atividade"}
+                      </button>
+                    </div>
+                  </div>
+                ) : orderBranch === null ? (
+                  <>
+                    <div className="kiosk-form-hint">Escolha o tipo:</div>
+                    <div className="kiosk-branch-grid">
+                      <button className="kiosk-branch-card" onClick={() => selectBranch("pedido")}>
+                        <span className="kiosk-branch-icon">📦</span>
+                        <span className="kiosk-branch-name">Pedido</span>
+                      </button>
+                      <button className="kiosk-branch-card kiosk-branch-encaixe" onClick={() => selectBranch("encaixe")}>
+                        <span className="kiosk-branch-icon">⚡</span>
+                        <span className="kiosk-branch-name">Encaixe</span>
+                        <span className="kiosk-branch-desc">pedido urgente do comercial</span>
+                      </button>
+                      <button className="kiosk-branch-card" onClick={() => selectBranch("transferencia")}>
+                        <span className="kiosk-branch-icon">🔄</span>
+                        <span className="kiosk-branch-name">Transferência</span>
+                      </button>
+                    </div>
                   </>
                 ) : (
-                  <>
-                    {orderBranch === null && (
-                      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-                        <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => { bump(); setOrderBranch("pedido"); }}>
-                          Pedido
-                        </button>
-                        <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => { bump(); setOrderBranch("transferencia"); }}>
-                          Transferência
-                        </button>
+                  <div className="kiosk-form-fields">
+                    {orderBranch === "encaixe" && (
+                      <div className="kiosk-encaixe-banner">
+                        ⚡ ENCAIXE — pedido urgente do comercial
                       </div>
                     )}
 
-                    {orderBranch === "pedido" && (
+                    {orderBranch === "transferencia" ? (
+                      <>
+                        <div className="kiosk-form-row">
+                          {TRANSFER_TYPES.map((t) => (
+                            <button
+                              key={t}
+                              className={`kiosk-toggle-btn ${transferType === t ? "active" : ""}`}
+                              onClick={() => { bump(); setTransferType(t); }}
+                            >
+                              {t}
+                            </button>
+                          ))}
+                        </div>
+                        <button
+                          className={`kiosk-toggle-btn kiosk-toggle-full ${transferUrgent ? "kiosk-toggle-danger active" : ""}`}
+                          onClick={() => { bump(); setTransferUrgent((v) => !v); }}
+                        >
+                          {transferUrgent ? "🔴 URGENTE (clique para desmarcar)" : "🔴 Marcar como urgente"}
+                        </button>
+                        <input
+                          className="kiosk-field"
+                          style={{ fontFamily: "var(--font-mono)", letterSpacing: 3, textAlign: "center", fontSize: 22 }}
+                          placeholder="4 últimos dígitos"
+                          value={transferNumber}
+                          maxLength={4}
+                          onChange={(e) => { bump(); setTransferNumber(e.target.value.replace(/\D/g, "").slice(0, 4)); }}
+                          autoFocus
+                        />
+                      </>
+                    ) : (
                       <>
                         <input
-                          className="field"
-                          style={{ width: "100%", marginBottom: 10, fontFamily: "var(--font-mono)", letterSpacing: 2, textAlign: "center", fontSize: 18 }}
+                          className="kiosk-field"
+                          style={{ fontFamily: "var(--font-mono)", letterSpacing: 3, textAlign: "center", fontSize: 22 }}
                           placeholder="4 últimos dígitos do pedido"
                           value={orderNumber}
                           maxLength={4}
                           onChange={(e) => { bump(); setOrderNumber(e.target.value.replace(/\D/g, "").slice(0, 4)); }}
+                          autoFocus
                         />
-                        <input
-                          className="field"
-                          style={{ width: "100%", marginBottom: 10 }}
-                          placeholder="Nome do cliente"
-                          value={customerFirstName}
-                          onChange={(e) => { bump(); setCustomerFirstName(e.target.value); }}
-                        />
-                        <input
-                          className="field"
-                          style={{ width: "100%", marginBottom: 10 }}
-                          placeholder="Sobrenome do cliente"
-                          value={customerLastName}
-                          onChange={(e) => { bump(); setCustomerLastName(e.target.value); }}
-                        />
+                        <div className="kiosk-form-row">
+                          <input
+                            className="kiosk-field"
+                            placeholder="Nome do cliente"
+                            value={customerFirstName}
+                            onChange={(e) => { bump(); setCustomerFirstName(e.target.value); }}
+                          />
+                          <input
+                            className="kiosk-field"
+                            placeholder="Sobrenome"
+                            value={customerLastName}
+                            onChange={(e) => { bump(); setCustomerLastName(e.target.value); }}
+                          />
+                        </div>
                       </>
                     )}
 
-                    {orderBranch === "transferencia" && (
-                      <div className="activity-grid" style={{ marginBottom: 10 }}>
-                        {TRANSFER_TYPES.map((t) => (
-                          <div
-                            key={t}
-                            className="activity-btn"
-                            style={transferType === t ? { borderColor: "var(--accent)", background: "var(--accent-dim)" } : {}}
-                            onClick={() => { bump(); setTransferType(t); }}
-                          >
-                            {t}
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                    {orderError && <p className="kiosk-form-error">{orderError}</p>}
 
-                    {orderBranch && (
+                    <div className="kiosk-form-actions">
                       <button
-                        className="btn-small"
-                        style={{ marginBottom: 10 }}
-                        onClick={() => { bump(); setOrderBranch(null); setOrderError(""); }}
+                        className="kiosk-btn kiosk-btn-secondary"
+                        onClick={() => { bump(); setOrderBranch(null); resetOrderFields(); }}
+                        disabled={busy}
                       >
-                        ← Trocar Pedido/Transferência
+                        ← Voltar
                       </button>
-                    )}
-                  </>
+                      <button className="kiosk-btn kiosk-btn-primary" onClick={confirmOrderStart} disabled={busy}>
+                        {busy ? "Iniciando..." : "Iniciar atividade"}
+                      </button>
+                    </div>
+                  </div>
                 )}
-
-                {orderError && <p className="terminal-error" style={{ marginBottom: 10 }}>{orderError}</p>}
-
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button className="btn-small" onClick={cancelOrderForm} disabled={busy}>Cancelar</button>
-                  <button className="btn btn-primary" style={{ flex: 1 }} onClick={confirmOrderStart} disabled={busy}>
-                    {busy ? "Iniciando..." : "Iniciar"}
-                  </button>
-                </div>
               </div>
             )}
 
-            {!session && activities.length === 0 && (
-              <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
-                Nenhuma atividade cadastrada ainda. Peça ao administrador para adicionar em "Equipe".
-              </p>
-            )}
-
             {session && (
-              <div style={{ textAlign: "center", padding: "6px 0" }}>
-                <div style={{ color: "var(--text-muted)", fontSize: 11.5 }}>
-                  em andamento desde {fmtClock(session.start_time)}
-                </div>
-                <div style={{ fontSize: 18, fontWeight: 600, margin: "4px 0 8px 0" }}>{session.activity}</div>
-                {(session.order_number || session.customer_name || session.transfer_type || session.vehicle) && (
-                  <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginBottom: 8 }}>
-                    {session.transfer_type && <div>Tipo: {session.transfer_type}</div>}
-                    {session.customer_name && <div>Cliente: {session.customer_name}</div>}
-                    {session.order_number && <div>Pedido: {session.order_number}</div>}
-                    {session.vehicle && <div>Veículo: {session.vehicle}</div>}
-                    {session.plate && <div>Placa: {session.plate}</div>}
+              <div className="kiosk-session">
+                {session.is_encaixe && (
+                  <div className="kiosk-session-encaixe">⚡ ENCAIXE</div>
+                )}
+                <div className="kiosk-session-activity">{session.activity}</div>
+
+                {(session.order_number || session.customer_name || session.transfer_type || session.vehicle || session.supplier_name) && (
+                  <div className="kiosk-session-details">
+                    {session.transfer_type && (
+                      <span className="kiosk-session-tag">
+                        {session.transfer_type}
+                        {session.transfer_number ? ` #${session.transfer_number}` : ""}
+                        {session.transfer_urgent ? " · 🔴" : ""}
+                      </span>
+                    )}
+                    {session.customer_name && <span className="kiosk-session-tag">👤 {session.customer_name}</span>}
+                    {session.order_number && <span className="kiosk-session-tag">#{session.order_number}</span>}
+                    {session.vehicle && <span className="kiosk-session-tag">🚛 {session.vehicle}</span>}
+                    {session.plate && <span className="kiosk-session-tag">{session.plate}</span>}
+                    {session.supplier_name && <span className="kiosk-session-tag">📥 {session.supplier_name}</span>}
+                    {session.invoice_number && <span className="kiosk-session-tag">NF {session.invoice_number}</span>}
                   </div>
                 )}
-                <div className="stat-num" style={{ fontSize: 32, marginBottom: 14 }}>
-                  {fmtDuration(Math.round((now - new Date(session.start_time).getTime()) / 1000))}
+
+                <div className="kiosk-session-timer">
+                  <div className="kiosk-session-timer-value">
+                    {fmtDuration(Math.round((now - new Date(session.start_time).getTime()) / 1000))}
+                  </div>
+                  <div className="kiosk-session-timer-label">
+                    desde {fmtClock(session.start_time)}
+                  </div>
                 </div>
+
                 <textarea
-                  className="field"
-                  placeholder="Observação (opcional) — ex: atraso por falta de material"
+                  className="kiosk-field kiosk-field-textarea"
+                  placeholder="Observação (opcional)"
                   value={noteInput}
                   onChange={(e) => { bump(); setNoteInput(e.target.value); }}
                   rows={2}
-                  style={{ width: "100%", resize: "none", marginBottom: 12, fontFamily: "inherit" }}
                 />
-                <button className="btn btn-danger" onClick={finishActivity} disabled={busy}>
+
+                <button className="kiosk-btn kiosk-btn-finish" onClick={handleFinishClick} disabled={busy}>
                   {busy ? "Salvando..." : "Finalizar atividade"}
                 </button>
               </div>
             )}
+
             {msg && (
-              <p
-                style={{
-                  color: msgType === "error" ? "var(--danger)" : "var(--ok)",
-                  fontSize: 12.5,
-                  textAlign: "center",
-                  marginTop: 10,
-                }}
-              >
+              <p className={`kiosk-inline-msg ${msgType === "error" ? "error" : ""}`}>
                 {msg}
               </p>
             )}
           </div>
         )}
+      </main>
 
-        <div className="side-panel">
-          <div className="side-clock">{fmtClock(now)}</div>
-          <div className="side-date">{fmtDate(now)}</div>
-          <div className="side-shift-badge">
-            <span className="side-shift-dot" />
-            Turno {shiftFor(now)}
-          </div>
-          <div className="side-divider" />
-          <img src={logo} alt="" className="side-logo" />
-          <div className="side-motto">"joga junto e cresce todo dia"</div>
-          <div
-            onClick={editStation}
-            style={{ marginTop: 14, fontSize: 10.5, color: "var(--text-faint)", cursor: "pointer" }}
-            title="Clique para nomear esta estação/terminal"
-          >
-            {stationName ? `📍 ${stationName}` : "📍 nomear esta estação"}
+      {showFinishModal && (
+        <div className="kiosk-modal-backdrop" onClick={bump}>
+          <div className="kiosk-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="kiosk-modal-header">
+              <div>
+                <div className="kiosk-modal-title">Finalizar {session?.activity}</div>
+                <div className="kiosk-modal-sub">
+                  {loggedOperator?.name} · em andamento desde {session && fmtClock(session.start_time)}
+                </div>
+              </div>
+              <button className="kiosk-modal-close" onClick={closeFinishModal} aria-label="Fechar">✕</button>
+            </div>
+
+            <div className="kiosk-modal-body">
+              <div className="kiosk-modal-section">
+                <label className="kiosk-modal-label">Observação (opcional)</label>
+                <textarea
+                  className="kiosk-field kiosk-field-textarea"
+                  placeholder="Ex: atraso por falta de material"
+                  value={finishNote}
+                  onChange={(e) => { bump(); setFinishNote(e.target.value); }}
+                  rows={2}
+                />
+              </div>
+
+              <div className="kiosk-modal-section">
+                <label className="kiosk-modal-label">Houve falta de produto?</label>
+                <div className="kiosk-modal-simnao">
+                  <button
+                    className={`kiosk-modal-choice ${finishHadShortage === false ? "ok" : ""}`}
+                    onClick={() => { bump(); setFinishHadShortage(false); }}
+                  >
+                    Não houve falta
+                  </button>
+                  <button
+                    className={`kiosk-modal-choice ${finishHadShortage === true ? "danger" : ""}`}
+                    onClick={() => {
+                      bump();
+                      setFinishHadShortage(true);
+                      if (shortages.length === 0) addShortageRow();
+                    }}
+                  >
+                    Sim, houve falta
+                  </button>
+                </div>
+              </div>
+
+              {finishHadShortage === true && (
+                <div className="kiosk-modal-section">
+                  <label className="kiosk-modal-label">Faltas</label>
+                  <div className="kiosk-shortage-list">
+                    {shortages.map((s, i) => (
+                      <div key={i} className="kiosk-shortage-row">
+                        <input
+                          className="kiosk-field"
+                          style={{ flex: 2, fontFamily: "var(--font-mono)" }}
+                          placeholder="Código do produto"
+                          value={s.productCode}
+                          onChange={(e) => updateShortageRow(i, "productCode", e.target.value)}
+                          autoFocus={i === shortages.length - 1 && !s.productCode}
+                        />
+                        <input
+                          className="kiosk-field"
+                          style={{ flex: 1, fontFamily: "var(--font-mono)", textAlign: "center" }}
+                          type="number"
+                          min="1"
+                          placeholder="Qtd"
+                          value={s.quantity}
+                          onChange={(e) => updateShortageRow(i, "quantity", e.target.value)}
+                        />
+                        <button
+                          className="kiosk-shortage-remove"
+                          onClick={() => removeShortageRow(i)}
+                          title="Remover"
+                        >
+                          🗑
+                        </button>
+                      </div>
+                    ))}
+                    <button className="kiosk-btn kiosk-btn-secondary" onClick={addShortageRow}>
+                      + Adicionar outra falta
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {finishHadShortage === null && (
+                <p className="kiosk-modal-hint">Escolha uma opção para continuar</p>
+              )}
+            </div>
+
+            <div className="kiosk-modal-footer">
+              <button className="kiosk-btn kiosk-btn-secondary" onClick={closeFinishModal} disabled={busy}>
+                Cancelar
+              </button>
+              <button
+                className="kiosk-btn kiosk-btn-finish"
+                onClick={confirmFinish}
+                disabled={busy || finishHadShortage === null}
+              >
+                {busy ? "Salvando..." : "Confirmar finalização"}
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
