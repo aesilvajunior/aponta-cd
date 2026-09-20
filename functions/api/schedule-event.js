@@ -1,9 +1,12 @@
 // ============================================================
 // Edge Function — criar/editar/remover evento no Google Calendar
 // Roda no Cloudflare Pages Functions (serverless).
+//
+// Lê as credenciais de 2 formas (prioridade pra base64):
+//   1) GOOGLE_SERVICE_ACCOUNT_JSON_B64 (base64 do JSON)
+//   2) GOOGLE_SERVICE_ACCOUNT_JSON (JSON cru — legado)
 // ============================================================
 
-// Converte a chave privada do JSON pra formato que o Google aceita
 function pemToArrayBuffer(pem) {
   const b64 = pem
     .replace(/-----BEGIN PRIVATE KEY-----/, "")
@@ -29,7 +32,14 @@ function base64UrlEncode(input) {
     .replace(/=+$/, "");
 }
 
-// Gera um JWT assinado pra autenticar com a API do Google
+// Decodifica base64 -> string (o JSON original)
+function b64ToString(b64) {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new TextDecoder("utf-8").decode(bytes);
+}
+
 async function getAccessToken(serviceAccount) {
   const now = Math.floor(Date.now() / 1000);
   const header = { alg: "RS256", typ: "JWT" };
@@ -62,7 +72,6 @@ async function getAccessToken(serviceAccount) {
 
   const jwt = `${toSign}.${base64UrlEncode(signature)}`;
 
-  // Troca o JWT por um access_token
   const res = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -81,7 +90,6 @@ async function getAccessToken(serviceAccount) {
   return data.access_token;
 }
 
-// Monta o corpo do evento no Google Calendar
 function buildEventBody(payload) {
   const {
     scheduled_at,
@@ -94,7 +102,6 @@ function buildEventBody(payload) {
     observation,
   } = payload;
 
-  // Fim = 1h depois
   const start = new Date(scheduled_at);
   const end = new Date(start.getTime() + 60 * 60 * 1000);
 
@@ -116,14 +123,9 @@ function buildEventBody(payload) {
   };
 }
 
-// ============================================================
-// Handler principal
-// ============================================================
-
 export async function onRequest(context) {
   const { request, env } = context;
 
-  // CORS
   const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "POST, PUT, DELETE, OPTIONS",
@@ -135,40 +137,58 @@ export async function onRequest(context) {
   }
 
   try {
-    // Lê credenciais do ambiente
-    const credJson = env.GOOGLE_SERVICE_ACCOUNT_JSON;
+    // Tenta ler de 2 formas: base64 (novo) OU texto cru (legado)
+    const credB64 = env.GOOGLE_SERVICE_ACCOUNT_JSON_B64;
+    const credRaw = env.GOOGLE_SERVICE_ACCOUNT_JSON;
     const calendarId = env.GOOGLE_CALENDAR_ID;
 
-    if (!credJson || !calendarId) {
+    if (!calendarId) {
+      return new Response(
+        JSON.stringify({ error: "GOOGLE_CALENDAR_ID não configurada." }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    if (!credB64 && !credRaw) {
       return new Response(
         JSON.stringify({
-          error: "Credenciais do Google não configuradas (GOOGLE_SERVICE_ACCOUNT_JSON ou GOOGLE_CALENDAR_ID faltando).",
+          error: "GOOGLE_SERVICE_ACCOUNT_JSON_B64 (ou GOOGLE_SERVICE_ACCOUNT_JSON) não configurada.",
         }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const serviceAccount = JSON.parse(credJson);
+    let credJson;
+    try {
+      credJson = credB64 ? b64ToString(credB64) : credRaw;
+    } catch (e) {
+      return new Response(
+        JSON.stringify({ error: "Falha ao decodificar base64 do JSON: " + e.message }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    let serviceAccount;
+    try {
+      serviceAccount = JSON.parse(credJson);
+    } catch (e) {
+      return new Response(
+        JSON.stringify({ error: "JSON inválido: " + e.message }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     const accessToken = await getAccessToken(serviceAccount);
     const baseUrl = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`;
 
-    // ---- DELETE ----
+    // DELETE
     if (request.method === "DELETE") {
-      const url = new URL(request.url);
-      const id = url.searchParams.get("id");
-      if (!id) {
-        return new Response(JSON.stringify({ error: "id faltando" }), {
-          status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      // Precisamos do eventId do Google. Vou buscar na tabela via env.
-      // Mas isso exigiria service_role key. Vou fazer o frontend chamar
-      // com o eventId no corpo.
       const body = await request.json().catch(() => ({}));
       const eventId = body?.google_event_id;
       if (!eventId) {
         return new Response(JSON.stringify({ ok: true, skipped: "sem google_event_id" }), {
-          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
       const delRes = await fetch(`${baseUrl}/${eventId}`, {
@@ -176,25 +196,21 @@ export async function onRequest(context) {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
       return new Response(JSON.stringify({ ok: delRes.ok }), {
-        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // ---- POST / PUT ----
+    // POST / PUT
     const body = await request.json();
     const eventBody = buildEventBody(body);
 
     if (request.method === "PUT") {
-      // Editar: precisa do eventId
       const googleEventId = body.google_event_id;
       if (!googleEventId) {
-        // Não existe ainda — cria
         const createRes = await fetch(baseUrl, {
           method: "POST",
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            "Content-Type": "application/json",
-          },
+          headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
           body: JSON.stringify(eventBody),
         });
         if (!createRes.ok) {
@@ -203,15 +219,13 @@ export async function onRequest(context) {
         }
         const created = await createRes.json();
         return new Response(JSON.stringify({ eventId: created.id }), {
-          status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
       const updRes = await fetch(`${baseUrl}/${googleEventId}`, {
         method: "PUT",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
+        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
         body: JSON.stringify(eventBody),
       });
       if (!updRes.ok) {
@@ -220,17 +234,15 @@ export async function onRequest(context) {
       }
       const updated = await updRes.json();
       return new Response(JSON.stringify({ eventId: updated.id }), {
-        status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
     // POST (default)
     const createRes = await fetch(baseUrl, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
       body: JSON.stringify(eventBody),
     });
 
@@ -241,7 +253,8 @@ export async function onRequest(context) {
 
     const created = await createRes.json();
     return new Response(JSON.stringify({ eventId: created.id }), {
-      status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
     return new Response(
