@@ -110,6 +110,10 @@ export default function ScheduleManager({ operators, isAdmin }) {
   const [formError, setFormError] = useState("");
 
   const lastInteractionRef = useRef(Date.now());
+  const codeInputRef = useRef(codeInput);
+  codeInputRef.current = codeInput;
+  const loggedOperatorRef = useRef(loggedOperator);
+  loggedOperatorRef.current = loggedOperator;
 
   function bump() {
     lastInteractionRef.current = Date.now();
@@ -121,7 +125,6 @@ export default function ScheduleManager({ operators, isAdmin }) {
       const raw = sessionStorage.getItem(SESSION_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        // Confere se ainda existe na lista de operadores
         const found = operators.find((o) => o.code === parsed.code);
         if (found && found.can_schedule_delivery) {
           setLoggedOperator(found);
@@ -143,6 +146,40 @@ export default function ScheduleManager({ operators, isAdmin }) {
     return () => clearInterval(iv);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loggedOperator]);
+
+  // -------- Teclado físico (SOMENTE quando NÃO tá logado e NÃO é admin) --------
+  useEffect(() => {
+    // Se já tá logado (ou é admin), não captura
+    if (loggedOperator || isAdmin) return;
+    // Se o modal de agendamento tá aberto, não captura (deixa o operador digitar nos campos)
+    if (showModal) return;
+
+    function onKeyDown(e) {
+      // Se o foco tá num input/textarea, deixa o navegador tratar normalmente
+      const tag = (e.target && e.target.tagName) || "";
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+
+      bump();
+      if (e.key >= "0" && e.key <= "9") {
+        if (codeInputRef.current.length < CODE_LENGTH) {
+          setCodeInput((prev) => (prev.length < CODE_LENGTH ? prev + e.key : prev));
+        }
+      } else if (e.key === "Backspace") {
+        e.preventDefault();
+        setCodeInput((prev) => prev.slice(0, -1));
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        handleLogin();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        setCodeInput("");
+        setLoginError("");
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loggedOperator, isAdmin, showModal, operators]);
 
   // -------- Carrega agendamentos --------
   async function load() {
@@ -170,14 +207,16 @@ export default function ScheduleManager({ operators, isAdmin }) {
   // -------- Ações de login --------
   function handleDigit(d) {
     bump();
-    if (codeInput.length < CODE_LENGTH) setCodeInput(codeInput + d);
+    if (codeInputRef.current.length < CODE_LENGTH) {
+      setCodeInput(codeInputRef.current + d);
+    }
   }
   function handleBackspace() {
     bump();
     setCodeInput((p) => p.slice(0, -1));
   }
   function handleLogin() {
-    const current = codeInput.trim();
+    const current = codeInputRef.current.trim();
     if (current.length < CODE_LENGTH) return;
     setCheckingLogin(true);
     const op = operators.find((o) => o.code === current);
@@ -231,7 +270,6 @@ export default function ScheduleManager({ operators, isAdmin }) {
     return schedules.filter((s) => s.scheduled_date >= today).slice(0, 8);
   }, [schedules]);
 
-  // Quem pode fazer o quê
   const canCreate = isAdmin || (loggedOperator?.can_schedule_delivery);
   const operatorCodeForSave = loggedOperator?.code || null;
   const operatorNameForSave = loggedOperator?.name || "Admin";
@@ -258,7 +296,6 @@ export default function ScheduleManager({ operators, isAdmin }) {
 
   function openEditModal(s) {
     bump();
-    // Admin edita tudo. Operador só edita o que ele criou.
     if (!isAdmin && s.created_by_code !== loggedOperator?.code) {
       alert("Você só pode editar agendamentos que você mesmo criou.");
       return;
@@ -442,7 +479,7 @@ export default function ScheduleManager({ operators, isAdmin }) {
   }
 
   // ============================================================
-  // Render: se não tá logado E não é admin → tela de login
+  // Tela de LOGIN (só quando não é admin E não tá logado)
   // ============================================================
   const needsLogin = !isAdmin && !loggedOperator;
 
@@ -466,12 +503,21 @@ export default function ScheduleManager({ operators, isAdmin }) {
                 <div key={i} className={`kiosk-dot ${i < codeInput.length ? "filled" : ""}`} />
               ))}
             </div>
-            <div className="kiosk-keypad" style={{ opacity: checkingLogin ? 0.55 : 1, pointerEvents: checkingLogin ? "none" : "auto" }}>
+            <div
+              className="kiosk-keypad"
+              style={{ opacity: checkingLogin ? 0.55 : 1, pointerEvents: checkingLogin ? "none" : "auto" }}
+            >
               {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((d) => (
-                <button key={d} className="kiosk-key" onClick={() => handleDigit(d)}>{d}</button>
+                <button key={d} className="kiosk-key" onClick={() => handleDigit(d)}>
+                  {d}
+                </button>
               ))}
-              <button className="kiosk-key kiosk-key-muted" onClick={handleBackspace}>⌫</button>
-              <button className="kiosk-key" onClick={() => handleDigit("0")}>0</button>
+              <button className="kiosk-key kiosk-key-muted" onClick={handleBackspace}>
+                ⌫
+              </button>
+              <button className="kiosk-key" onClick={() => handleDigit("0")}>
+                0
+              </button>
               <button className="kiosk-key kiosk-key-primary" onClick={handleLogin}>
                 {checkingLogin ? "..." : "OK"}
               </button>
@@ -488,7 +534,7 @@ export default function ScheduleManager({ operators, isAdmin }) {
   }
 
   // ============================================================
-  // Render: logado (ou admin) → tela normal
+  // Tela NORMAL (logado ou admin)
   // ============================================================
   return (
     <div>
@@ -539,7 +585,6 @@ export default function ScheduleManager({ operators, isAdmin }) {
         </div>
       )}
 
-      {/* Calendário visual */}
       <div className="schedule-calendar" onClick={bump}>
         <div className="schedule-calendar-header">
           <div className="schedule-calendar-title">
@@ -604,7 +649,6 @@ export default function ScheduleManager({ operators, isAdmin }) {
         </div>
       </div>
 
-      {/* Lista do dia */}
       <div className="card" style={{ marginBottom: 20 }} onClick={bump}>
         <div className="card-title">
           📅 {fmtDateBR(selectedDate)} — {daySchedules.length} agendamento{daySchedules.length !== 1 ? "s" : ""}
@@ -663,7 +707,6 @@ export default function ScheduleManager({ operators, isAdmin }) {
         )}
       </div>
 
-      {/* Próximos agendamentos */}
       {upcoming.length > 0 && (
         <div className="card" onClick={bump}>
           <div className="card-title">⏭ Próximos agendamentos</div>
@@ -691,7 +734,6 @@ export default function ScheduleManager({ operators, isAdmin }) {
         </div>
       )}
 
-      {/* Modal */}
       {showModal && (
         <div className="kiosk-modal-backdrop" onClick={closeModal}>
           <div className="kiosk-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 620 }}>
