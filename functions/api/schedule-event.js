@@ -1,10 +1,8 @@
 // ============================================================
 // Edge Function — criar/editar/remover evento no Google Calendar
-// Roda no Cloudflare Pages Functions (serverless).
-//
-// Lê as credenciais de 2 formas (prioridade pra base64):
-//   1) GOOGLE_SERVICE_ACCOUNT_JSON_B64 (base64 do JSON)
-//   2) GOOGLE_SERVICE_ACCOUNT_JSON (JSON cru — legado)
+// Lê credenciais de 2 variáveis simples:
+//   GOOGLE_SA_EMAIL  → e-mail da conta de serviço
+//   GOOGLE_SA_KEY    → chave privada (com \n literais)
 // ============================================================
 
 function pemToArrayBuffer(pem) {
@@ -32,19 +30,11 @@ function base64UrlEncode(input) {
     .replace(/=+$/, "");
 }
 
-// Decodifica base64 -> string (o JSON original)
-function b64ToString(b64) {
-  const binary = atob(b64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return new TextDecoder("utf-8").decode(bytes);
-}
-
-async function getAccessToken(serviceAccount) {
+async function getAccessToken(email, key) {
   const now = Math.floor(Date.now() / 1000);
   const header = { alg: "RS256", typ: "JWT" };
   const claim = {
-    iss: serviceAccount.client_email,
+    iss: email,
     scope: "https://www.googleapis.com/auth/calendar",
     aud: "https://oauth2.googleapis.com/token",
     iat: now,
@@ -55,7 +45,7 @@ async function getAccessToken(serviceAccount) {
   const claimB64 = base64UrlEncode(JSON.stringify(claim));
   const toSign = `${headerB64}.${claimB64}`;
 
-  const keyBuffer = pemToArrayBuffer(serviceAccount.private_key);
+  const keyBuffer = pemToArrayBuffer(key);
   const cryptoKey = await crypto.subtle.importKey(
     "pkcs8",
     keyBuffer,
@@ -137,9 +127,8 @@ export async function onRequest(context) {
   }
 
   try {
-    // Tenta ler de 2 formas: base64 (novo) OU texto cru (legado)
-    const credB64 = env.GOOGLE_SERVICE_ACCOUNT_JSON_B64;
-    const credRaw = env.GOOGLE_SERVICE_ACCOUNT_JSON;
+    const email = env.GOOGLE_SA_EMAIL;
+    const key = env.GOOGLE_SA_KEY;
     const calendarId = env.GOOGLE_CALENDAR_ID;
 
     if (!calendarId) {
@@ -148,37 +137,16 @@ export async function onRequest(context) {
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-
-    if (!credB64 && !credRaw) {
+    if (!email || !key) {
       return new Response(
         JSON.stringify({
-          error: "GOOGLE_SERVICE_ACCOUNT_JSON_B64 (ou GOOGLE_SERVICE_ACCOUNT_JSON) não configurada.",
+          error: "GOOGLE_SA_EMAIL ou GOOGLE_SA_KEY não configuradas.",
         }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    let credJson;
-    try {
-      credJson = credB64 ? b64ToString(credB64) : credRaw;
-    } catch (e) {
-      return new Response(
-        JSON.stringify({ error: "Falha ao decodificar base64 do JSON: " + e.message }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    let serviceAccount;
-    try {
-      serviceAccount = JSON.parse(credJson);
-    } catch (e) {
-      return new Response(
-        JSON.stringify({ error: "JSON inválido: " + e.message }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    const accessToken = await getAccessToken(serviceAccount);
+    const accessToken = await getAccessToken(email, key);
     const baseUrl = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`;
 
     // DELETE
