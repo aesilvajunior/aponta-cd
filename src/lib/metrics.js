@@ -102,3 +102,25 @@ export function computeWeeklyTrend(entries, activities) {
       return row;
     });
 }
+
+// Agrupa registros por mês (chave "YYYY-MM") — usado na comparação
+// mês a mês. Retorna um mapa mês -> métricas daquele mês.
+export function computeMonthlyBuckets(entries, activities) {
+  const months = {};
+  entries.forEach((e) => {
+    const key = e.start_time.slice(0, 7); // "YYYY-MM"
+    if (!months[key]) months[key] = [];
+    months[key].push(e);
+  });
+  const result = {};
+  Object.entries(months).forEach(([key, monthEntries]) => {
+    result[key] = computeMetrics(monthEntries, activities);
+  });
+  return result;
+}
+
+export function monthLabel(key) {
+  const [year, month] = key.split("-");
+  const names = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+  return `${names[parseInt(month, 10) - 1]}/${year.slice(2)}`;
+}

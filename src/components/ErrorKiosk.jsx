@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { logSeparationError } from "../lib/api";
 import { fmtClock, fmtDate, shiftFor } from "../lib/format";
+import { getStationName, promptForStationName } from "../lib/station";
 import logo from "../assets/logo.png";
 
 const CODE_LENGTH = 3;
@@ -16,6 +17,11 @@ export default function ErrorKiosk({ operators, errorTypes }) {
   const [shake, setShake] = useState(false);
   const [confirmation, setConfirmation] = useState(null);
   const [now, setNow] = useState(Date.now());
+  const [stationName, setStationNameState] = useState(getStationName());
+
+  function editStation() {
+    setStationNameState(promptForStationName());
+  }
 
   const codeInputRef = useRef(codeInput);
   codeInputRef.current = codeInput;
@@ -112,6 +118,7 @@ export default function ErrorKiosk({ operators, errorTypes }) {
       operatorName: loggedOperator.name,
       errorType,
       note: note.trim(),
+      station: stationName || null,
     });
     setBusy(false);
     if (!error) {
@@ -225,6 +232,13 @@ export default function ErrorKiosk({ operators, errorTypes }) {
           <div className="side-divider" />
           <img src={logo} alt="" className="side-logo" />
           <div className="side-motto">"joga junto e cresce todo dia"</div>
+          <div
+            onClick={editStation}
+            style={{ marginTop: 14, fontSize: 10.5, color: "var(--text-faint)", cursor: "pointer" }}
+            title="Clique para nomear esta estação/terminal"
+          >
+            {stationName ? `📍 ${stationName}` : "📍 nomear esta estação"}
+          </div>
         </div>
       </div>
     </div>

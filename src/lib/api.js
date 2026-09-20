@@ -11,7 +11,7 @@ export async function fetchOperators() {
 }
 
 export async function fetchActivities() {
-  return supabase.from("activities").select("*").eq("active", true).order("name");
+  return supabase.from("activities").select("*").eq("active", true).order("sort_order", { ascending: true });
 }
 
 export async function fetchAdminConfig() {
@@ -32,13 +32,23 @@ export async function fetchActiveSessionFor(operatorCode) {
 
 // ---------- Ações do quiosque ----------
 
-export async function startSession({ operatorCode, operatorName, activity }) {
+export async function startSession({
+  operatorCode, operatorName, activity,
+  orderNumber = null, customerName = null, transferType = null,
+  vehicle = null, plate = null, station = null,
+}) {
   return supabase.from("active_sessions").upsert(
     {
       operator_code: operatorCode,
       operator_name: operatorName,
       activity,
       start_time: new Date().toISOString(),
+      order_number: orderNumber,
+      customer_name: customerName,
+      transfer_type: transferType,
+      vehicle,
+      plate,
+      station,
     },
     { onConflict: "operator_code" }
   );
@@ -54,6 +64,12 @@ export async function finishSession(session, durationSeconds, shift, note = null
     duration_seconds: durationSeconds,
     shift,
     note: note || null,
+    order_number: session.order_number || null,
+    customer_name: session.customer_name || null,
+    transfer_type: session.transfer_type || null,
+    vehicle: session.vehicle || null,
+    plate: session.plate || null,
+    station: session.station || null,
   });
   if (insertRes.error) return insertRes;
   return supabase.from("active_sessions").delete().eq("operator_code", session.operator_code);
@@ -95,10 +111,10 @@ export async function addActivity(name, targetSeconds = null) {
   return supabase.from("activities").insert({ name, active: true, target_seconds: targetSeconds });
 }
 
-export async function renameActivity(oldName, newName, targetSeconds = null) {
-  const insertRes = await supabase
-    .from("activities")
-    .insert({ name: newName, active: true, target_seconds: targetSeconds });
+// extraFields carrega o que precisa ser preservado ao renomear (meta,
+// se pede pedido/cliente, e a posição de ordenação atual).
+export async function renameActivity(oldName, newName, extraFields = {}) {
+  const insertRes = await supabase.from("activities").insert({ name: newName, active: true, ...extraFields });
   if (insertRes.error) return insertRes;
   const deleteRes = await supabase.from("activities").delete().eq("name", oldName);
   if (deleteRes.error) {
@@ -108,12 +124,27 @@ export async function renameActivity(oldName, newName, targetSeconds = null) {
   return deleteRes;
 }
 
-export async function updateActivityTarget(name, targetSeconds) {
-  return supabase.from("activities").update({ target_seconds: targetSeconds }).eq("name", name);
+export async function updateActivity(name, fields) {
+  return supabase.from("activities").update(fields).eq("name", name);
 }
 
 export async function deleteActivity(name) {
   return supabase.from("activities").delete().eq("name", name);
+}
+
+// Troca a posição de duas atividades na lista (usado pelos botões
+// de mover para cima/para baixo na tela Equipe). Se a segunda metade da
+// troca falhar, desfaz a primeira — sem isso, as duas atividades podiam
+// ficar com o mesmo valor de ordenação em caso de erro de rede no meio.
+export async function swapActivityOrder(nameA, sortOrderA, nameB, sortOrderB) {
+  const r1 = await supabase.from("activities").update({ sort_order: sortOrderB }).eq("name", nameA);
+  if (r1.error) return r1;
+  const r2 = await supabase.from("activities").update({ sort_order: sortOrderA }).eq("name", nameB);
+  if (r2.error) {
+    await supabase.from("activities").update({ sort_order: sortOrderA }).eq("name", nameA);
+    return r2;
+  }
+  return r2;
 }
 
 // ---------- Administração ----------
@@ -153,12 +184,13 @@ export async function fetchSeparationErrors(limit = 2000) {
   return supabase.from("separation_errors").select("*").order("created_at", { ascending: false }).limit(limit);
 }
 
-export async function logSeparationError({ operatorCode, operatorName, errorType, note }) {
+export async function logSeparationError({ operatorCode, operatorName, errorType, note, station = null }) {
   return supabase.from("separation_errors").insert({
     operator_code: operatorCode,
     operator_name: operatorName,
     error_type: errorType,
     note: note || null,
+    station,
   });
 }
 

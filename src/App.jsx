@@ -170,7 +170,7 @@ export default function App() {
               ou as variáveis <code>VITE_SUPABASE_URL</code> / <code>VITE_SUPABASE_ANON_KEY</code> estão
               erradas na hospedagem. Exibindo dados padrão por enquanto.
             </p>
-            <button className="btn-small" onClick={() => { loadConfig(); loadEntries(); loadActiveSessions(); }}>
+            <button className="btn-small" onClick={() => { loadConfig(); loadEntries(); loadActiveSessions(); loadSeparationErrors(); }}>
               Tentar novamente
             </button>
           </div>

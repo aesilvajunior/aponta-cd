@@ -1,11 +1,13 @@
 import React, { useEffect, useRef, useState } from "react";
 import { fetchActiveSessionFor, startSession, finishSession } from "../lib/api";
 import { fmtDuration, fmtClock, fmtDate, shiftFor } from "../lib/format";
+import { getStationName, promptForStationName } from "../lib/station";
 import logo from "../assets/logo.png";
 
 const CODE_LENGTH = 3;
 const AUTO_RETURN_MS = 2200;
 const IDLE_TIMEOUT_MS = 20000;
+const TRANSFER_TYPES = ["AP", "ZN"];
 
 export default function Kiosk({ operators, activities, refreshEntries }) {
   const [codeInput, setCodeInput] = useState("");
@@ -19,6 +21,26 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
   const [shake, setShake] = useState(false);
   const [confirmation, setConfirmation] = useState(null);
   const [noteInput, setNoteInput] = useState("");
+
+  // Sub-formulário de informação extra ao iniciar, exigido só pelas
+  // atividades marcadas com requires_order_info — o formato do formulário
+  // (pedido/cliente/transferência OU veículo/placa) depende do
+  // extra_field_type configurado pelo admin para aquela atividade.
+  const [orderFormActivity, setOrderFormActivity] = useState(null);
+  const [orderFieldType, setOrderFieldType] = useState("pedido");
+  const [orderBranch, setOrderBranch] = useState(null); // null | "pedido" | "transferencia"
+  const [orderNumber, setOrderNumber] = useState("");
+  const [customerFirstName, setCustomerFirstName] = useState("");
+  const [customerLastName, setCustomerLastName] = useState("");
+  const [transferType, setTransferType] = useState("");
+  const [vehicleInput, setVehicleInput] = useState("");
+  const [plateInput, setPlateInput] = useState("");
+  const [orderError, setOrderError] = useState("");
+  const [stationName, setStationNameState] = useState(getStationName());
+
+  function editStation() {
+    setStationNameState(promptForStationName());
+  }
 
   const codeInputRef = useRef(codeInput);
   codeInputRef.current = codeInput;
@@ -79,6 +101,7 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
     setMsg("");
     setConfirmation(null);
     setNoteInput("");
+    cancelOrderForm();
   }
 
   function handleDigit(d) {
@@ -119,7 +142,7 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
     setCheckingLogin(false);
   }
 
-  async function startActivity(activityName) {
+  async function startActivity(activityName, extra = {}) {
     if (busy) return;
     bump();
     setBusy(true);
@@ -128,15 +151,108 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
       operatorCode: loggedOperator.code,
       operatorName: loggedOperator.name,
       activity: activityName,
+      orderNumber: extra.orderNumber || null,
+      customerName: extra.customerName || null,
+      transferType: extra.transferType || null,
+      vehicle: extra.vehicle || null,
+      plate: extra.plate || null,
+      station: stationName || null,
     });
     setBusy(false);
     if (!error) {
-      setConfirmation({ kind: "started", activity: activityName, time: fmtClock(startedAt) });
+      setConfirmation({
+        kind: "started",
+        activity: activityName,
+        time: fmtClock(startedAt),
+        detail: extra.transferType || extra.customerName || (extra.vehicle ? `${extra.vehicle} · ${extra.plate}` : null),
+      });
       autoReturnTimeoutRef.current = setTimeout(reset, AUTO_RETURN_MS);
     } else {
       setMsgType("error");
       setMsg("Erro ao iniciar. Tente novamente.");
     }
+  }
+
+  function handleActivityClick(activity) {
+    if (activity.requires_order_info) {
+      bump();
+      setOrderFormActivity(activity.name);
+      setOrderFieldType(activity.extra_field_type || "pedido");
+      setOrderBranch(null);
+      setOrderNumber("");
+      setCustomerFirstName("");
+      setCustomerLastName("");
+      setTransferType("");
+      setVehicleInput("");
+      setPlateInput("");
+      setOrderError("");
+    } else {
+      startActivity(activity.name);
+    }
+  }
+
+  function cancelOrderForm() {
+    setOrderFormActivity(null);
+    setOrderBranch(null);
+    setOrderNumber("");
+    setCustomerFirstName("");
+    setCustomerLastName("");
+    setTransferType("");
+    setVehicleInput("");
+    setPlateInput("");
+    setOrderError("");
+  }
+
+  async function confirmOrderStart() {
+    const activityName = orderFormActivity;
+
+    if (orderFieldType === "veiculo") {
+      if (!vehicleInput.trim()) {
+        setOrderError("Digite o veículo.");
+        return;
+      }
+      if (!plateInput.trim()) {
+        setOrderError("Digite a placa.");
+        return;
+      }
+      const extra = { vehicle: vehicleInput.trim(), plate: plateInput.trim().toUpperCase() };
+      cancelOrderForm();
+      await startActivity(activityName, extra);
+      return;
+    }
+
+    // Tipo "pedido": primeiro escolhe Pedido ou Transferência, depois
+    // preenche os campos específicos de cada um.
+    if (orderBranch === "pedido") {
+      if (!/^\d{4}$/.test(orderNumber)) {
+        setOrderError("Digite os 4 últimos dígitos do pedido.");
+        return;
+      }
+      if (!customerFirstName.trim() || !customerLastName.trim()) {
+        setOrderError("Digite o nome e o sobrenome do cliente.");
+        return;
+      }
+      const extra = {
+        orderNumber,
+        customerName: `${customerFirstName.trim()} ${customerLastName.trim()}`,
+      };
+      cancelOrderForm();
+      await startActivity(activityName, extra);
+      return;
+    }
+
+    if (orderBranch === "transferencia") {
+      if (!transferType) {
+        setOrderError("Selecione se é AP ou ZN.");
+        return;
+      }
+      const extra = { transferType };
+      cancelOrderForm();
+      await startActivity(activityName, extra);
+      return;
+    }
+
+    setOrderError("Selecione se é Pedido ou Transferência.");
   }
 
   async function finishActivity() {
@@ -219,7 +335,7 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
             </div>
             <div style={{ color: "var(--text-muted)", fontSize: 12.5, marginTop: 6 }}>
               {confirmation.kind === "started"
-                ? `às ${confirmation.time} · volte depois para finalizar`
+                ? `às ${confirmation.time}${confirmation.detail ? ` · ${confirmation.detail}` : ""} · volte depois para finalizar`
                 : `duração: ${confirmation.extra}`}
             </div>
           </div>
@@ -239,13 +355,114 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
               </button>
             </div>
 
-            {!session && activities.length > 0 && (
+            {!session && activities.length > 0 && !orderFormActivity && (
               <div className="activity-grid" style={{ opacity: busy ? 0.6 : 1, pointerEvents: busy ? "none" : "auto" }}>
                 {activities.map((a) => (
-                  <div key={a.name} className="activity-btn" onClick={() => startActivity(a.name)}>
+                  <div key={a.name} className="activity-btn" onClick={() => handleActivityClick(a)}>
                     {a.name}
                   </div>
                 ))}
+              </div>
+            )}
+
+            {!session && orderFormActivity && (
+              <div>
+                <p style={{ color: "var(--text-muted)", fontSize: 13, marginBottom: 10 }}>
+                  {orderFormActivity} — {orderFieldType === "veiculo" ? "informe o veículo:" : "informe o pedido:"}
+                </p>
+
+                {orderFieldType === "veiculo" ? (
+                  <>
+                    <input
+                      className="field"
+                      style={{ width: "100%", marginBottom: 10 }}
+                      placeholder="Veículo (ex: Volkswagen)"
+                      value={vehicleInput}
+                      onChange={(e) => { bump(); setVehicleInput(e.target.value); }}
+                    />
+                    <input
+                      className="field"
+                      style={{ width: "100%", marginBottom: 10, fontFamily: "var(--font-mono)", letterSpacing: 1, textTransform: "uppercase" }}
+                      placeholder="Placa"
+                      value={plateInput}
+                      onChange={(e) => { bump(); setPlateInput(e.target.value); }}
+                    />
+                  </>
+                ) : (
+                  <>
+                    {orderBranch === null && (
+                      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                        <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => { bump(); setOrderBranch("pedido"); }}>
+                          Pedido
+                        </button>
+                        <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => { bump(); setOrderBranch("transferencia"); }}>
+                          Transferência
+                        </button>
+                      </div>
+                    )}
+
+                    {orderBranch === "pedido" && (
+                      <>
+                        <input
+                          className="field"
+                          style={{ width: "100%", marginBottom: 10, fontFamily: "var(--font-mono)", letterSpacing: 2, textAlign: "center", fontSize: 18 }}
+                          placeholder="4 últimos dígitos do pedido"
+                          value={orderNumber}
+                          maxLength={4}
+                          onChange={(e) => { bump(); setOrderNumber(e.target.value.replace(/\D/g, "").slice(0, 4)); }}
+                        />
+                        <input
+                          className="field"
+                          style={{ width: "100%", marginBottom: 10 }}
+                          placeholder="Nome do cliente"
+                          value={customerFirstName}
+                          onChange={(e) => { bump(); setCustomerFirstName(e.target.value); }}
+                        />
+                        <input
+                          className="field"
+                          style={{ width: "100%", marginBottom: 10 }}
+                          placeholder="Sobrenome do cliente"
+                          value={customerLastName}
+                          onChange={(e) => { bump(); setCustomerLastName(e.target.value); }}
+                        />
+                      </>
+                    )}
+
+                    {orderBranch === "transferencia" && (
+                      <div className="activity-grid" style={{ marginBottom: 10 }}>
+                        {TRANSFER_TYPES.map((t) => (
+                          <div
+                            key={t}
+                            className="activity-btn"
+                            style={transferType === t ? { borderColor: "var(--accent)", background: "var(--accent-dim)" } : {}}
+                            onClick={() => { bump(); setTransferType(t); }}
+                          >
+                            {t}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {orderBranch && (
+                      <button
+                        className="btn-small"
+                        style={{ marginBottom: 10 }}
+                        onClick={() => { bump(); setOrderBranch(null); setOrderError(""); }}
+                      >
+                        ← Trocar Pedido/Transferência
+                      </button>
+                    )}
+                  </>
+                )}
+
+                {orderError && <p className="terminal-error" style={{ marginBottom: 10 }}>{orderError}</p>}
+
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button className="btn-small" onClick={cancelOrderForm} disabled={busy}>Cancelar</button>
+                  <button className="btn btn-primary" style={{ flex: 1 }} onClick={confirmOrderStart} disabled={busy}>
+                    {busy ? "Iniciando..." : "Iniciar"}
+                  </button>
+                </div>
               </div>
             )}
 
@@ -261,6 +478,15 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
                   em andamento desde {fmtClock(session.start_time)}
                 </div>
                 <div style={{ fontSize: 18, fontWeight: 600, margin: "4px 0 8px 0" }}>{session.activity}</div>
+                {(session.order_number || session.customer_name || session.transfer_type || session.vehicle) && (
+                  <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginBottom: 8 }}>
+                    {session.transfer_type && <div>Tipo: {session.transfer_type}</div>}
+                    {session.customer_name && <div>Cliente: {session.customer_name}</div>}
+                    {session.order_number && <div>Pedido: {session.order_number}</div>}
+                    {session.vehicle && <div>Veículo: {session.vehicle}</div>}
+                    {session.plate && <div>Placa: {session.plate}</div>}
+                  </div>
+                )}
                 <div className="stat-num" style={{ fontSize: 32, marginBottom: 14 }}>
                   {fmtDuration(Math.round((now - new Date(session.start_time).getTime()) / 1000))}
                 </div>
@@ -302,6 +528,13 @@ export default function Kiosk({ operators, activities, refreshEntries }) {
           <div className="side-divider" />
           <img src={logo} alt="" className="side-logo" />
           <div className="side-motto">"joga junto e cresce todo dia"</div>
+          <div
+            onClick={editStation}
+            style={{ marginTop: 14, fontSize: 10.5, color: "var(--text-faint)", cursor: "pointer" }}
+            title="Clique para nomear esta estação/terminal"
+          >
+            {stationName ? `📍 ${stationName}` : "📍 nomear esta estação"}
+          </div>
         </div>
       </div>
     </div>

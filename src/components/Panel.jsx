@@ -1,9 +1,9 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   BarChart, Bar, LineChart, Line, Legend, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
 import { fmtClock, fmtDate, fmtDuration } from "../lib/format";
-import { computeMetrics, computeWeeklyTrend, mean as meanM } from "../lib/metrics";
+import { computeMetrics, computeWeeklyTrend, computeMonthlyBuckets, monthLabel, mean as meanM } from "../lib/metrics";
 import logo from "../assets/logo.png";
 
 const COLORS = ["#FFB020", "#34D399", "#F87171", "#60A5FA", "#C084FC", "#FB923C", "#22D3EE", "#A3A3A3"];
@@ -19,6 +19,7 @@ export default function Panel({ entries, activities, operators, activeSessions, 
   const [filterOperator, setFilterOperator] = useState("");
   const [filterActivity, setFilterActivity] = useState("");
   const [filterShift, setFilterShift] = useState("");
+  const [filterStation, setFilterStation] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
@@ -27,6 +28,8 @@ export default function Panel({ entries, activities, operators, activeSessions, 
   const [resetting, setResetting] = useState(false);
 
   const [copyLabel, setCopyLabel] = useState("Copiar resumo do dia");
+  const [soundEnabled, setSoundEnabled] = useState(false);
+  const alertedRef = useRef(new Set());
 
   // Atualiza a cada 15s só para os alertas de "atividade em andamento há
   // muito tempo" recalcularem sozinhos, sem precisar de ação do admin.
@@ -63,8 +66,15 @@ export default function Panel({ entries, activities, operators, activeSessions, 
       .filter((e) => !filterOperator || e.operator_code === filterOperator)
       .filter((e) => !filterActivity || e.activity === filterActivity)
       .filter((e) => !filterShift || e.shift === filterShift)
+      .filter((e) => !filterStation || e.station === filterStation)
       .sort((a, b) => new Date(b.start_time) - new Date(a.start_time));
-  }, [dateFilteredEntries, filterOperator, filterActivity, filterShift]);
+  }, [dateFilteredEntries, filterOperator, filterActivity, filterShift, filterStation]);
+
+  const knownStations = useMemo(() => {
+    const set = new Set();
+    entries.forEach((e) => e.station && set.add(e.station));
+    return Array.from(set).sort();
+  }, [entries]);
 
   // ---------- Alerta de atividade demorada ----------
   // Prioridade do limite: meta definida pelo admin (com folga de 30%) >
@@ -86,6 +96,54 @@ export default function Panel({ entries, activities, operators, activeSessions, 
       .filter((s) => s.isLate)
       .sort((a, b) => b.elapsed - a.elapsed);
   }, [activeSessions, activities, metrics.avgByActivity, now]);
+
+  function playAlertBeep() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = 880;
+      gain.gain.value = 0.18;
+      osc.start();
+      osc.stop(ctx.currentTime + 0.28);
+    } catch {
+      // Áudio bloqueado pelo navegador — segue sem som.
+    }
+  }
+
+  function toggleSound() {
+    const next = !soundEnabled;
+    setSoundEnabled(next);
+    if (next) {
+      // Precisa de um gesto do usuário pra "destravar" áudio e notificação
+      // no navegador — este clique serve pra isso.
+      playAlertBeep();
+      if (typeof Notification !== "undefined" && Notification.permission === "default") {
+        Notification.requestPermission();
+      }
+    }
+  }
+
+  // Toca o som/mostra notificação só quando um alerta é NOVO — evita
+  // ficar apitando o tempo todo enquanto o mesmo alerta continua ativo.
+  useEffect(() => {
+    if (!soundEnabled) return;
+    const currentKeys = new Set(activityAlerts.map((a) => a.operator_code));
+    activityAlerts.forEach((a) => {
+      if (!alertedRef.current.has(a.operator_code)) {
+        playAlertBeep();
+        if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+          new Notification("Atividade demorada", {
+            body: `${a.operator_name} — ${a.activity} — ${fmtDuration(a.elapsed)}`,
+          });
+        }
+      }
+    });
+    alertedRef.current = currentKeys;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activityAlerts, soundEnabled]);
 
   // ---------- Meta vs real ----------
   const targetComparison = useMemo(() => {
@@ -150,18 +208,50 @@ export default function Panel({ entries, activities, operators, activeSessions, 
     URL.revokeObjectURL(url);
   }
 
+  // ---------- Comparação mês a mês ----------
+  const monthlyBuckets = useMemo(() => computeMonthlyBuckets(entries, activities), [entries, activities]);
+  const availableMonths = useMemo(() => Object.keys(monthlyBuckets).sort(), [monthlyBuckets]);
+  const [monthA, setMonthA] = useState("");
+  const [monthB, setMonthB] = useState("");
+
+  useEffect(() => {
+    if (availableMonths.length === 0) return;
+    if (!monthA && !monthB) {
+      const last = availableMonths[availableMonths.length - 1];
+      const prev = availableMonths[availableMonths.length - 2] || last;
+      setMonthA(prev);
+      setMonthB(last);
+    }
+  }, [availableMonths, monthA, monthB]);
+
+  const monthComparisonRows = useMemo(() => {
+    if (!monthA || !monthB) return [];
+    const statsA = monthlyBuckets[monthA];
+    const statsB = monthlyBuckets[monthB];
+    if (!statsA || !statsB) return [];
+    return activities.map((act) => {
+      const a = statsA.avgByActivity.find((x) => x.name === act.name);
+      const b = statsB.avgByActivity.find((x) => x.name === act.name);
+      const mediaA = a?.media ?? 0;
+      const mediaB = b?.media ?? 0;
+      const deltaPct = mediaA > 0 && mediaB > 0 ? Math.round(((mediaB - mediaA) / mediaA) * 100) : null;
+      return { name: act.name, mediaA, registrosA: a?.registros ?? 0, mediaB, registrosB: b?.registros ?? 0, deltaPct };
+    });
+  }, [monthA, monthB, monthlyBuckets, activities]);
+
   function clearFilters() {
     setFilterOperator("");
     setFilterActivity("");
     setFilterShift("");
+    setFilterStation("");
     setDateFrom("");
     setDateTo("");
   }
 
   function exportCSV() {
-    const header = "Operador,Codigo,Atividade,Data,Turno,Inicio,Fim,Duracao(s),Manual\n";
+    const header = "Operador,Codigo,Atividade,Data,Turno,Estacao,Inicio,Fim,Duracao(s),Manual,Pedido,Cliente,TipoTransferencia,Veiculo,Placa\n";
     const rows = filteredEntries.map((e) =>
-      [e.operator_name, e.operator_code, e.activity, fmtDate(e.start_time), e.shift, fmtClock(e.start_time), fmtClock(e.end_time), e.duration_seconds, e.manual_entry ? "sim" : "não"].join(",")
+      [e.operator_name, e.operator_code, e.activity, fmtDate(e.start_time), e.shift, e.station || "", fmtClock(e.start_time), fmtClock(e.end_time), e.duration_seconds, e.manual_entry ? "sim" : "não", e.order_number || "", e.customer_name || "", e.transfer_type || "", e.vehicle || "", e.plate || ""].join(",")
     );
     const csv = header + rows.join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -301,7 +391,7 @@ export default function Panel({ entries, activities, operators, activeSessions, 
     setResetPhrase("");
   }
 
-  const hasFilters = filterOperator || filterActivity || filterShift || dateFrom || dateTo;
+  const hasFilters = filterOperator || filterActivity || filterShift || filterStation || dateFrom || dateTo;
 
   return (
     <div>
@@ -351,10 +441,15 @@ export default function Panel({ entries, activities, operators, activeSessions, 
       )}
 
       {activityAlerts.length > 0 && (
-        <div className="confirm-box" style={{ marginBottom: 22 }}>
-          <strong style={{ color: "var(--danger)", fontSize: 14 }}>
-            ⚠ {activityAlerts.length} atividade(s) em andamento há mais tempo que o esperado
-          </strong>
+        <div className="confirm-box alert-box-pulsing" style={{ marginBottom: 22 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <strong style={{ color: "var(--danger)", fontSize: 15 }}>
+              ⚠ {activityAlerts.length} atividade(s) em andamento há mais tempo que o esperado
+            </strong>
+            <button className="btn-small" onClick={toggleSound}>
+              {soundEnabled ? "🔔 Alerta sonoro ativado" : "🔕 Ativar alerta sonoro"}
+            </button>
+          </div>
           <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
             {activityAlerts.map((a) => (
               <div key={a.operator_code} style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
@@ -363,6 +458,14 @@ export default function Panel({ entries, activities, operators, activeSessions, 
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {activityAlerts.length === 0 && (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+          <button className="btn-small" onClick={toggleSound}>
+            {soundEnabled ? "🔔 Alerta sonoro ativado" : "🔕 Ativar alerta sonoro"}
+          </button>
         </div>
       )}
 
@@ -420,6 +523,51 @@ export default function Panel({ entries, activities, operators, activeSessions, 
         ) : (
           <p style={{ fontSize: 12.5, color: "var(--text-faint)" }}>
             Ainda não há dados de mais de uma semana no período filtrado para mostrar uma tendência.
+          </p>
+        )}
+      </div>
+
+      <div className="card" style={{ marginBottom: 20 }}>
+        <div className="page-header-row" style={{ marginBottom: 14 }}>
+          <div className="card-title" style={{ marginBottom: 0 }}>Comparação mês a mês</div>
+          {availableMonths.length > 1 && (
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <select className="field" value={monthA} onChange={(e) => setMonthA(e.target.value)}>
+                {availableMonths.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}
+              </select>
+              <span style={{ color: "var(--text-faint)", fontSize: 12 }}>vs</span>
+              <select className="field" value={monthB} onChange={(e) => setMonthB(e.target.value)}>
+                {availableMonths.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}
+              </select>
+            </div>
+          )}
+        </div>
+        {availableMonths.length > 1 ? (
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Atividade</th>
+                <th>{monthLabel(monthA)}</th>
+                <th>{monthLabel(monthB)}</th>
+                <th>Diferença</th>
+              </tr>
+            </thead>
+            <tbody>
+              {monthComparisonRows.map((r) => (
+                <tr key={r.name}>
+                  <td style={{ fontFamily: "var(--font-display)" }}>{r.name}</td>
+                  <td>{r.registrosA > 0 ? fmtDuration(r.mediaA) : "sem registros"}</td>
+                  <td>{r.registrosB > 0 ? fmtDuration(r.mediaB) : "sem registros"}</td>
+                  <td style={{ color: r.deltaPct === null ? "var(--text-faint)" : r.deltaPct < 0 ? "var(--ok)" : "var(--danger)" }}>
+                    {r.deltaPct === null ? "—" : `${r.deltaPct > 0 ? "+" : ""}${r.deltaPct}%`}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          <p style={{ fontSize: 12.5, color: "var(--text-faint)" }}>
+            Ainda não há registros de mais de um mês para comparar.
           </p>
         )}
       </div>
@@ -585,6 +733,12 @@ export default function Panel({ entries, activities, operators, activeSessions, 
             <option value="Manhã">Manhã</option>
             <option value="Tarde">Tarde</option>
           </select>
+          {knownStations.length > 0 && (
+            <select className="field" value={filterStation} onChange={(e) => setFilterStation(e.target.value)}>
+              <option value="">Todas estações</option>
+              {knownStations.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          )}
           <span style={{ color: "var(--text-faint)", fontSize: 12 }}>de</span>
           <input type="date" className="field" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
           <span style={{ color: "var(--text-faint)", fontSize: 12 }}>até</span>
@@ -595,7 +749,7 @@ export default function Panel({ entries, activities, operators, activeSessions, 
         </div>
         <table className="data-table">
           <thead>
-            <tr><th>Data</th><th>Operador</th><th>Atividade</th><th>Turno</th><th>Início</th><th>Fim</th><th>Duração</th></tr>
+            <tr><th>Data</th><th>Operador</th><th>Atividade</th><th>Turno</th><th>Estação</th><th>Início</th><th>Fim</th><th>Duração</th></tr>
           </thead>
           <tbody>
             {filteredEntries.slice(0, 150).map((e) => {
@@ -604,8 +758,21 @@ export default function Panel({ entries, activities, operators, activeSessions, 
                 <tr key={e.id}>
                   <td>{fmtDate(e.start_time)}</td>
                   <td style={{ fontFamily: "var(--font-display)" }}>{e.operator_name}</td>
-                  <td>{e.activity}</td>
+                  <td>
+                    {e.activity}
+                    {(e.transfer_type || e.customer_name || e.order_number) && (
+                      <div style={{ fontSize: 10.5, color: "var(--text-faint)" }}>
+                        {e.transfer_type || e.customer_name}{e.order_number ? ` · #${e.order_number}` : ""}
+                      </div>
+                    )}
+                    {e.vehicle && (
+                      <div style={{ fontSize: 10.5, color: "var(--text-faint)" }}>
+                        {e.vehicle}{e.plate ? ` · ${e.plate}` : ""}
+                      </div>
+                    )}
+                  </td>
                   <td>{e.shift}</td>
+                  <td style={{ color: "var(--text-muted)" }}>{e.station || "—"}</td>
                   <td>{fmtClock(e.start_time)}</td>
                   <td>{fmtClock(e.end_time)}</td>
                   <td>
@@ -617,7 +784,7 @@ export default function Panel({ entries, activities, operators, activeSessions, 
                 </tr>
               );
             })}
-            {filteredEntries.length === 0 && <tr><td colSpan={7}>Nenhum registro encontrado.</td></tr>}
+            {filteredEntries.length === 0 && <tr><td colSpan={8}>Nenhum registro encontrado.</td></tr>}
           </tbody>
         </table>
       </div>

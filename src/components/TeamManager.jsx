@@ -6,7 +6,8 @@ import {
   deleteOperator,
   addActivity as apiAddActivity,
   renameActivity,
-  updateActivityTarget,
+  updateActivity,
+  swapActivityOrder,
   deleteActivity as apiDeleteActivity,
   addErrorType as apiAddErrorType,
   renameErrorType,
@@ -42,7 +43,7 @@ export default function TeamManager({ operators, activities, errorTypes, adminPi
   const [editValues, setEditValues] = useState({ code: "", name: "", role: "" });
 
   const [editingActivity, setEditingActivity] = useState(null);
-  const [editActivityValues, setEditActivityValues] = useState({ name: "", target: "" });
+  const [editActivityValues, setEditActivityValues] = useState({ name: "", target: "", requiresOrderInfo: false, extraFieldType: "pedido" });
 
   const [newErrorType, setNewErrorType] = useState("");
   const [editingErrorType, setEditingErrorType] = useState(null);
@@ -165,7 +166,12 @@ export default function TeamManager({ operators, activities, errorTypes, adminPi
 
   function startEditActivity(act) {
     setEditingActivity(act.name);
-    setEditActivityValues({ name: act.name, target: secondsToMinutesLabel(act.target_seconds) });
+    setEditActivityValues({
+      name: act.name,
+      target: secondsToMinutesLabel(act.target_seconds),
+      requiresOrderInfo: !!act.requires_order_info,
+      extraFieldType: act.extra_field_type || "pedido",
+    });
     setFormError("");
   }
 
@@ -183,16 +189,36 @@ export default function TeamManager({ operators, activities, errorTypes, adminPi
       return setFormError(`Já existe uma atividade chamada "${name}".`);
     }
     const target = minutesToSeconds(editActivityValues.target);
+    const requiresOrderInfo = editActivityValues.requiresOrderInfo;
+    const extraFieldType = editActivityValues.extraFieldType;
     const nameChanged = name !== original.name;
     const targetChanged = target !== (original.target_seconds ?? null);
-    if (!nameChanged && !targetChanged) {
+    const requiresChanged = requiresOrderInfo !== !!original.requires_order_info;
+    const extraFieldTypeChanged = extraFieldType !== (original.extra_field_type || "pedido");
+    if (!nameChanged && !targetChanged && !requiresChanged && !extraFieldTypeChanged) {
       setEditingActivity(null);
       return;
     }
     const action = nameChanged
-      ? () => renameActivity(original.name, name, target)
-      : () => updateActivityTarget(original.name, target);
+      ? () => renameActivity(original.name, name, {
+          target_seconds: target,
+          requires_order_info: requiresOrderInfo,
+          extra_field_type: extraFieldType,
+          sort_order: original.sort_order,
+        })
+      : () => updateActivity(original.name, {
+          target_seconds: target,
+          requires_order_info: requiresOrderInfo,
+          extra_field_type: extraFieldType,
+        });
     await runAction(action, () => setEditingActivity(null));
+  }
+
+  async function moveActivity(index, direction) {
+    const target = activities[index + direction];
+    const current = activities[index];
+    if (!target || !current) return;
+    await runAction(() => swapActivityOrder(current.name, current.sort_order, target.name, target.sort_order));
   }
 
   async function addErrorType() {
@@ -321,21 +347,48 @@ export default function TeamManager({ operators, activities, errorTypes, adminPi
 
         <div className="card">
           <div className="card-title">Atividades do mês</div>
+          <p style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: -8, marginBottom: 12 }}>
+            A ordem aqui é a mesma que aparece no quiosque — use ↑/↓ para reorganizar.
+          </p>
           <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
             <input className="field" style={{ flex: 1, minWidth: 100 }} placeholder="Nova atividade" value={newActivity} onChange={(e) => setNewActivity(e.target.value)} disabled={busy} />
             <input className="field" style={{ width: 84 }} placeholder="Meta (min)" value={newActivityTarget} onChange={(e) => setNewActivityTarget(e.target.value.replace(/\D/g, ""))} disabled={busy} />
             <button className="btn-small" onClick={addActivity} disabled={busy}>Adicionar</button>
           </div>
           <table className="data-table">
-            <thead><tr><th>Atividade</th><th>Meta</th><th></th></tr></thead>
+            <thead><tr><th></th><th>Atividade</th><th>Meta</th><th></th></tr></thead>
             <tbody>
-              {activities.map((a) => {
+              {activities.map((a, index) => {
                 const isEditing = editingActivity === a.name;
                 return (
                   <tr key={a.name}>
                     {isEditing ? (
                       <>
-                        <td><input className="field" style={{ width: "100%", padding: "4px 6px" }} value={editActivityValues.name} onChange={(e) => setEditActivityValues((v) => ({ ...v, name: e.target.value }))} disabled={busy} /></td>
+                        <td></td>
+                        <td>
+                          <input className="field" style={{ width: "100%", padding: "4px 6px", marginBottom: 6 }} value={editActivityValues.name} onChange={(e) => setEditActivityValues((v) => ({ ...v, name: e.target.value }))} disabled={busy} />
+                          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "var(--text-muted)", marginBottom: 6 }}>
+                            <input
+                              type="checkbox"
+                              checked={editActivityValues.requiresOrderInfo}
+                              onChange={(e) => setEditActivityValues((v) => ({ ...v, requiresOrderInfo: e.target.checked }))}
+                              disabled={busy}
+                            />
+                            Pede informação extra ao iniciar
+                          </label>
+                          {editActivityValues.requiresOrderInfo && (
+                            <select
+                              className="field"
+                              style={{ width: "100%", fontSize: 11.5, padding: "4px 6px" }}
+                              value={editActivityValues.extraFieldType}
+                              onChange={(e) => setEditActivityValues((v) => ({ ...v, extraFieldType: e.target.value }))}
+                              disabled={busy}
+                            >
+                              <option value="pedido">Pedido + Cliente/Transferência</option>
+                              <option value="veiculo">Veículo + Placa</option>
+                            </select>
+                          )}
+                        </td>
                         <td><input className="field" style={{ width: 56, padding: "4px 6px" }} placeholder="min" value={editActivityValues.target} onChange={(e) => setEditActivityValues((v) => ({ ...v, target: e.target.value.replace(/\D/g, "") }))} disabled={busy} /></td>
                         <td style={{ whiteSpace: "nowrap" }}>
                           <button className="btn-small" style={{ padding: "4px 8px", marginRight: 4 }} onClick={() => saveEditActivity(a)} disabled={busy}>Salvar</button>
@@ -344,7 +397,18 @@ export default function TeamManager({ operators, activities, errorTypes, adminPi
                       </>
                     ) : (
                       <>
-                        <td>{a.name}</td>
+                        <td style={{ whiteSpace: "nowrap" }}>
+                          <button className="btn-small" style={{ padding: "2px 6px", marginRight: 2 }} onClick={() => moveActivity(index, -1)} disabled={busy || index === 0}>↑</button>
+                          <button className="btn-small" style={{ padding: "2px 6px" }} onClick={() => moveActivity(index, 1)} disabled={busy || index === activities.length - 1}>↓</button>
+                        </td>
+                        <td>
+                          {a.name}
+                          {a.requires_order_info && (
+                            <span style={{ marginLeft: 6, fontSize: 10.5, color: "var(--accent)" }}>
+                              {a.extra_field_type === "veiculo" ? "🚚 pede veículo/placa" : "📦 pede pedido/cliente"}
+                            </span>
+                          )}
+                        </td>
                         <td style={{ color: "var(--text-muted)" }}>{a.target_seconds ? `${secondsToMinutesLabel(a.target_seconds)} min` : "—"}</td>
                         <td style={{ whiteSpace: "nowrap" }}>
                           <button className="btn-small" style={{ padding: "4px 8px", marginRight: 4 }} onClick={() => startEditActivity(a)} disabled={busy}>Editar</button>
@@ -355,7 +419,7 @@ export default function TeamManager({ operators, activities, errorTypes, adminPi
                   </tr>
                 );
               })}
-              {activities.length === 0 && <tr><td colSpan={3}>Nenhuma atividade cadastrada.</td></tr>}
+              {activities.length === 0 && <tr><td colSpan={4}>Nenhuma atividade cadastrada.</td></tr>}
             </tbody>
           </table>
         </div>

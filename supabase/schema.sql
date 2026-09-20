@@ -73,6 +73,42 @@ alter table entries add column if not exists manual_entry boolean not null defau
 -- atividade (ex: "atraso por falta de material").
 alter table entries add column if not exists note text;
 
+-- Dados extras de pedido/cliente/transferência para atividades que
+-- exigem essa informação (ex: Separação) — preenchidos ao iniciar,
+-- carregados junto do início para o registro final.
+alter table active_sessions add column if not exists order_number text;
+alter table active_sessions add column if not exists customer_name text;
+alter table active_sessions add column if not exists transfer_type text;
+alter table entries add column if not exists order_number text;
+alter table entries add column if not exists customer_name text;
+alter table entries add column if not exists transfer_type text;
+
+-- Se marcado, o quiosque pede pedido/cliente ou tipo de transferência
+-- antes de iniciar essa atividade.
+alter table activities add column if not exists requires_order_info boolean not null default false;
+
+-- Qual formulário mostrar quando requires_order_info está marcado:
+-- 'pedido' = pedido + cliente/transferência (ex: Separação)
+-- 'veiculo' = veículo + placa (ex: Carregamento de caminhão)
+alter table activities add column if not exists extra_field_type text not null default 'pedido';
+
+-- Ordem de exibição dos botões de atividade no quiosque, personalizável
+-- pelo admin (ao invés de sempre ordem alfabética).
+alter table activities add column if not exists sort_order serial;
+
+-- Dados de veículo/placa para atividades do tipo 'veiculo' (ex:
+-- Carregamento de caminhão).
+alter table active_sessions add column if not exists vehicle text;
+alter table active_sessions add column if not exists plate text;
+alter table entries add column if not exists vehicle text;
+alter table entries add column if not exists plate text;
+
+-- Identifica de qual estação/terminal físico o registro veio (o nome
+-- fica salvo no navegador daquele computador/tablet).
+alter table active_sessions add column if not exists station text;
+alter table entries add column if not exists station text;
+alter table separation_errors add column if not exists station text;
+
 -- Dados iniciais -------------------------------------------------------
 
 insert into admin_config (id, pin) values (1, '2026')

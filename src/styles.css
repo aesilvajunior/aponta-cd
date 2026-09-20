@@ -512,6 +512,16 @@ select.field:focus {
   margin-top: 10px;
 }
 
+@keyframes pulse-alert {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(248, 113, 113, 0.5); }
+  50% { box-shadow: 0 0 0 8px rgba(248, 113, 113, 0); }
+}
+
+.alert-box-pulsing {
+  animation: pulse-alert 1.6s ease-in-out infinite;
+  border-width: 2px;
+}
+
 .side-panel {
   width: 200px;
   background: var(--surface);
