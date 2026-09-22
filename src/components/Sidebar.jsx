@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import ThemeToggle from "./ThemeToggle";
+import { useAuth } from "../context/AuthContext";
 import logo from "../assets/logo.png";
 
 const STORAGE_KEY = "aponta_sidebar_collapsed";
@@ -34,6 +35,15 @@ function IconCalendar() {
       <line x1="16" y1="2" x2="16" y2="6" />
       <line x1="8" y1="2" x2="8" y2="6" />
       <line x1="3" y1="10" x2="21" y2="10" />
+    </svg>
+  );
+}
+
+function IconSearch() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
     </svg>
   );
 }
@@ -137,6 +147,7 @@ const SECTIONS = [
       { key: "kiosk", label: "Registrar atividade", Icon: IconActivity },
       { key: "errors-kiosk", label: "Registrar erro", Icon: IconAlert },
       { key: "schedules", label: "Agendamentos", Icon: IconCalendar },
+      { key: "sales-query", label: "Consulta líder da equipe", Icon: IconSearch },
     ],
   },
   {
@@ -146,12 +157,14 @@ const SECTIONS = [
       { key: "panel", label: "Painel de métricas", Icon: IconDashboard },
       { key: "manual", label: "Lançamento retroativo", Icon: IconManual },
       { key: "team", label: "Gestão e cadastros", Icon: IconSettings },
+      { key: "sales-team", label: "Equipe de vendas", Icon: IconSettings },
       { key: "audit", label: "Histórico de alterações", Icon: IconHistory },
     ],
   },
 ];
 
 export default function Sidebar({ tab, setTab, isAdmin, onLock }) {
+  const { session, signOut } = useAuth();
   const [collapsed, setCollapsed] = useState(() => {
     try {
       return localStorage.getItem(STORAGE_KEY) === "1";
@@ -169,6 +182,13 @@ export default function Sidebar({ tab, setTab, isAdmin, onLock }) {
   function toggle() {
     setCollapsed((v) => !v);
   }
+
+  async function handleSignOut() {
+    if (!window.confirm("Sair da sua conta?")) return;
+    await signOut();
+  }
+
+  const email = session?.user?.email || "";
 
   return (
     <nav className={`sidebar ${collapsed ? "sidebar-collapsed" : ""}`}>
@@ -235,7 +255,18 @@ export default function Sidebar({ tab, setTab, isAdmin, onLock }) {
       </div>
 
       <div className="sidebar-footer">
+        {/* Usuário logado */}
+        {!collapsed && email && (
+          <div className="sidebar-user" title={email}>
+            <div className="sidebar-user-avatar">
+              {email.charAt(0).toUpperCase()}
+            </div>
+            <div className="sidebar-user-email">{email}</div>
+          </div>
+        )}
+
         <ThemeToggle compact={collapsed} />
+
         {isAdmin && (
           <button
             className="sidebar-logout"
@@ -246,6 +277,15 @@ export default function Sidebar({ tab, setTab, isAdmin, onLock }) {
             {!collapsed && <span>Sair do admin</span>}
           </button>
         )}
+
+        <button
+          className="sidebar-logout sidebar-logout-danger"
+          onClick={handleSignOut}
+          title={collapsed ? "Sair da conta" : undefined}
+        >
+          <IconLogout />
+          {!collapsed && <span>Sair da conta</span>}
+        </button>
       </div>
     </nav>
   );

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { supabase, missingConfig } from "./supabaseClient";
+import { useAuth } from "./context/AuthContext";
 import {
   fetchOperators,
   fetchActivities,
@@ -25,6 +26,9 @@ import AuditLog from "./components/AuditLog";
 import CommandPalette from "./components/CommandPalette";
 import ExecutiveView from "./components/ExecutiveView";
 import ScheduleManager from "./components/ScheduleManager";
+import SalesTeamQuery from "./components/SalesTeamQuery";
+import SalesTeamManager from "./components/SalesTeamManager";
+import LoginScreen from "./components/LoginScreen";
 import logo from "./assets/logo.png";
 import {
   DEFAULT_OPERATORS,
@@ -35,6 +39,8 @@ import {
 const DEFAULT_ALERT_THRESHOLD = 1800;
 
 export default function App() {
+  const { session, loading: authLoading } = useAuth();
+
   const [tab, setTab] = useState("kiosk");
   const [isAdmin, setIsAdmin] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -154,7 +160,10 @@ export default function App() {
     return { error: null };
   }, [loadShortages]);
 
+  // Só carrega dados DEPOIS que logar
   useEffect(() => {
+    if (!session) return;
+
     (async () => {
       try { await loadAll(); }
       catch (err) { setConnectionError(err?.message || "Erro inesperado ao carregar o aplicativo."); }
@@ -189,7 +198,7 @@ export default function App() {
     ];
 
     return () => { channels.forEach((ch) => supabase.removeChannel(ch)); };
-  }, [loadOperators, loadActivities, loadErrorTypes, loadVehicles, loadAdminConfig, loadEntries, loadActiveSessions, loadSeparationErrors, loadShortages, loadAll]);
+  }, [session, loadOperators, loadActivities, loadErrorTypes, loadVehicles, loadAdminConfig, loadEntries, loadActiveSessions, loadSeparationErrors, loadShortages, loadAll]);
 
   useEffect(() => {
     function onKeyDown(e) {
@@ -206,6 +215,26 @@ export default function App() {
   function handleViewOperator(op) { setProfileOperator(op); setTab("panel"); }
   function handleApplyFilter({ type, value }) { setGlobalFilter({ type, value, ts: Date.now() }); }
 
+  // ============================================================
+  // Estados de carregamento / login
+  // ============================================================
+
+  // 1) Ainda verificando sessão
+  if (authLoading) {
+    return (
+      <div className="loading-screen">
+        <div className="loading-spinner" />
+        <div>Verificando sessão…</div>
+      </div>
+    );
+  }
+
+  // 2) Sem login → tela de login
+  if (!session) {
+    return <LoginScreen />;
+  }
+
+  // 3) Logado mas dados ainda carregando
   if (!loaded) {
     return (
       <div className="loading-screen">
@@ -215,6 +244,7 @@ export default function App() {
     );
   }
 
+  // 4) Logado e dados prontos → site normal
   return (
     <div className="app-shell">
       {missingConfig && (
@@ -251,13 +281,13 @@ export default function App() {
           {tab === "errors-kiosk" && (
             <ErrorKiosk operators={operators} errorTypes={errorTypes} />
           )}
-
-          {/* Agendamentos: a própria tela cuida do login se não for admin */}
           {tab === "schedules" && (
             <ScheduleManager operators={operators} isAdmin={isAdmin} />
           )}
-
-          {(tab === "executive" || tab === "panel" || tab === "team" || tab === "manual" || tab === "audit") && !isAdmin && (
+          {tab === "sales-query" && (
+            <SalesTeamQuery />
+          )}
+          {(tab === "executive" || tab === "panel" || tab === "team" || tab === "manual" || tab === "audit" || tab === "sales-team") && !isAdmin && (
             <AdminGate correctPin={adminPin} onUnlock={() => setIsAdmin(true)} />
           )}
           {tab === "executive" && isAdmin && (
@@ -274,6 +304,9 @@ export default function App() {
           )}
           {tab === "audit" && isAdmin && (
             <AuditLog />
+          )}
+          {tab === "sales-team" && isAdmin && (
+            <SalesTeamManager />
           )}
         </div>
 

@@ -333,9 +333,7 @@ export async function deleteAllAuditLog() {
   return supabase.rpc("delete_all_audit_log");
 }
 
-// ====================================================================
-// AGENDAMENTOS DE RECEBIMENTO
-// ====================================================================
+// ---------- Agendamentos de recebimento ----------
 
 export async function fetchSchedules({ limit = 500, fromDate = null, toDate = null } = {}) {
   let q = supabase.from("delivery_schedules").select("*").order("scheduled_at", { ascending: true }).limit(limit);
@@ -395,4 +393,99 @@ export async function deleteSchedule(id) {
 
 export async function updateScheduleGoogleEventId(id, googleEventId) {
   return supabase.from("delivery_schedules").update({ google_event_id: googleEventId }).eq("id", id);
+}
+
+// ====================================================================
+// EQUIPE DE VENDAS
+// ====================================================================
+
+// ---------- Líderes ----------
+
+export async function fetchSalesLeaders() {
+  return supabase.from("sales_leaders").select("*").order("code");
+}
+
+export async function addSalesLeader({ code, name, teamName }) {
+  return supabase.from("sales_leaders").insert({
+    code: code.trim(),
+    name: name.trim(),
+    team_name: teamName.trim(),
+  });
+}
+
+export async function updateSalesLeader(code, fields) {
+  return supabase.from("sales_leaders").update(fields).eq("code", code);
+}
+
+export async function deleteSalesLeader(code) {
+  return supabase.from("sales_leaders").delete().eq("code", code);
+}
+
+// ---------- Vendedores / Auxiliares ----------
+
+export async function fetchSalesMembers() {
+  return supabase.from("sales_members").select("*").order("code");
+}
+
+export async function addSalesMember({ code, name, role, leaderCode }) {
+  return supabase.from("sales_members").insert({
+    code: code.trim(),
+    name: name.trim(),
+    role: role.trim() || "Vendedor",
+    leader_code: leaderCode || null,
+  });
+}
+
+export async function updateSalesMember(code, fields) {
+  return supabase.from("sales_members").update(fields).eq("code", code);
+}
+
+export async function deleteSalesMember(code) {
+  return supabase.from("sales_members").delete().eq("code", code);
+}
+
+// Promove um vendedor a líder:
+// 1. Cria o líder na tabela sales_leaders
+// 2. Atualiza o próprio vendedor para apontar pro seu novo código de líder
+// (opcional — se quiser que ele continue como vendedor também)
+export async function promoteMemberToLeader(memberCode, { leaderCode, teamName }) {
+  // Pega dados do vendedor
+  const { data: member, error: err1 } = await supabase
+    .from("sales_members")
+    .select("*")
+    .eq("code", memberCode)
+    .maybeSingle();
+  if (err1) return { error: err1 };
+  if (!member) return { error: { message: "Vendedor não encontrado." } };
+
+  // Cria o líder
+  const { error: err2 } = await supabase.from("sales_leaders").insert({
+    code: leaderCode.trim(),
+    name: member.name,
+    team_name: teamName.trim(),
+  });
+  if (err2) return { error: err2 };
+
+  return { error: null };
+}
+
+// Remove um líder:
+// - Os vendedores dele ficam SEM líder (leader_code = null)
+// - A linha do líder é apagada
+export async function demoteLeaderToMember(leaderCode) {
+  // Desvincula os vendedores
+  const { error: err1 } = await supabase
+    .from("sales_members")
+    .update({ leader_code: null })
+    .eq("leader_code", leaderCode);
+  if (err1) return { error: err1 };
+
+  // Apaga o líder
+  const { error: err2 } = await supabase
+    .from("sales_leaders")
+    .delete()
+    .eq("code", leaderCode);
+  if (err2) return { error: err2 };
+
+  return { error: null };
 }

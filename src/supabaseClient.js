@@ -15,5 +15,12 @@ if (missingConfig) {
 
 export const supabase = createClient(
   missingConfig ? "https://placeholder.supabase.co" : supabaseUrl,
-  missingConfig ? "placeholder-key" : supabaseAnonKey
+  missingConfig ? "placeholder-key" : supabaseAnonKey,
+  {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
+  }
 );
