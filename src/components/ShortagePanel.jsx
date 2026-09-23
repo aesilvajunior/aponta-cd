@@ -157,7 +157,6 @@ export default function ShortagePanel() {
     const byCustomer = {};
     filteredRows.forEach((r) => {
       const name = r.customerName || "(sem cliente)";
-      if (!byCustomers) return;
       if (!byCustomer[name]) byCustomer[name] = { name, totalQty: 0, count: 0 };
       byCustomer[name].totalQty += r.quantity || 0;
       byCustomer[name].count += 1;

@@ -139,8 +139,11 @@ export default function ErrorKiosk({ operators, errorTypes }) {
   }
 
   function handleLogin() {
+    // Guarda de concorrência: evita duplo clique / Enter repetido
+    if (loggedOperator) return;
     const current = codeInputRef.current;
     if (current.length < CODE_LENGTH) return;
+
     const op = operators.find((o) => o.code === current);
     if (!op) {
       playError();

@@ -1918,7 +1918,11 @@ textarea.field::placeholder { color: var(--text-faint); }
   transition: all var(--transition);
 }
 
-.profile-back:hover { border-color: var(--accent); color: var(--accent); background: var .profile-back:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.profile-back:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
 
 .profile-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 20px; }
 

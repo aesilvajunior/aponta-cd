@@ -2,7 +2,7 @@ import React, { useMemo } from "react";
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
-import { fmtClock, fmtDate, fmtDuration } from "../lib/format";
+import { fmtDate, fmtDuration } from "../lib/format";
 import { mean } from "../lib/metrics";
 
 const COLORS = ["#0a3d7a", "#00a0e4", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444", "#06b6d4", "#6b7280"];

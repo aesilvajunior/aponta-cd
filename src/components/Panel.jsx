@@ -127,6 +127,7 @@ export default function Panel({
   const [filterShortage, setFilterShortage] = useState("");
   const [filterProductCode, setFilterProductCode] = useState("");
   const [filterCustomer, setFilterCustomer] = useState("");
+  const [filterOrderNumber, setFilterOrderNumber] = useState("");   // ← NOVO
   const [filterErrorOperator, setFilterErrorOperator] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -168,6 +169,8 @@ export default function Panel({
 
   useEffect(() => {
     if (!externalFilter) return;
+
+    // Filtros de período
     if (
       externalFilter.type === "hoje" ||
       externalFilter.type === "ontem" ||
@@ -179,6 +182,12 @@ export default function Panel({
       setDateFrom(range.from);
       setDateTo(range.to);
     }
+
+    // Filtro por pedido (vindo da CommandPalette)
+    if (externalFilter.type === "pedido" && externalFilter.value) {
+      setFilterOrderNumber(String(externalFilter.value));
+    }
+
     onExternalFilterHandled?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [externalFilter, onExternalFilterHandled]);
@@ -215,6 +224,10 @@ export default function Panel({
       .filter((e) => !filterStation || e.station === filterStation)
       .filter((e) => !filterCustomer || (e.customer_name || "").toLowerCase().includes(filterCustomer.toLowerCase()))
       .filter((e) => {
+        if (!filterOrderNumber) return true;
+        return (e.order_number || "").includes(filterOrderNumber);
+      })
+      .filter((e) => {
         if (filterEncaixe === "yes") return e.is_encaixe === true;
         if (filterEncaixe === "no") return !e.is_encaixe;
         return true;
@@ -232,7 +245,7 @@ export default function Panel({
         return list.some((s) => s.product_code.toLowerCase().includes(filterProductCode.trim().toLowerCase()));
       })
       .sort((a, b) => new Date(b.start_time) - new Date(a.start_time));
-  }, [dateFilteredEntries, filterOperator, filterActivity, filterShift, filterStation, filterCustomer, filterEncaixe, filterShortage, filterProductCode, shortagesByEntry]);
+  }, [dateFilteredEntries, filterOperator, filterActivity, filterShift, filterStation, filterCustomer, filterOrderNumber, filterEncaixe, filterShortage, filterProductCode, shortagesByEntry]);
 
   const knownStations = useMemo(() => {
     const set = new Set();
@@ -307,11 +320,15 @@ export default function Panel({
         return list.some((s) => s.product_code.toLowerCase().includes(filterProductCode.trim().toLowerCase()));
       })
       .filter((e) => !filterCustomer || (e.customer_name || "").toLowerCase().includes(filterCustomer.toLowerCase()))
+      .filter((e) => {
+        if (!filterOrderNumber) return true;
+        return (e.order_number || "").includes(filterOrderNumber);
+      })
       .filter((e) => !filterOperator || e.operator_code === filterOperator)
       .filter((e) => !filterActivity || e.activity === filterActivity)
       .filter((e) => !filterShift || e.shift === filterShift)
       .sort((a, b) => new Date(b.start_time) - new Date(a.start_time));
-  }, [dateFilteredEntries, shortagesByEntry, filterProductCode, filterCustomer, filterOperator, filterActivity, filterShift]);
+  }, [dateFilteredEntries, shortagesByEntry, filterProductCode, filterCustomer, filterOrderNumber, filterOperator, filterActivity, filterShift]);
 
   // ⬇️ IMPORTANTE: activityAlerts PRECISA vir antes do useEffect que usa ele
   const activityAlerts = useMemo(() => {
@@ -498,6 +515,7 @@ export default function Panel({
     setFilterShortage("");
     setFilterProductCode("");
     setFilterCustomer("");
+    setFilterOrderNumber("");     // ← NOVO
     setFilterErrorOperator("");
     setDateFrom("");
     setDateTo("");
@@ -516,6 +534,7 @@ export default function Panel({
     if (filterShortage === "no") lines.push(`Faltas:;Sem falta`);
     if (filterProductCode) lines.push(`Produto filtrado:;${filterProductCode}`);
     if (filterCustomer) lines.push(`Cliente filtrado:;${filterCustomer}`);
+    if (filterOrderNumber) lines.push(`Pedido filtrado:;${filterOrderNumber}`);   // ← NOVO
     if (filterErrorOperator) {
       const op = errorOperatorsList.find((o) => o.code === filterErrorOperator);
       lines.push(`Operador que errou:;${op?.name || filterErrorOperator}`);
@@ -936,7 +955,7 @@ export default function Panel({
     setResetShortagesPhrase("");
   }
 
-  const hasFilters = filterOperator || filterActivity || filterShift || filterStation || filterEncaixe || filterShortage || filterProductCode || filterCustomer || filterErrorOperator || dateFrom || dateTo;
+  const hasFilters = filterOperator || filterActivity || filterShift || filterStation || filterEncaixe || filterShortage || filterProductCode || filterCustomer || filterOrderNumber || filterErrorOperator || dateFrom || dateTo;
 
   // ============================================================
   // RETORNO CONDICIONAL — SÓ DEPOIS DE TODOS OS HOOKS
@@ -1091,6 +1110,13 @@ export default function Panel({
           )}
           <input className="field" style={{ width: 160, fontFamily: "var(--font-mono)" }} placeholder="Código produto..." value={filterProductCode} onChange={(e) => setFilterProductCode(e.target.value)} />
           <input className="field" style={{ width: 180 }} placeholder="Cliente..." value={filterCustomer} onChange={(e) => setFilterCustomer(e.target.value)} />
+          <input
+            className="field"
+            style={{ width: 140, fontFamily: "var(--font-mono)" }}
+            placeholder="Nº pedido..."
+            value={filterOrderNumber}
+            onChange={(e) => setFilterOrderNumber(e.target.value.replace(/\D/g, ""))}
+          />
           <span style={{ color: "var(--text-faint)", fontSize: 12 }}>de</span>
           <input type="date" className="field" style={{ width: "auto" }} value={dateFrom} onChange={(e) => handleDateFromChange(e.target.value)} />
           <span style={{ color: "var(--text-faint)", fontSize: 12 }}>até</span>

@@ -84,7 +84,12 @@ export default function TvBoard() {
       .channel("tv-config")
       .on("postgres_changes", { event: "*", schema: "public", table: "admin_config" }, (payload) => {
         const v = payload?.new?.alert_threshold_seconds;
-        if (v) setAlertThreshold(v);
+        if (v) {
+          setAlertThreshold(v);
+        } else if (payload?.eventType === "DELETE") {
+          // Se a config foi deletada, volta ao default
+          setAlertThreshold(DEFAULT_ALERT_SECONDS);
+        }
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "activities" }, async () => {
         const { data } = await supabase.from("activities").select("*").eq("active", true);
