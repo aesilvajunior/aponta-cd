@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
-import { fetchActiveSessionFor, startSession, finishSession, saveShortages } from "../lib/api";
+import { fetchActiveSessionFor, startSession, finishSession, saveShortages, addToConferenceQueue } from "../lib/api";
 import { fmtDuration, fmtClock, fmtDate, shiftFor } from "../lib/format";
 import { getStationName, promptForStationName } from "../lib/station";
 import { playSuccess, playError, playKey } from "../utils/sound";
+import useKeyboardNav from "../hooks/useKeyboardNav";
 import logo from "../assets/logo.png";
 
 const CODE_LENGTH = 3;
@@ -17,6 +18,10 @@ function shouldAskShortage(session, activities) {
   if (config && config.asks_shortage === false) return false;
   const askedForOrder = !!(session.order_number || session.customer_name || session.transfer_type);
   return askedForOrder;
+}
+
+function isSeparationEntry(entry) {
+  return !!(entry.order_number || entry.transfer_type);
 }
 
 export default function Kiosk({ operators, activities, vehicles = [], refreshEntries }) {
@@ -56,10 +61,35 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
   const lastInteractionRef = useRef(Date.now());
   const autoReturnTimeoutRef = useRef(null);
   const finishModalOpenRef = useRef(false);
+  const mainContainerRef = useRef(null);
+  const modalRef = useRef(null);
 
   function bump() {
     lastInteractionRef.current = Date.now();
   }
+
+  // Navegação por setas + Esc no container principal
+  useKeyboardNav({
+    containerRef: mainContainerRef,
+    enabled: !showFinishModal,
+    onEscape: () => {
+      if (orderFormActivity) {
+        cancelOrderForm();
+      } else if (codeInput) {
+        setCodeInput("");
+        setMsg("");
+      }
+    },
+  });
+
+  // Navegação por setas + Esc no modal
+  useKeyboardNav({
+    containerRef: modalRef,
+    enabled: showFinishModal,
+    onEscape: () => {
+      if (!busy) closeFinishModal();
+    },
+  });
 
   useEffect(() => {
     const iv = setInterval(() => setNow(Date.now()), 1000);
@@ -342,10 +372,14 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
     bump();
     setBusy(true);
     const duration = Math.round((Date.now() - new Date(session.start_time).getTime()) / 1000);
-    const { error } = await finishSession(session, duration, shiftFor(session.start_time), noteInput.trim(), !!session.is_encaixe);
+    const { data: newEntry, error } = await finishSession(session, duration, shiftFor(session.start_time), noteInput.trim(), !!session.is_encaixe);
     setBusy(false);
     if (!error) {
       playSuccess();
+      // Se for separação (tem pedido ou transferência), joga na mesa de conferência
+      if (newEntry && isSeparationEntry(newEntry)) {
+        await addToConferenceQueue(newEntry);
+      }
       refreshEntries?.();
       setSession(null);
       setNoteInput("");
@@ -416,7 +450,7 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
     const shift = shiftFor(session.start_time);
     const finalNote = finishNote.trim();
 
-    const { data: newEntryId, error } = await finishSession(
+    const { data: newEntry, error } = await finishSession(
       session,
       duration,
       shift,
@@ -440,7 +474,7 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
           quantity: Number(s.quantity) || 1,
         }));
 
-      const { error: errShortage } = await saveShortages(newEntryId, validShortages);
+      const { error: errShortage } = await saveShortages(newEntry.id, validShortages);
       if (errShortage) {
         setBusy(false);
         playError();
@@ -451,6 +485,11 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
         refreshEntries?.();
         return;
       }
+    }
+
+    // Se for separação, joga na mesa de conferência
+    if (newEntry && isSeparationEntry(newEntry)) {
+      await addToConferenceQueue(newEntry);
     }
 
     setBusy(false);
@@ -474,7 +513,7 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
   const dots = Array.from({ length: CODE_LENGTH }, (_, i) => i < codeInput.length);
 
   return (
-    <div className="kiosk-page">
+    <div className="kiosk-page" ref={mainContainerRef}>
       <header className="kiosk-header">
         <div className="kiosk-header-left">
           <img src={logo} alt="" className="kiosk-header-logo" />
@@ -836,7 +875,7 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
 
       {showFinishModal && (
         <div className="kiosk-modal-backdrop" onClick={bump}>
-          <div className="kiosk-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="kiosk-modal" ref={modalRef} onClick={(e) => e.stopPropagation()}>
             <div className="kiosk-modal-header">
               <div>
                 <div className="kiosk-modal-title">Finalizar {session?.activity}</div>

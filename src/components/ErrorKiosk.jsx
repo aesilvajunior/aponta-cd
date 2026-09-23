@@ -3,6 +3,7 @@ import { logSeparationError } from "../lib/api";
 import { fmtClock, fmtDate, shiftFor } from "../lib/format";
 import { getStationName, promptForStationName } from "../lib/station";
 import { playSuccess, playError, playKey } from "../utils/sound";
+import useKeyboardNav from "../hooks/useKeyboardNav";
 import logo from "../assets/logo.png";
 
 const CODE_LENGTH = 3;
@@ -10,7 +11,6 @@ const AUTO_RETURN_MS = 2200;
 const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 const TRANSFER_ZONES = ["AP", "ZN"];
 
-// Ícone por tipo de erro
 function errorIcon(name) {
   const n = (name || "").toLowerCase();
   if (n.includes("sobra")) return "📦";
@@ -32,12 +32,10 @@ export default function ErrorKiosk({ operators, errorTypes }) {
   const [now, setNow] = useState(Date.now());
   const [stationName, setStationNameState] = useState(getStationName());
 
-  // Campos de pedido/transferência
-  const [orderType, setOrderType] = useState(null); // null | "pedido" | "transferencia"
+  const [orderType, setOrderType] = useState(null);
   const [orderNumber, setOrderNumber] = useState("");
-  const [transferZone, setTransferZone] = useState(""); // "" | "AP" | "ZN"
+  const [transferZone, setTransferZone] = useState("");
 
-  // Operador que errou
   const [errorOperatorCode, setErrorOperatorCode] = useState("");
   const [showOperatorPicker, setShowOperatorPicker] = useState(false);
   const [operatorSearch, setOperatorSearch] = useState("");
@@ -46,6 +44,8 @@ export default function ErrorKiosk({ operators, errorTypes }) {
   codeInputRef.current = codeInput;
   const lastInteractionRef = useRef(Date.now());
   const autoReturnTimeoutRef = useRef(null);
+  const mainContainerRef = useRef(null);
+  const modalRef = useRef(null);
 
   function bump() {
     lastInteractionRef.current = Date.now();
@@ -54,6 +54,30 @@ export default function ErrorKiosk({ operators, errorTypes }) {
   function editStation() {
     setStationNameState(promptForStationName());
   }
+
+  // Navegação por setas + Esc no container principal
+  useKeyboardNav({
+    containerRef: mainContainerRef,
+    enabled: !showOperatorPicker,
+    onEscape: () => {
+      if (loggedOperator) {
+        // Volta ao estado inicial (não desloga, só reseta campos)
+        setOrderType(null);
+        setOrderNumber("");
+        setTransferZone("");
+        setErrorOperatorCode("");
+        setNote("");
+        setMsg("");
+      }
+    },
+  });
+
+  // Navegação no modal
+  useKeyboardNav({
+    containerRef: modalRef,
+    enabled: showOperatorPicker,
+    onEscape: () => setShowOperatorPicker(false),
+  });
 
   const errorOperator = useMemo(
     () => operators.find((o) => o.code === errorOperatorCode) || null,
@@ -139,7 +163,6 @@ export default function ErrorKiosk({ operators, errorTypes }) {
   }
 
   function handleLogin() {
-    // Guarda de concorrência: evita duplo clique / Enter repetido
     if (loggedOperator) return;
     const current = codeInputRef.current;
     if (current.length < CODE_LENGTH) return;
@@ -165,7 +188,6 @@ export default function ErrorKiosk({ operators, errorTypes }) {
   async function reportError(errorType) {
     if (busy) return;
 
-    // Validações
     if (!orderType) {
       playError();
       setMsg("Escolha se é Pedido ou Transferência.");
@@ -190,9 +212,6 @@ export default function ErrorKiosk({ operators, errorTypes }) {
     bump();
     setBusy(true);
 
-    // Monta o valor final do order_number:
-    // - Pedido: só "1234"
-    // - Transferência: "AP 1234" ou "ZN 1234"
     const finalOrderNumber =
       orderType === "transferencia" && transferZone
         ? `${transferZone} ${orderNumber}`
@@ -222,12 +241,8 @@ export default function ErrorKiosk({ operators, errorTypes }) {
 
   const dots = Array.from({ length: CODE_LENGTH }, (_, i) => i < codeInput.length);
 
-  // ============================================================
-  // RENDER
-  // ============================================================
   return (
-    <div className="kiosk-page">
-      {/* HEADER */}
+    <div className="kiosk-page" ref={mainContainerRef}>
       <header className="kiosk-header">
         <div className="kiosk-header-left">
           <img src={logo} alt="" className="kiosk-header-logo" />
@@ -256,7 +271,6 @@ export default function ErrorKiosk({ operators, errorTypes }) {
         </div>
       </header>
 
-      {/* CONTEÚDO */}
       <main className="kiosk-main">
         {!confirmation && (
           <div style={{ textAlign: "center", marginBottom: 24, width: "100%", maxWidth: 900 }}>
@@ -269,7 +283,6 @@ export default function ErrorKiosk({ operators, errorTypes }) {
           </div>
         )}
 
-        {/* DESLOGADO */}
         {!loggedOperator && (
           <div className={`kiosk-terminal-wrap ${shake ? "shake" : ""}`}>
             <div className="kiosk-terminal-title">Digite seu código</div>
@@ -294,7 +307,6 @@ export default function ErrorKiosk({ operators, errorTypes }) {
           </div>
         )}
 
-        {/* CONFIRMAÇÃO */}
         {loggedOperator && confirmation && (
           <div className="kiosk-confirm">
             <div className="kiosk-confirm-icon" style={{ background: "var(--ok-soft)", color: "var(--ok)" }}>✓</div>
@@ -303,7 +315,6 @@ export default function ErrorKiosk({ operators, errorTypes }) {
           </div>
         )}
 
-        {/* LOGADO */}
         {loggedOperator && !confirmation && (
           <div className="kiosk-logged">
             <div className="kiosk-operator-bar">
@@ -320,7 +331,6 @@ export default function ErrorKiosk({ operators, errorTypes }) {
             </div>
 
             <div className="kiosk-activities">
-              {/* BLOCO 1 — Pedido / Transferência */}
               <div className="kiosk-error-block">
                 <div className="kiosk-error-step">
                   <span className="kiosk-error-step-num">1</span>
@@ -348,7 +358,6 @@ export default function ErrorKiosk({ operators, errorTypes }) {
                   </button>
                 </div>
 
-                {/* AP / ZN — só quando transferência */}
                 {orderType === "transferencia" && (
                   <div style={{ marginTop: 12 }}>
                     <div
@@ -402,7 +411,6 @@ export default function ErrorKiosk({ operators, errorTypes }) {
                 )}
               </div>
 
-              {/* BLOCO 2 — Quem errou */}
               <div className="kiosk-error-block">
                 <div className="kiosk-error-step">
                   <span className="kiosk-error-step-num">2</span>
@@ -466,7 +474,6 @@ export default function ErrorKiosk({ operators, errorTypes }) {
                 )}
               </div>
 
-              {/* BLOCO 3 — Tipo de erro */}
               <div className="kiosk-error-block">
                 <div className="kiosk-error-step">
                   <span className="kiosk-error-step-num">3</span>
@@ -493,7 +500,6 @@ export default function ErrorKiosk({ operators, errorTypes }) {
                 )}
               </div>
 
-              {/* BLOCO 4 — Observação */}
               <div className="kiosk-error-block">
                 <div className="kiosk-error-step">
                   <span className="kiosk-error-step-num">4</span>
@@ -517,10 +523,9 @@ export default function ErrorKiosk({ operators, errorTypes }) {
         )}
       </main>
 
-      {/* MODAL: escolher operador que errou */}
       {showOperatorPicker && (
         <div className="kiosk-modal-backdrop" onClick={() => setShowOperatorPicker(false)}>
-          <div className="kiosk-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="kiosk-modal" ref={modalRef} onClick={(e) => e.stopPropagation()}>
             <div className="kiosk-modal-header">
               <div>
                 <div className="kiosk-modal-title">Quem errou?</div>

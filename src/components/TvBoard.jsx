@@ -1,12 +1,25 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../supabaseClient";
-import { fetchActiveSessions, fetchEntries, fetchShortages } from "../lib/api";
+import {
+  fetchActiveSessions,
+  fetchEntries,
+  fetchShortages,
+  fetchConferenceQueue,
+  fetchConferenceHistory,
+} from "../lib/api";
 import { fmtClock, fmtDate, fmtDuration } from "../lib/format";
 import { useTheme } from "../context/ThemeContext";
 import logo from "../assets/logo.png";
 
-const ACCENT = "#00a0e4";
+const ACCENT_LIGHT = "#00a0e4";
+const ACCENT_DARK = "#00a0e4";
 const DEFAULT_ALERT_SECONDS = 1800;
+const STALE_OPERATOR_SECONDS = 2 * 60 * 60; // 2h
+const REFRESH_INTERVAL_MS = 60 * 60 * 1000; // 1h
+
+// ============================================================
+// Helpers
+// ============================================================
 
 function timeAgo(iso, now) {
   const diff = Math.max(0, Math.floor((now - new Date(iso).getTime()) / 1000));
@@ -18,7 +31,6 @@ function timeAgo(iso, now) {
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
-// Pega o parâmetro ?station= da URL
 function getStationFromUrl() {
   if (typeof window === "undefined") return "";
   const params = new URLSearchParams(window.location.search);
@@ -26,7 +38,6 @@ function getStationFromUrl() {
   return s ? s.trim() : "";
 }
 
-// Semana atual (segunda a domingo)
 function getWeekRange() {
   const today = new Date();
   const day = today.getDay();
@@ -40,13 +51,48 @@ function getWeekRange() {
   return { monday, sunday };
 }
 
-// Desvio padrão (pra consistência)
 function stdDev(arr) {
   if (arr.length < 2) return 0;
   const mean = arr.reduce((a, b) => a + b, 0) / arr.length;
   const variance = arr.reduce((a, b) => a + (b - mean) ** 2, 0) / arr.length;
   return Math.sqrt(variance);
 }
+
+// Paleta de cores para os dois temas
+const PALETTES = {
+  dark: {
+    bg: "#0a0e14",
+    surface: "#111823",
+    border: "#1f2937",
+    text: "#f3f4f6",
+    textMuted: "#94a3b8",
+    accent: ACCENT_DARK,
+    danger: "#f87171",
+    warning: "#fbbf24",
+    ok: "#34d399",
+    purple: "#c084fc",
+    blue: "#60a5fa",
+    gradient: "radial-gradient(ellipse at top, #0f1a2e 0%, #0a0e14 60%)",
+    medalColors: ["#fbbf24", "#cbd5e1", "#b45309"],
+    medalText: "#0a0e14",
+  },
+  light: {
+    bg: "#f5f6f8",
+    surface: "#ffffff",
+    border: "#e5e7eb",
+    text: "#111827",
+    textMuted: "#6b7280",
+    accent: ACCENT_LIGHT,
+    danger: "#ef4444",
+    warning: "#f59e0b",
+    ok: "#10b981",
+    purple: "#8b5cf6",
+    blue: "#3b82f6",
+    gradient: "radial-gradient(ellipse at top, #e0f4fd 0%, #f5f6f8 60%)",
+    medalColors: ["#fbbf24", "#cbd5e1", "#b45309"],
+    medalText: "#0a0e14",
+  },
+};
 
 export default function TvBoard() {
   const [sessions, setSessions] = useState([]);
@@ -57,18 +103,67 @@ export default function TvBoard() {
   const [activities, setActivities] = useState([]);
   const [now, setNow] = useState(Date.now());
   const [soundEnabled, setSoundEnabled] = useState(false);
-  const { resolvedTheme } = useTheme();
 
-  // Filtro de estação (vindo da URL)
+  // Mesa de conferência
+  const [conferenceQueue, setConferenceQueue] = useState([]);
+  const [conferenceHistory, setConferenceHistory] = useState([]);
+
+  // Preferências locais
+  const [theme, setTheme] = useState(() => {
+    try { return localStorage.getItem("tv_theme") || "dark"; } catch { return "dark"; }
+  });
+  const [hideNames, setHideNames] = useState(() => {
+    try { return localStorage.getItem("tv_hide_names") === "1"; } catch { return false; }
+  });
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // Sessões escondidas até passar do tempo limite
+  const [hiddenSessions, setHiddenSessions] = useState(() => {
+    try { return localStorage.getItem("tv_hide_timer") === "1"; } catch { return false; }
+  });
+
+  const { resolvedTheme } = useTheme();
   const stationFilter = useMemo(() => getStationFromUrl(), []);
 
   const seenSessions = useRef(new Set());
   const alertedRef = useRef(new Set());
+  const palette = PALETTES[theme] || PALETTES.dark;
 
+  // Relógio
   useEffect(() => {
     const iv = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(iv);
   }, []);
+
+  // Auto-refresh (evita travar em TV 24/7)
+  useEffect(() => {
+    const iv = setInterval(() => {
+      console.log("[TV] Auto-refresh para evitar travamento");
+      window.location.reload();
+    }, REFRESH_INTERVAL_MS);
+    return () => clearInterval(iv);
+  }, []);
+
+  // Detecta fullscreen
+  useEffect(() => {
+    function onChange() {
+      setIsFullscreen(!!document.fullscreenElement);
+    }
+    document.addEventListener("fullscreenchange", onChange);
+    onChange();
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+
+  // Salva preferências
+  useEffect(() => {
+    try { localStorage.setItem("tv_theme", theme); } catch {}
+  }, [theme]);
+  useEffect(() => {
+    try { localStorage.setItem("tv_hide_names", hideNames ? "1" : "0"); } catch {}
+  }, [hideNames]);
+  useEffect(() => {
+    try { localStorage.setItem("tv_hide_timer", hiddenSessions ? "1" : "0"); } catch {}
+  }, [hiddenSessions]);
 
   // Carrega config + atividades
   useEffect(() => {
@@ -80,6 +175,7 @@ export default function TvBoard() {
       if (cfg?.alert_threshold_seconds) setAlertThreshold(cfg.alert_threshold_seconds);
       if (acts) setActivities(acts);
     })();
+
     const ch = supabase
       .channel("tv-config")
       .on("postgres_changes", { event: "*", schema: "public", table: "admin_config" }, (payload) => {
@@ -87,7 +183,6 @@ export default function TvBoard() {
         if (v) {
           setAlertThreshold(v);
         } else if (payload?.eventType === "DELETE") {
-          // Se a config foi deletada, volta ao default
           setAlertThreshold(DEFAULT_ALERT_SECONDS);
         }
       })
@@ -99,18 +194,26 @@ export default function TvBoard() {
     return () => supabase.removeChannel(ch);
   }, []);
 
+  // Carrega tudo
   async function loadAll() {
-    const [{ data: s }, { data: e }, { data: sh }] = await Promise.all([
+    const [
+      { data: s },
+      { data: e },
+      { data: sh },
+      { data: cq },
+      { data: ch },
+    ] = await Promise.all([
       fetchActiveSessions(),
       fetchEntries({ limit: 2000 }),
       fetchShortages({ limit: 500 }),
+      fetchConferenceQueue(),
+      fetchConferenceHistory({ limit: 200 }),
     ]);
     if (s) setSessions(s);
     if (e) {
       const today = new Date().toISOString().slice(0, 10);
       setTodayEntries(e.filter((x) => x.start_time.slice(0, 10) === today));
 
-      // Filtra entries da semana
       const { monday, sunday } = getWeekRange();
       setWeekEntries(
         e.filter((x) => {
@@ -123,6 +226,8 @@ export default function TvBoard() {
       const today = new Date().toISOString().slice(0, 10);
       setTodayShortages(sh.filter((x) => x.created_at.slice(0, 10) === today));
     }
+    if (cq) setConferenceQueue(cq);
+    if (ch) setConferenceHistory(ch);
   }
 
   useEffect(() => {
@@ -132,32 +237,64 @@ export default function TvBoard() {
       .on("postgres_changes", { event: "*", schema: "public", table: "active_sessions" }, loadAll)
       .on("postgres_changes", { event: "*", schema: "public", table: "entries" }, loadAll)
       .on("postgres_changes", { event: "*", schema: "public", table: "entry_shortages" }, loadAll)
+      .on("postgres_changes", { event: "*", schema: "public", table: "conference_queue" }, loadAll)
       .subscribe();
     return () => supabase.removeChannel(channel);
   }, []);
 
-  function goFullscreen() {
+  // ============================================================
+  // Fullscreen
+  // ============================================================
+  function enterFullscreen() {
     document.documentElement.requestFullscreen?.().catch(() => {});
   }
+  function exitFullscreen() {
+    document.exitFullscreen?.().catch(() => {});
+  }
+  function toggleFullscreen() {
+    if (isFullscreen) exitFullscreen();
+    else enterFullscreen();
+  }
 
-  // Aplica filtro de estação (se tiver)
+  // ============================================================
+  // Derivados
+  // ============================================================
   const filteredSessions = useMemo(() => {
     if (!stationFilter) return sessions;
     return sessions.filter((s) => (s.station || "").toLowerCase() === stationFilter.toLowerCase());
   }, [sessions, stationFilter]);
 
-  // Alertas
   const activityAlerts = useMemo(() => {
     return filteredSessions
       .map((s) => {
         const elapsed = Math.round((now - new Date(s.start_time).getTime()) / 1000);
-        const activityConfig = activities.find((a) => a.name === s.activity);
+        const cfg = activities.find((a) => a.name === s.activity);
         let threshold = alertThreshold || DEFAULT_ALERT_SECONDS;
-        if (activityConfig?.target_seconds) threshold = activityConfig.target_seconds;
+        if (cfg?.target_seconds) threshold = cfg.target_seconds;
         return { ...s, elapsed, threshold, isLate: elapsed > threshold };
       })
       .filter((s) => s.isLate);
   }, [filteredSessions, activities, alertThreshold, now]);
+
+  // "Operador sumiu" — sessão com mais de 2h sem finalizar
+  const staleSessions = useMemo(() => {
+    return filteredSessions.filter((s) => {
+      const elapsed = Math.round((now - new Date(s.start_time).getTime()) / 1000);
+      return elapsed > STALE_OPERATOR_SECONDS;
+    });
+  }, [filteredSessions, now]);
+
+  // Sessões visíveis (esconde se flag ativada e ainda não passou do threshold)
+  const visibleSessions = useMemo(() => {
+    if (!hiddenSessions) return filteredSessions;
+    return filteredSessions.filter((s) => {
+      const elapsed = Math.round((now - new Date(s.start_time).getTime()) / 1000);
+      const cfg = activities.find((a) => a.name === s.activity);
+      let threshold = alertThreshold || DEFAULT_ALERT_SECONDS;
+      if (cfg?.target_seconds) threshold = cfg.target_seconds;
+      return elapsed > threshold;
+    });
+  }, [filteredSessions, hiddenSessions, activities, alertThreshold, now]);
 
   function playAlertBeep() {
     try {
@@ -200,17 +337,16 @@ export default function TvBoard() {
   }, [activityAlerts, soundEnabled]);
 
   const sorted = useMemo(
-    () => [...filteredSessions].sort((a, b) => new Date(a.start_time) - new Date(b.start_time)),
-    [filteredSessions]
+    () => [...visibleSessions].sort((a, b) => new Date(a.start_time) - new Date(b.start_time)),
+    [visibleSessions]
   );
 
-  const entriesWithShortageIds = useMemo(() => {
-    return new Set(todayShortages.map((s) => s.entry_id));
-  }, [todayShortages]);
+  const entriesWithShortageIds = useMemo(
+    () => new Set(todayShortages.map((s) => s.entry_id)),
+    [todayShortages]
+  );
 
-  // ============================================================
-  // RANKING DO DIA (atual)
-  // ============================================================
+  // ---------- Ranking do dia ----------
   const ranking = useMemo(() => {
     const byOp = {};
     todayEntries.forEach((e) => {
@@ -232,28 +368,52 @@ export default function TvBoard() {
       .slice(0, 5);
   }, [todayEntries]);
 
+  // ---------- Ranking de conferentes ----------
+  const conferenceRanking = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    const todayConf = conferenceHistory.filter(
+      (h) => h.conference_finished_at?.slice(0, 10) === today && h.status === "conferido"
+    );
+    const byOp = {};
+    todayConf.forEach((h) => {
+      const key = h.conference_finished_by_code || "?";
+      if (!byOp[key]) byOp[key] = { code: key, name: h.conference_finished_by_name || "—", count: 0 };
+      byOp[key].count += 1;
+    });
+    return Object.values(byOp).sort((a, b) => b.count - a.count).slice(0, 3);
+  }, [conferenceHistory]);
+
   const latestEntries = useMemo(
     () => [...todayEntries].sort((a, b) => new Date(b.end_time) - new Date(a.end_time)).slice(0, 5),
     [todayEntries]
   );
 
-  // ============================================================
-  // METAS GAMIFICADAS DA SEMANA
-  // ============================================================
+  // ---------- Mesa ----------
+  const waiting = useMemo(
+    () => conferenceQueue.filter((q) => q.status === "aguardando"),
+    [conferenceQueue]
+  );
+  const inProgress = useMemo(
+    () => conferenceQueue.filter((q) => q.status === "em_conferencia"),
+    [conferenceQueue]
+  );
 
-  // Agrupa entries da semana por operador
+  // Alerta de mesa acumulando (mais de 3 aguardando há mais de 10min)
+  const mesaAcumulando = useMemo(() => {
+    const oldWaiting = waiting.filter((w) => {
+      const secs = Math.round((now - new Date(w.separated_at).getTime()) / 1000);
+      return secs > 10 * 60;
+    });
+    return oldWaiting.length >= 3;
+  }, [waiting, now]);
+
+  // ---------- Rankings semanais ----------
   const weekByOperator = useMemo(() => {
     const byOp = {};
     weekEntries.forEach((e) => {
       const key = e.operator_code;
       if (!byOp[key]) {
-        byOp[key] = {
-          name: e.operator_name,
-          code: key,
-          count: 0,
-          totalSeconds: 0,
-          durations: [],
-        };
+        byOp[key] = { name: e.operator_name, code: key, count: 0, totalSeconds: 0, durations: [] };
       }
       byOp[key].count += 1;
       byOp[key].totalSeconds += e.duration_seconds || 0;
@@ -268,69 +428,60 @@ export default function TvBoard() {
 
   const MIN_REGISTROS = 3;
 
-  // 🥇 Mais rápido (menor tempo médio, mín. 3 registros)
-  const fastestRanking = useMemo(() => {
-    return [...weekByOperator]
-      .filter((op) => op.count >= MIN_REGISTROS && op.avg > 0)
-      .sort((a, b) => a.avg - b.avg)
-      .slice(0, 3);
-  }, [weekByOperator]);
+  const fastestRanking = useMemo(
+    () => [...weekByOperator].filter((op) => op.count >= MIN_REGISTROS && op.avg > 0).sort((a, b) => a.avg - b.avg).slice(0, 3),
+    [weekByOperator]
+  );
+  const volumeRanking = useMemo(
+    () => [...weekByOperator].filter((op) => op.count >= MIN_REGISTROS).sort((a, b) => b.count - a.count).slice(0, 3),
+    [weekByOperator]
+  );
+  const consistentRanking = useMemo(
+    () => [...weekByOperator].filter((op) => op.count >= MIN_REGISTROS && op.consistency !== Infinity).sort((a, b) => a.consistency - b.consistency).slice(0, 3),
+    [weekByOperator]
+  );
 
-  // 🥇 Mais volume (maior número de registros)
-  const volumeRanking = useMemo(() => {
-    return [...weekByOperator]
-      .filter((op) => op.count >= MIN_REGISTROS)
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 3);
-  }, [weekByOperator]);
-
-  // 🥇 Mais consistente (menor desvio padrão, mín. 3 registros)
-  const consistentRanking = useMemo(() => {
-    return [...weekByOperator]
-      .filter((op) => op.count >= MIN_REGISTROS && op.consistency !== Infinity)
-      .sort((a, b) => a.consistency - b.consistency)
-      .slice(0, 3);
-  }, [weekByOperator]);
-
-  // Metas atingidas (semana)
   const goalsAchieved = useMemo(() => {
-    const activitiesWithTarget = activities.filter((a) => a.target_seconds);
-    if (activitiesWithTarget.length === 0) return { achieved: 0, total: 0 };
-
+    const withTarget = activities.filter((a) => a.target_seconds);
+    if (withTarget.length === 0) return { achieved: 0, total: 0 };
     let achieved = 0;
     let total = 0;
-    activitiesWithTarget.forEach((a) => {
-      const entriesForActivity = weekEntries.filter((e) => e.activity === a.name);
-      if (entriesForActivity.length === 0) return;
+    withTarget.forEach((a) => {
+      const list = weekEntries.filter((e) => e.activity === a.name);
+      if (list.length === 0) return;
       total += 1;
-      const avg =
-        entriesForActivity.reduce((s, e) => s + (e.duration_seconds || 0), 0) /
-        entriesForActivity.length;
+      const avg = list.reduce((s, e) => s + (e.duration_seconds || 0), 0) / list.length;
       if (avg <= a.target_seconds) achieved += 1;
     });
     return { achieved, total };
   }, [activities, weekEntries]);
 
-  const bg = "#0a0e14";
-  const surface = "#111823";
-  const border = "#1f2937";
-  const text = "#f3f4f6";
-  const textMuted = "#94a3b8";
-  const accent = ACCENT;
-
-  const medalColors = ["#fbbf24", "#cbd5e1", "#b45309"];
-  const medalEmoji = ["🥇", "🥈", "🥉"];
-
   const alertIds = new Set(activityAlerts.map((a) => a.operator_code));
+  const staleIds = new Set(staleSessions.map((a) => a.operator_code));
+
+  // ============================================================
+  // Helpers de renderização
+  // ============================================================
+  function displayName(name) {
+    if (!hideNames) return name;
+    const parts = (name || "").split(" ");
+    if (parts.length === 1) return parts[0].charAt(0).toUpperCase() + "•••";
+    return `${parts[0].charAt(0).toUpperCase()}••• ${parts[parts.length - 1].charAt(0).toUpperCase()}•••`;
+  }
+
+  // ============================================================
+  // Render
+  // ============================================================
+  const p = palette;
 
   return (
     <div
       style={{
         minHeight: "100vh",
-        background: `radial-gradient(ellipse at top, #0f1a2e 0%, ${bg} 60%)`,
-        color: text,
+        background: p.gradient,
+        color: p.text,
         fontFamily: "'Inter', -apple-system, system-ui, sans-serif",
-        padding: "32px 40px",
+        padding: "28px 36px",
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
@@ -358,10 +509,15 @@ export default function TvBoard() {
           0%, 100% { box-shadow: 0 0 0 0 rgba(248, 113, 113, 0.4); }
           50%      { box-shadow: 0 0 0 8px rgba(248, 113, 113, 0); }
         }
+        @keyframes pulseMesa {
+          0%, 100% { transform: scale(1); opacity: 1; }
+          50%      { transform: scale(1.02); opacity: 0.92; }
+        }
         .tv-row-enter { animation: slideIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }
         .tv-rank-enter { animation: fadeUp 0.4s cubic-bezier(0.22, 1, 0.36, 1) both; }
         .tv-pulse { animation: pulseDot 1.6s ease-in-out infinite; }
         .tv-alert { animation: pulseAlert 1.8s ease-in-out infinite; }
+        .tv-mesa-alert { animation: pulseMesa 2s ease-in-out infinite; }
       `}</style>
 
       {/* Header */}
@@ -370,24 +526,24 @@ export default function TvBoard() {
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          marginBottom: 26,
-          borderBottom: `2px solid ${accent}`,
-          paddingBottom: 18,
+          marginBottom: 22,
+          borderBottom: `2px solid ${p.accent}`,
+          paddingBottom: 16,
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-          <img src={logo} alt="" style={{ width: 60, height: 60, borderRadius: "50%" }} />
+          <img src={logo} alt="" style={{ width: 56, height: 56, borderRadius: "50%" }} />
           <div>
-            <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-0.02em" }}>
+            <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: "-0.02em" }}>
               Atividades em andamento
             </div>
-            <div style={{ color: textMuted, fontSize: 13.5, marginTop: 2, fontWeight: 500 }}>
+            <div style={{ color: p.textMuted, fontSize: 13, marginTop: 2, fontWeight: 500 }}>
               Hidráulica Tropeiro · Aponta CD
               {stationFilter && (
                 <span
                   style={{
                     marginLeft: 12,
-                    background: accent,
+                    background: p.accent,
                     color: "#0a0e14",
                     padding: "2px 10px",
                     borderRadius: 6,
@@ -399,8 +555,13 @@ export default function TvBoard() {
                 </span>
               )}
               {activityAlerts.length > 0 && (
-                <span style={{ marginLeft: 14, color: "#f87171", fontWeight: 700 }}>
+                <span style={{ marginLeft: 14, color: p.danger, fontWeight: 700 }}>
                   ⚠ {activityAlerts.length} alerta{activityAlerts.length > 1 ? "s" : ""}
+                </span>
+              )}
+              {staleIds.size > 0 && (
+                <span style={{ marginLeft: 14, color: p.warning, fontWeight: 700 }}>
+                  🕐 {staleIds.size} sumiu{staleIds.size > 1 ? "ram" : ""}
                 </span>
               )}
             </div>
@@ -410,48 +571,71 @@ export default function TvBoard() {
           <div
             style={{
               fontFamily: "'JetBrains Mono', monospace",
-              fontSize: 36,
+              fontSize: 34,
               fontWeight: 600,
               letterSpacing: "-0.02em",
-              color: text,
+              color: p.text,
             }}
           >
             {fmtClock(now)}
           </div>
-          <div style={{ color: textMuted, fontSize: 13.5, textTransform: "capitalize", marginTop: 2 }}>
+          <div style={{ color: p.textMuted, fontSize: 13, textTransform: "capitalize", marginTop: 2 }}>
             {fmtDate(now)}
           </div>
         </div>
       </div>
 
-      {/* Corpo: sessões + coluna direita com ranking + metas */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: 22, flex: 1, minHeight: 0 }}>
-        {/* Coluna esquerda: sessões ativas */}
+      {/* Alerta de mesa acumulando */}
+      {mesaAcumulando && (
+        <div
+          className="tv-mesa-alert"
+          style={{
+            background: p.danger,
+            color: "#fff",
+            padding: "12px 20px",
+            borderRadius: 12,
+            marginBottom: 16,
+            fontWeight: 700,
+            fontSize: 15,
+            textAlign: "center",
+            boxShadow: `0 4px 20px ${p.danger}50`,
+          }}
+        >
+          ⚠️ MESA DE CONFERÊNCIA ACUMULANDO — {waiting.length} pedido{waiting.length > 1 ? "s" : ""} aguardando
+        </div>
+      )}
+
+      {/* Corpo: sessões + coluna direita */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 20, flex: 1, minHeight: 0 }}>
+        {/* Sessões ativas */}
         <div style={{ overflow: "auto", paddingRight: 4 }}>
           {sorted.length === 0 ? (
-            <div style={{ textAlign: "center", padding: "100px 20px", color: textMuted, fontSize: 20, fontWeight: 500 }}>
+            <div style={{ textAlign: "center", padding: "80px 20px", color: p.textMuted, fontSize: 18, fontWeight: 500 }}>
               {stationFilter
                 ? `Nenhuma atividade em andamento em "${stationFilter}"`
+                : hiddenSessions
+                ? "Nenhuma atividade passou do tempo limite ainda"
                 : "Nenhuma atividade em andamento"}
             </div>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {sorted.map((s, i) => {
                 const isNew = !seenSessions.current.has(s.operator_code);
                 const isAlert = alertIds.has(s.operator_code);
-                const accentColor = isAlert ? "#f87171" : s.is_encaixe ? "#fbbf24" : accent;
+                const isStale = staleIds.has(s.operator_code);
+                const accentColor = isStale ? p.warning : isAlert ? p.danger : s.is_encaixe ? p.warning : p.accent;
                 return (
                   <div
                     key={s.operator_code}
                     className={`${isNew ? "tv-row-enter" : ""} ${isAlert ? "tv-alert" : ""}`}
                     style={{
-                      background: surface,
-                      border: `1px solid ${isAlert ? "#7f1d1d" : border}`,
-                      borderRadius: 14,
-                      padding: "18px 22px",
+                      background: p.surface,
+                      border: `1px solid ${isAlert ? "#7f1d1d" : isStale ? p.warning : p.border}`,
+                      borderRadius: 12,
+                      padding: "14px 20px",
                       display: "flex",
                       alignItems: "center",
-                      gap: 20,
+                      gap: 18,
                       position: "relative",
                       overflow: "hidden",
                       animationDelay: isNew ? `${i * 0.05}s` : "0s",
@@ -461,55 +645,59 @@ export default function TvBoard() {
                     <div
                       className="tv-pulse"
                       style={{
-                        width: 12, height: 12, borderRadius: "50%",
+                        width: 10, height: 10, borderRadius: "50%",
                         background: accentColor, flexShrink: 0,
-                        boxShadow: `0 0 12px ${accentColor}`,
+                        boxShadow: `0 0 10px ${accentColor}`,
                       }}
                     />
-                    <div style={{ flex: "0 0 240px", minWidth: 0 }}>
-                      <div style={{ fontSize: 22, fontWeight: 700, letterSpacing: "-0.01em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {s.operator_name}
+                    <div style={{ flex: "0 0 200px", minWidth: 0 }}>
+                      <div style={{ fontSize: 19, fontWeight: 700, letterSpacing: "-0.01em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {displayName(s.operator_name)}
                       </div>
-                      <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 2, flexWrap: "wrap" }}>
-                        {s.station && <span style={{ fontSize: 12, color: textMuted }}>📍 {s.station}</span>}
+                      <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 2, flexWrap: "wrap" }}>
+                        {s.station && <span style={{ fontSize: 11, color: p.textMuted }}>📍 {s.station}</span>}
                         {s.is_encaixe && (
-                          <span style={{ background: "rgba(251, 191, 36, 0.15)", color: "#fbbf24", padding: "2px 8px", borderRadius: 4, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.04em" }}>
+                          <span style={{ background: `${p.warning}26`, color: p.warning, padding: "1px 7px", borderRadius: 4, fontSize: 10, fontWeight: 700, letterSpacing: "0.04em" }}>
                             ⚡ ENCAIXE
                           </span>
                         )}
                         {isAlert && (
-                          <span style={{ background: "rgba(248, 113, 113, 0.2)", color: "#f87171", padding: "2px 8px", borderRadius: 4, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.04em" }}>
+                          <span style={{ background: `${p.danger}33`, color: p.danger, padding: "1px 7px", borderRadius: 4, fontSize: 10, fontWeight: 700, letterSpacing: "0.04em" }}>
                             ⚠ DEMORADA
+                          </span>
+                        )}
+                        {isStale && (
+                          <span style={{ background: `${p.warning}33`, color: p.warning, padding: "1px 7px", borderRadius: 4, fontSize: 10, fontWeight: 700, letterSpacing: "0.04em" }}>
+                            🕐 SUMIU
                           </span>
                         )}
                       </div>
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ color: accent, fontSize: 20, fontWeight: 700, letterSpacing: "-0.01em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      <div style={{ color: p.accent, fontSize: 18, fontWeight: 700, letterSpacing: "-0.01em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {s.activity}
                       </div>
                       {(s.transfer_type || s.customer_name || s.order_number || s.vehicle) && (
-                        <div style={{ fontSize: 13, color: textMuted, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        <div style={{ fontSize: 12, color: p.textMuted, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                           {s.transfer_type && (<>{s.transfer_type}{s.transfer_number ? ` #${s.transfer_number}` : ""}{s.transfer_urgent ? " · 🔴 Urgente" : ""}</>)}
                           {s.customer_name && (s.transfer_type ? " · " : "") + s.customer_name}
                           {s.order_number && ` · Pedido ${s.order_number}`}
                           {s.vehicle && ` · ${s.vehicle}`}
-                          {s.plate && ` · ${s.plate}`}
                         </div>
                       )}
                     </div>
-                    <div style={{ textAlign: "right", flexShrink: 0, minWidth: 130 }}>
+                    <div style={{ textAlign: "right", flexShrink: 0, minWidth: 120 }}>
                       <div
                         style={{
                           fontFamily: "'JetBrains Mono', monospace",
-                          fontSize: 22, fontWeight: 600,
-                          color: isAlert ? "#f87171" : text,
+                          fontSize: 20, fontWeight: 600,
+                          color: isAlert ? p.danger : isStale ? p.warning : p.text,
                           letterSpacing: "-0.02em",
                         }}
                       >
                         {timeAgo(s.start_time, now)}
                       </div>
-                      <div style={{ fontSize: 11.5, color: textMuted, marginTop: 2 }}>
+                      <div style={{ fontSize: 11, color: p.textMuted, marginTop: 2 }}>
                         início {fmtClock(s.start_time)}
                       </div>
                     </div>
@@ -520,59 +708,112 @@ export default function TvBoard() {
           )}
         </div>
 
-        {/* Coluna direita: ranking + metas */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 16, overflowY: "auto", paddingRight: 4 }}>
+        {/* Coluna direita */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, overflowY: "auto", paddingRight: 4 }}>
+          {/* Mesa de conferência */}
+          <div
+            style={{
+              background: p.surface,
+              border: `1px solid ${mesaAcumulando ? p.danger : p.border}`,
+              borderRadius: 14,
+              padding: "16px 18px",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: p.accent, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                Mesa de conferência
+              </div>
+              <div style={{ display: "flex", gap: 10, fontSize: 12, fontWeight: 600 }}>
+                <span style={{ color: waiting.length > 0 ? p.warning : p.textMuted }}>
+                  {waiting.length} aguard.
+                </span>
+                <span style={{ color: p.textMuted }}>
+                  {inProgress.length} em conf.
+                </span>
+              </div>
+            </div>
+
+            {waiting.length === 0 && inProgress.length === 0 ? (
+              <div style={{ color: p.textMuted, fontSize: 13, textAlign: "center", padding: "10px 0" }}>
+                Mesa limpa ✅
+              </div>
+            ) : (
+              <>
+                {waiting.slice(0, 4).map((w) => {
+                  const secs = Math.round((now - new Date(w.separated_at).getTime()) / 1000);
+                  const mins = Math.floor(secs / 60);
+                  const color = mins < 5 ? p.ok : mins < 15 ? p.warning : p.danger;
+                  return (
+                    <div key={w.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: `1px solid ${p.border}` }}>
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {w.is_encaixe && "⚡ "}
+                          {w.transfer_type ? `${w.transfer_type} #${w.transfer_number || ""}` : w.order_number ? `#${w.order_number}` : "—"}
+                        </div>
+                        {w.customer_name && (
+                          <div style={{ fontSize: 11, color: p.textMuted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {hideNames ? displayName(w.customer_name) : w.customer_name}
+                          </div>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 12, fontFamily: "'JetBrains Mono', monospace", color, fontWeight: 600, marginLeft: 8 }}>
+                        {mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h${mins % 60}m`}
+                      </div>
+                    </div>
+                  );
+                })}
+                {waiting.length > 4 && (
+                  <div style={{ fontSize: 11, color: p.textMuted, textAlign: "center", marginTop: 6 }}>
+                    +{waiting.length - 4} aguardando
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
           {/* Ranking do dia */}
-          <div style={{ background: surface, border: `1px solid ${border}`, borderRadius: 16, padding: "18px 20px" }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: accent, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>
+          <div style={{ background: p.surface, border: `1px solid ${p.border}`, borderRadius: 14, padding: "16px 18px" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: p.accent, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>
               Ranking do dia
             </div>
-            <div style={{ fontSize: 11.5, color: textMuted, marginBottom: 14 }}>
+            <div style={{ fontSize: 11, color: p.textMuted, marginBottom: 12 }}>
               {todayEntries.length} registros hoje
               {todayShortages.length > 0 && (
-                <span style={{ color: "#f87171", fontWeight: 600 }}>
+                <span style={{ color: p.danger, fontWeight: 600 }}>
                   {" · "}⚠ {todayShortages.length} falta{todayShortages.length > 1 ? "s" : ""}
                 </span>
               )}
             </div>
 
             {ranking.length === 0 ? (
-              <div style={{ color: textMuted, fontSize: 13, padding: "10px 0", textAlign: "center" }}>
+              <div style={{ color: p.textMuted, fontSize: 12.5, padding: "8px 0", textAlign: "center" }}>
                 Sem registros ainda
               </div>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {ranking.map((r, i) => {
                   const isTop3 = i < 3;
                   return (
-                    <div
-                      key={r.name}
-                      className="tv-rank-enter"
-                      style={{
-                        display: "flex", gap: 12, padding: "8px 0",
-                        borderBottom: i < ranking.length - 1 ? `1px solid ${border}` : "none",
-                        animationDelay: `${i * 0.06}s`,
-                      }}
-                    >
+                    <div key={r.name} className="tv-rank-enter" style={{ display: "flex", gap: 10, padding: "6px 0", borderBottom: i < ranking.length - 1 ? `1px solid ${p.border}` : "none", animationDelay: `${i * 0.06}s` }}>
                       <div
                         style={{
-                          width: 28, height: 28, borderRadius: "50%",
-                          background: isTop3 ? medalColors[i] : "#1f2937",
-                          color: isTop3 ? "#0a0e14" : textMuted,
+                          width: 24, height: 24, borderRadius: "50%",
+                          background: isTop3 ? p.medalColors[i] : p.border,
+                          color: isTop3 ? p.medalText : p.textMuted,
                           display: "flex", alignItems: "center", justifyContent: "center",
-                          fontWeight: 800, fontSize: 12, flexShrink: 0,
+                          fontWeight: 800, fontSize: 11, flexShrink: 0,
                         }}
                       >
-                        {isTop3 ? medalEmoji[i] : i + 1}
+                        {i + 1}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 13.5, fontWeight: 700, color: text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                          {r.name}
+                        <div style={{ fontSize: 12.5, fontWeight: 700, color: p.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {displayName(r.name)}
                         </div>
-                        <div style={{ fontSize: 11.5, color: accent, fontWeight: 600, marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        <div style={{ fontSize: 11, color: p.accent, fontWeight: 600, marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                           {r.mainActivity}
                         </div>
-                        <div style={{ fontSize: 10.5, color: textMuted, marginTop: 1 }}>
+                        <div style={{ fontSize: 10, color: p.textMuted, marginTop: 1 }}>
                           {fmtDuration(r.totalSeconds)} · {r.count} {r.count === 1 ? "registro" : "registros"}
                         </div>
                       </div>
@@ -581,96 +822,75 @@ export default function TvBoard() {
                 })}
               </div>
             )}
-
-            <button
-              onClick={toggleSound}
-              style={{
-                marginTop: 14,
-                width: "100%",
-                background: soundEnabled ? "rgba(52, 211, 153, 0.12)" : "transparent",
-                border: `1px solid ${soundEnabled ? "#34d399" : border}`,
-                color: soundEnabled ? "#34d399" : textMuted,
-                borderRadius: 8,
-                padding: "8px 12px",
-                fontSize: 12,
-                cursor: "pointer",
-                fontWeight: 600,
-                fontFamily: "inherit",
-              }}
-            >
-              {soundEnabled ? "🔔 Alerta sonoro ativado" : "🔕 Ativar alerta sonoro"}
-            </button>
           </div>
 
-          {/* ============ METAS GAMIFICADAS DA SEMANA ============ */}
-          <div style={{ background: surface, border: `1px solid ${border}`, borderRadius: 16, padding: "18px 20px" }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#fbbf24", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>
+          {/* Ranking de conferentes */}
+          {conferenceRanking.length > 0 && (
+            <div style={{ background: p.surface, border: `1px solid ${p.border}`, borderRadius: 14, padding: "16px 18px" }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: p.ok, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>
+                ✅ Conferentes do dia
+              </div>
+              {conferenceRanking.map((c, i) => (
+                <div key={c.code} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 0" }}>
+                  <span style={{ fontSize: 14, width: 20 }}>{["🥇","🥈","🥉"][i]}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {displayName(c.name)}
+                    </div>
+                    <div style={{ fontSize: 10, color: p.textMuted }}>
+                      {c.count} conferência{c.count > 1 ? "s" : ""}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Destaques da semana */}
+          <div style={{ background: p.surface, border: `1px solid ${p.border}`, borderRadius: 14, padding: "16px 18px" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: p.warning, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>
               🏆 Destaques da semana
             </div>
-            <div style={{ fontSize: 11.5, color: textMuted, marginBottom: 14 }}>
-              Mínimo de {MIN_REGISTROS} registros pra entrar no ranking
-            </div>
 
-            {/* Mais rápido */}
             {fastestRanking.length > 0 && (
-              <div style={{ marginBottom: 16 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "#34d399", marginBottom: 8 }}>
-                  ⚡ Mais rápido (menor tempo médio)
-                </div>
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: p.ok, marginBottom: 6 }}>⚡ Mais rápido</div>
                 {fastestRanking.map((op, i) => (
-                  <div key={op.code} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 0" }}>
-                    <span style={{ fontSize: 16, width: 22 }}>{medalEmoji[i]}</span>
+                  <div key={op.code} style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0" }}>
+                    <span style={{ fontSize: 13, width: 18 }}>{["🥇","🥈","🥉"][i]}</span>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {op.name}
-                      </div>
-                      <div style={{ fontSize: 10.5, color: textMuted }}>
-                        {op.count} registros · média {fmtDuration(Math.round(op.avg))}
-                      </div>
+                      <div style={{ fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{displayName(op.name)}</div>
+                      <div style={{ fontSize: 10, color: p.textMuted }}>{op.count} reg · média {fmtDuration(Math.round(op.avg))}</div>
                     </div>
                   </div>
                 ))}
               </div>
             )}
 
-            {/* Mais volume */}
             {volumeRanking.length > 0 && (
-              <div style={{ marginBottom: 16 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "#60a5fa", marginBottom: 8 }}>
-                  📊 Maior volume
-                </div>
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: p.blue, marginBottom: 6 }}>📊 Maior volume</div>
                 {volumeRanking.map((op, i) => (
-                  <div key={op.code} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 0" }}>
-                    <span style={{ fontSize: 16, width: 22 }}>{medalEmoji[i]}</span>
+                  <div key={op.code} style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0" }}>
+                    <span style={{ fontSize: 13, width: 18 }}>{["🥇","🥈","🥉"][i]}</span>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {op.name}
-                      </div>
-                      <div style={{ fontSize: 10.5, color: textMuted }}>
-                        {op.count} registros no total
-                      </div>
+                      <div style={{ fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{displayName(op.name)}</div>
+                      <div style={{ fontSize: 10, color: p.textMuted }}>{op.count} registros no total</div>
                     </div>
                   </div>
                 ))}
               </div>
             )}
 
-            {/* Mais consistente */}
             {consistentRanking.length > 0 && (
-              <div style={{ marginBottom: 16 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "#c084fc", marginBottom: 8 }}>
-                  🎯 Mais consistente
-                </div>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: p.purple, marginBottom: 6 }}>🎯 Mais consistente</div>
                 {consistentRanking.map((op, i) => (
-                  <div key={op.code} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 0" }}>
-                    <span style={{ fontSize: 16, width: 22 }}>{medalEmoji[i]}</span>
+                  <div key={op.code} style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0" }}>
+                    <span style={{ fontSize: 13, width: 18 }}>{["🥇","🥈","🥉"][i]}</span>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {op.name}
-                      </div>
-                      <div style={{ fontSize: 10.5, color: textMuted }}>
-                        variação de {fmtDuration(Math.round(op.consistency))}
-                      </div>
+                      <div style={{ fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{displayName(op.name)}</div>
+                      <div style={{ fontSize: 10, color: p.textMuted }}>variação {fmtDuration(Math.round(op.consistency))}</div>
                     </div>
                   </div>
                 ))}
@@ -678,59 +898,47 @@ export default function TvBoard() {
             )}
 
             {fastestRanking.length === 0 && volumeRanking.length === 0 && consistentRanking.length === 0 && (
-              <div style={{ color: textMuted, fontSize: 12.5, textAlign: "center", padding: "16px 0" }}>
-                Ninguém bateu o mínimo de {MIN_REGISTROS} registros nesta semana ainda.
+              <div style={{ color: p.textMuted, fontSize: 11.5, textAlign: "center", padding: "10px 0" }}>
+                Ninguém bateu o mínimo de {MIN_REGISTROS} registros ainda
               </div>
             )}
 
-            {/* Metas atingidas */}
             {goalsAchieved.total > 0 && (
-              <div style={{ borderTop: `1px solid ${border}`, paddingTop: 14, marginTop: 4 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: textMuted, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                    Metas da semana
-                  </span>
-                  <span
-                    style={{
-                      fontSize: 15,
-                      fontWeight: 800,
-                      color: goalsAchieved.achieved === goalsAchieved.total ? "#34d399" : "#fbbf24",
-                    }}
-                  >
-                    {goalsAchieved.achieved}/{goalsAchieved.total}
-                  </span>
-                </div>
-                <div style={{ fontSize: 10.5, color: textMuted, marginTop: 4 }}>
-                  Atividades cuja média ficou dentro da meta
-                </div>
+              <div style={{ borderTop: `1px solid ${p.border}`, paddingTop: 10, marginTop: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: p.textMuted, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  Metas semana
+                </span>
+                <span style={{ fontSize: 14, fontWeight: 800, color: goalsAchieved.achieved === goalsAchieved.total ? p.ok : p.warning }}>
+                  {goalsAchieved.achieved}/{goalsAchieved.total}
+                </span>
               </div>
             )}
           </div>
         </div>
       </div>
 
-      {/* Ticker: últimos registros */}
+      {/* Ticker */}
       {latestEntries.length > 0 && (
         <div
           style={{
-            marginTop: 20, padding: "12px 20px", background: surface,
-            border: `1px solid ${border}`, borderRadius: 12,
-            display: "flex", alignItems: "center", gap: 20,
-            fontSize: 13, color: textMuted, overflow: "hidden",
+            marginTop: 16, padding: "10px 18px", background: p.surface,
+            border: `1px solid ${p.border}`, borderRadius: 10,
+            display: "flex", alignItems: "center", gap: 18,
+            fontSize: 12.5, color: p.textMuted, overflow: "hidden",
           }}
         >
-          <div style={{ fontWeight: 700, color: accent, fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", flexShrink: 0 }}>
+          <div style={{ fontWeight: 700, color: p.accent, fontSize: 10.5, letterSpacing: "0.08em", textTransform: "uppercase", flexShrink: 0 }}>
             Últimos registros
           </div>
-          <div style={{ display: "flex", gap: 24, overflow: "hidden", flex: 1 }}>
+          <div style={{ display: "flex", gap: 22, overflow: "hidden", flex: 1 }}>
             {latestEntries.map((e) => {
               const hasShortage = entriesWithShortageIds.has(e.id);
               return (
-                <div key={e.id} style={{ whiteSpace: "nowrap", fontSize: 12.5 }}>
-                  <span style={{ color: text, fontWeight: 600 }}>{e.operator_name}</span>
+                <div key={e.id} style={{ whiteSpace: "nowrap", fontSize: 12 }}>
+                  <span style={{ color: p.text, fontWeight: 600 }}>{displayName(e.operator_name)}</span>
                   <span style={{ margin: "0 6px" }}>·</span>
                   <span>{e.activity}</span>
-                  {hasShortage && <span style={{ margin: "0 6px", color: "#f87171", fontWeight: 700 }}>⚠</span>}
+                  {hasShortage && <span style={{ margin: "0 6px", color: p.danger, fontWeight: 700 }}>⚠</span>}
                   {!hasShortage && <span style={{ margin: "0 6px" }}>·</span>}
                   {!hasShortage && <span style={{ fontFamily: "'JetBrains Mono', monospace" }}>{fmtClock(e.end_time)}</span>}
                 </div>
@@ -740,37 +948,62 @@ export default function TvBoard() {
         </div>
       )}
 
-      {/* Botões de ação */}
-      <div style={{ position: "fixed", bottom: 22, right: 22, display: "flex", gap: 10 }}>
+      {/* Botões flutuantes */}
+      <div style={{ position: "fixed", bottom: 18, right: 18, display: "flex", gap: 8 }}>
         <button
-          onClick={() => {
-            // Se tiver filtro, copia o link pra clipboard
-            if (stationFilter) {
-              navigator.clipboard.writeText(window.location.href).catch(() => {});
-            }
-          }}
-          style={{
-            background: surface, color: textMuted,
-            border: `1px solid ${border}`, borderRadius: 10,
-            padding: "10px 18px", fontSize: 12.5,
-            cursor: "pointer", fontWeight: 600, fontFamily: "inherit",
-          }}
-          title="Salva o link com o filtro atual"
+          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+          style={btnStyle(p)}
+          title="Alternar tema claro/escuro"
         >
-          🔗 Copiar link
+          {theme === "dark" ? "☀️ Claro" : "🌙 Escuro"}
         </button>
+
         <button
-          onClick={goFullscreen}
-          style={{
-            background: surface, color: textMuted,
-            border: `1px solid ${border}`, borderRadius: 10,
-            padding: "10px 18px", fontSize: 12.5,
-            cursor: "pointer", fontWeight: 600, fontFamily: "inherit",
-          }}
+          onClick={() => setHideNames((v) => !v)}
+          style={btnStyle(p, hideNames)}
+          title="Esconder/mostrar nomes (privacidade)"
         >
-          Tela cheia
+          {hideNames ? "👁 Mostrar nomes" : "🙈 Esconder nomes"}
         </button>
+
+        <button
+          onClick={() => setHiddenSessions((v) => !v)}
+          style={btnStyle(p, hiddenSessions)}
+          title="Esconder atividades até passarem do tempo limite"
+        >
+          {hiddenSessions ? "⏱ Mostrar todas" : "⏱ Só atrasadas"}
+        </button>
+
+        <button onClick={toggleSound} style={btnStyle(p, soundEnabled)} title="Ativar/desativar som de alerta">
+          {soundEnabled ? "🔔 Som on" : "🔕 Som off"}
+        </button>
+
+        {isFullscreen ? (
+          <button onClick={exitFullscreen} style={btnStyle(p, true)} title="Sair da tela cheia (Esc também sai)">
+            ⤢ Sair da tela cheia
+          </button>
+        ) : (
+          <button onClick={enterFullscreen} style={btnStyle(p)} title="Entrar em tela cheia">
+            ⛶ Tela cheia
+          </button>
+        )}
       </div>
     </div>
   );
+}
+
+// Estilo dos botões flutuantes
+function btnStyle(p, active = false) {
+  return {
+    background: active ? p.accent : p.surface,
+    color: active ? "#0a0e14" : p.textMuted,
+    border: `1px solid ${active ? p.accent : p.border}`,
+    borderRadius: 10,
+    padding: "8px 14px",
+    fontSize: 12,
+    cursor: "pointer",
+    fontWeight: 600,
+    fontFamily: "inherit",
+    transition: "all 150ms ease",
+  };
 }

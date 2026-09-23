@@ -1,161 +1,20 @@
 import { supabase } from "../supabaseClient";
 
-// Centraliza todo o acesso ao banco em um só lugar.
-
-// ---------- Leituras ----------
-
+// ============================================================
+// OPERATORS
+// ============================================================
 export async function fetchOperators() {
-  return supabase.from("operators").select("*").order("code");
+  const { data, error } = await supabase.from("operators").select("*").order("code");
+  return { data, error };
 }
 
-export async function fetchActivities() {
-  return supabase.from("activities").select("*").eq("active", true).order("sort_order", { ascending: true });
-}
-
-export async function fetchAdminConfig() {
-  return supabase.from("admin_config").select("*").eq("id", 1).maybeSingle();
-}
-
-export async function fetchEntries({ limit = 2000, since = null } = {}) {
-  let q = supabase.from("entries").select("*").order("start_time", { ascending: false }).limit(limit);
-  if (since) q = q.gte("start_time", since);
-  return q;
-}
-
-export async function fetchActiveSessions() {
-  return supabase.from("active_sessions").select("*");
-}
-
-export async function fetchActiveSessionFor(operatorCode) {
-  return supabase.from("active_sessions").select("*").eq("operator_code", operatorCode).maybeSingle();
-}
-
-// ---------- Veículos ----------
-
-export async function fetchVehicles() {
-  return supabase.from("vehicles").select("*").eq("active", true).order("sort_order", { ascending: true });
-}
-
-export async function addVehicle({ plate, model }) {
-  return supabase.from("vehicles").insert({ plate: plate.trim().toUpperCase(), model: model.trim(), active: true });
-}
-
-export async function updateVehicle(oldPlate, fields) {
-  const plate = fields.plate ? fields.plate.trim().toUpperCase() : oldPlate;
-  const model = fields.model ? fields.model.trim() : undefined;
-  const payload = {};
-  if (plate !== oldPlate) payload.plate = plate;
-  if (model !== undefined) payload.model = model;
-  if (Object.keys(payload).length === 0) return { error: null };
-  return supabase.from("vehicles").update(payload).eq("plate", oldPlate);
-}
-
-export async function deleteVehicle(plate) {
-  return supabase.from("vehicles").delete().eq("plate", plate);
-}
-
-// ---------- Ações do quiosque (via RPC atômica) ----------
-
-export async function startSession({
-  operatorCode, operatorName, activity,
-  orderNumber = null, customerName = null, transferType = null,
-  transferUrgent = null, transferNumber = null,
-  vehicle = null, plate = null, station = null,
-  isEncaixe = false,
-  supplierName = null, invoiceNumber = null,
-}) {
-  return supabase.rpc("start_session_atomic", {
-    p_operator_code: operatorCode,
-    p_operator_name: operatorName,
-    p_activity: activity,
-    p_order_number: orderNumber,
-    p_customer_name: customerName,
-    p_transfer_type: transferType,
-    p_transfer_urgent: transferUrgent,
-    p_transfer_number: transferNumber,
-    p_vehicle: vehicle,
-    p_plate: plate,
-    p_station: station,
-    p_is_encaixe: isEncaixe,
-    p_supplier_name: supplierName,
-    p_invoice_number: invoiceNumber,
-  });
-}
-
-export async function finishSession(session, durationSeconds, shift, note = null, isEncaixe = false) {
-  return supabase.rpc("finish_session_atomic", {
-    p_operator_code: session.operator_code,
-    p_operator_name: session.operator_name,
-    p_activity: session.activity,
-    p_start_time: session.start_time,
-    p_end_time: new Date().toISOString(),
-    p_duration_seconds: durationSeconds,
-    p_shift: shift,
-    p_note: note || null,
-    p_order_number: session.order_number || null,
-    p_customer_name: session.customer_name || null,
-    p_transfer_type: session.transfer_type || null,
-    p_transfer_urgent: session.transfer_urgent ?? null,
-    p_transfer_number: session.transfer_number || null,
-    p_vehicle: session.vehicle || null,
-    p_plate: session.plate || null,
-    p_station: session.station || null,
-    p_is_encaixe: isEncaixe || !!session.is_encaixe,
-    p_supplier_name: session.supplier_name || null,
-    p_invoice_number: session.invoice_number || null,
-  });
-}
-
-// ---------- Faltas ----------
-
-export async function saveShortages(entryId, shortages) {
-  if (!entryId || !shortages || shortages.length === 0) return { error: null };
-  const rows = shortages.map((s) => ({
-    entry_id: entryId,
-    product_code: String(s.productCode).trim(),
-    quantity: Number(s.quantity) || 1,
-  }));
-  return supabase.from("entry_shortages").insert(rows);
-}
-
-export async function fetchShortages({ limit = 2000 } = {}) {
-  return supabase
-    .from("entry_shortages")
-    .select(`
-      id,
-      entry_id,
-      product_code,
-      quantity,
-      created_at,
-      entries:entry_id (
-        id,
-        operator_name,
-        operator_code,
-        activity,
-        order_number,
-        customer_name,
-        shift,
-        start_time,
-        end_time,
-        is_encaixe
-      )
-    `)
-    .order("created_at", { ascending: false })
-    .limit(limit);
-}
-
-export async function deleteAllShortages() {
-  return supabase.rpc("delete_all_shortages");
-}
-
-// ---------- Operadores ----------
-
-export async function addOperator({ code, name, role, canScheduleDelivery = false }) {
+export async function addOperator({ code, name, role, canScheduleDelivery = false, canConference = false }) {
   return supabase.from("operators").insert({
     code,
     name,
-    role: role || "-",
+    role,
     can_schedule_delivery: canScheduleDelivery,
+    can_conference: canConference,
   });
 }
 
@@ -164,223 +23,415 @@ export async function updateOperator(code, fields) {
 }
 
 export async function renameOperatorCode(oldCode, newCode, fields) {
-  const insertRes = await supabase.from("operators").insert({ code: newCode, ...fields });
-  if (insertRes.error) return insertRes;
-  const deleteRes = await supabase.from("operators").delete().eq("code", oldCode);
-  if (deleteRes.error) {
-    await supabase.from("operators").delete().eq("code", newCode);
-    return deleteRes;
-  }
-  return deleteRes;
+  const { error: insertError } = await supabase.from("operators").insert({
+    code: newCode,
+    name: fields.name,
+    role: fields.role,
+    can_schedule_delivery: fields.can_schedule_delivery,
+    can_conference: fields.can_conference ?? false,
+  });
+  if (insertError) return { error: insertError };
+  const { error: delError } = await supabase.from("operators").delete().eq("code", oldCode);
+  return { error: delError };
 }
 
 export async function deleteOperator(code) {
   return supabase.from("operators").delete().eq("code", code);
 }
 
-// ---------- Atividades ----------
-
-export async function addActivity(name, targetSeconds = null, asksShortage = null) {
-  return supabase.from("activities").insert({
-    name,
-    active: true,
-    target_seconds: targetSeconds,
-    asks_shortage: asksShortage,
-  });
+// ============================================================
+// ACTIVITIES
+// ============================================================
+export async function fetchActivities() {
+  const { data, error } = await supabase
+    .from("activities")
+    .select("*")
+    .eq("active", true)
+    .order("sort_order", { ascending: true });
+  return { data, error };
 }
 
-export async function renameActivity(oldName, newName) {
-  return supabase.rpc("rename_activity_atomic", { p_old: oldName, p_new: newName });
+export async function addActivity(name, targetSeconds, requiresOrderInfo, extra = {}) {
+  const { data: existing } = await supabase
+    .from("activities")
+    .select("sort_order")
+    .order("sort_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const nextOrder = existing ? (existing.sort_order || 0) + 1 : 0;
+
+  return supabase.from("activities").insert({
+    name,
+    target_seconds: targetSeconds,
+    requires_order_info: requiresOrderInfo,
+    extra_field_type: extra.extra_field_type || "pedido",
+    asks_shortage: extra.asks_shortage ?? null,
+    sort_order: nextOrder,
+    active: true,
+  });
 }
 
 export async function updateActivity(name, fields) {
   return supabase.from("activities").update(fields).eq("name", name);
 }
 
-export async function deleteActivity(name) {
-  return supabase.from("activities").delete().eq("name", name);
-}
-
-export async function swapActivityOrder(nameA, sortOrderA, nameB, sortOrderB) {
-  const r1 = await supabase.from("activities").update({ sort_order: sortOrderB }).eq("name", nameA);
-  if (r1.error) return r1;
-  const r2 = await supabase.from("activities").update({ sort_order: sortOrderA }).eq("name", nameB);
-  if (r2.error) {
-    await supabase.from("activities").update({ sort_order: sortOrderA }).eq("name", nameA);
-    return r2;
-  }
-  return r2;
-}
-
-// ---------- Administração ----------
-
-export async function updateAdminPin(pin) {
-  return supabase.from("admin_config").update({ pin }).eq("id", 1);
-}
-
-export async function updateAlertThreshold(seconds) {
-  const value = Math.max(60, Number(seconds) || 1800);
-  return supabase.from("admin_config").update({ alert_threshold_seconds: value }).eq("id", 1);
-}
-
-export async function deleteAllEntries() {
-  return supabase.rpc("delete_all_entries");
-}
-
-export async function addManualEntry({
-  operatorCode, operatorName, activity, startTime, endTime, durationSeconds, shift,
-  isEncaixe = false, shortages = [],
-}) {
-  const insertRes = await supabase.from("entries").insert({
-    operator_code: operatorCode,
-    operator_name: operatorName,
-    activity,
-    start_time: startTime,
-    end_time: endTime,
-    duration_seconds: durationSeconds,
-    shift,
-    manual_entry: true,
-    is_encaixe: isEncaixe,
-  }).select("id").single();
-
-  if (insertRes.error) return insertRes;
-
-  if (shortages.length > 0) {
-    const shortageRes = await saveShortages(insertRes.data.id, shortages);
-    if (shortageRes.error) return shortageRes;
-  }
-
-  return insertRes;
-}
-
-// ---------- Erros de separação ----------
-
-export async function fetchSeparationErrors(limit = 2000) {
-  return supabase.from("separation_errors").select("*").order("created_at", { ascending: false }).limit(limit);
-}
-
-export async function logSeparationError({
-  operatorCode,
-  operatorName,
-  errorType,
-  note,
-  station = null,
-  orderType = null,
-  orderNumber = null,
-  errorOperatorCode = null,
-  errorOperatorName = null,
-}) {
-  return supabase.from("separation_errors").insert({
-    operator_code: operatorCode,
-    operator_name: operatorName,
-    error_type: errorType,
-    note: note || null,
-    station,
-    order_type: orderType,
-    order_number: orderNumber,
-    error_operator_code: errorOperatorCode,
-    error_operator_name: errorOperatorName,
+export async function renameActivity(oldName, newName) {
+  const { error: insertError } = await supabase.from("activities").insert({
+    name: newName,
+    target_seconds: null,
+    requires_order_info: false,
+    extra_field_type: "pedido",
+    asks_shortage: null,
+    sort_order: 9999,
+    active: true,
   });
+  if (insertError) return { error: insertError };
+  const { error: delError } = await supabase.from("activities").delete().eq("name", oldName);
+  return { error: delError };
 }
 
-export async function deleteAllSeparationErrors() {
-  return supabase.rpc("delete_all_separation_errors");
+export async function swapActivityOrder(nameA, orderA, nameB, orderB) {
+  const { error: e1 } = await supabase
+    .from("activities")
+    .update({ sort_order: orderB })
+    .eq("name", nameA);
+  if (e1) return { error: e1 };
+  return supabase.from("activities").update({ sort_order: orderA }).eq("name", nameB);
 }
 
-// ---------- Tipos de erro ----------
+export async function deleteActivity(name) {
+  return supabase.from("activities").update({ active: false }).eq("name", name);
+}
 
+// ============================================================
+// ERROR TYPES
+// ============================================================
 export async function fetchErrorTypes() {
-  return supabase.from("error_types").select("*").eq("active", true).order("name");
+  const { data, error } = await supabase.from("error_types").select("*").order("name");
+  return { data, error };
 }
 
 export async function addErrorType(name) {
-  return supabase.from("error_types").insert({ name, active: true });
+  return supabase.from("error_types").insert({ name });
 }
 
 export async function renameErrorType(oldName, newName) {
-  return supabase.rpc("rename_error_type_atomic", { p_old: oldName, p_new: newName });
+  const { error: insertError } = await supabase.from("error_types").insert({ name: newName });
+  if (insertError) return { error: insertError };
+  return supabase.from("error_types").delete().eq("name", oldName);
 }
 
 export async function deleteErrorType(name) {
   return supabase.from("error_types").delete().eq("name", name);
 }
 
-// ---------- Auditoria ----------
+// ============================================================
+// VEHICLES
+// ============================================================
+export async function fetchVehicles() {
+  const { data, error } = await supabase.from("vehicles").select("*").order("plate");
+  return { data, error };
+}
 
-export async function logAudit({ actorCode, actorName, action, entity, entityId, details, beforeData, afterData }) {
+export async function addVehicle({ plate, model }) {
+  return supabase.from("vehicles").insert({ plate, model });
+}
+
+export async function updateVehicle(oldPlate, fields) {
+  return supabase.from("vehicles").update(fields).eq("plate", oldPlate);
+}
+
+export async function deleteVehicle(plate) {
+  return supabase.from("vehicles").delete().eq("plate", plate);
+}
+
+// ============================================================
+// ADMIN CONFIG
+// ============================================================
+export async function fetchAdminConfig() {
+  const { data, error } = await supabase
+    .from("admin_config")
+    .select("*")
+    .eq("id", 1)
+    .maybeSingle();
+  return { data, error };
+}
+
+export async function updateAdminPin(pin) {
+  return supabase.from("admin_config").update({ pin }).eq("id", 1);
+}
+
+export async function updateAlertThreshold(seconds) {
+  return supabase.from("admin_config").update({ alert_threshold_seconds: seconds }).eq("id", 1);
+}
+
+// ============================================================
+// ENTRIES
+// ============================================================
+export async function fetchEntries({ limit = 5000 } = {}) {
+  const { data, error } = await supabase
+    .from("entries")
+    .select("*")
+    .order("start_time", { ascending: false })
+    .limit(limit);
+  return { data, error };
+}
+
+export async function deleteAllEntries() {
+  return supabase.from("entries").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+}
+
+export async function addManualEntry({
+  operatorCode, operatorName, activity, startTime, endTime,
+  durationSeconds, shift, isEncaixe, shortages,
+}) {
+  const { data: entry, error } = await supabase
+    .from("entries")
+    .insert({
+      operator_code: operatorCode,
+      operator_name: operatorName,
+      activity,
+      start_time: startTime,
+      end_time: endTime,
+      duration_seconds: durationSeconds,
+      shift,
+      is_encaixe: isEncaixe,
+      manual_entry: true,
+      station: null,
+    })
+    .select()
+    .maybeSingle();
+
+  if (error) return { error };
+
+  if (shortages && shortages.length > 0 && entry) {
+    const rows = shortages.map((s) => ({
+      entry_id: entry.id,
+      product_code: s.productCode,
+      quantity: s.quantity,
+    }));
+    await supabase.from("entry_shortages").insert(rows);
+  }
+
+  return { data: entry, error: null };
+}
+
+// ============================================================
+// ACTIVE SESSIONS
+// ============================================================
+export async function fetchActiveSessions() {
+  const { data, error } = await supabase
+    .from("active_sessions")
+    .select("*")
+    .order("start_time", { ascending: true });
+  return { data, error };
+}
+
+export async function fetchActiveSessionFor(operatorCode) {
+  const { data, error } = await supabase
+    .from("active_sessions")
+    .select("*")
+    .eq("operator_code", operatorCode)
+    .maybeSingle();
+  return { data, error };
+}
+
+export async function startSession({
+  operatorCode, operatorName, activity, orderNumber, customerName,
+  transferType, transferUrgent, transferNumber, vehicle, plate,
+  station, isEncaixe, supplierName, invoiceNumber,
+}) {
+  const payload = {
+    operator_code: operatorCode,
+    operator_name: operatorName,
+    activity,
+    start_time: new Date().toISOString(),
+    order_number: orderNumber || null,
+    customer_name: customerName || null,
+    transfer_type: transferType || null,
+    transfer_urgent: transferUrgent ?? null,
+    transfer_number: transferNumber || null,
+    vehicle: vehicle || null,
+    plate: plate || null,
+    station: station || null,
+    is_encaixe: isEncaixe || false,
+    supplier_name: supplierName || null,
+    invoice_number: invoiceNumber || null,
+  };
+
+  const { data, error } = await supabase
+    .from("active_sessions")
+    .insert(payload)
+    .select()
+    .maybeSingle();
+
+  if (error && (error.message || "").includes("duplicate")) {
+    return { error: { message: "OPERATOR_ALREADY_ACTIVE" } };
+  }
+
+  return { data, error };
+}
+
+export async function finishSession(session, durationSeconds, shift, note, isEncaixe) {
+  const entryPayload = {
+    operator_code: session.operator_code,
+    operator_name: session.operator_name,
+    activity: session.activity,
+    start_time: session.start_time,
+    end_time: new Date().toISOString(),
+    duration_seconds: durationSeconds,
+    shift,
+    order_number: session.order_number || null,
+    customer_name: session.customer_name || null,
+    transfer_type: session.transfer_type || null,
+    transfer_urgent: session.transfer_urgent ?? null,
+    transfer_number: session.transfer_number || null,
+    vehicle: session.vehicle || null,
+    plate: session.plate || null,
+    supplier_name: session.supplier_name || null,
+    invoice_number: session.invoice_number || null,
+    station: session.station || null,
+    is_encaixe: isEncaixe || false,
+    manual_entry: false,
+    note: note || null,
+  };
+
+  const { data: entry, error } = await supabase
+    .from("entries")
+    .insert(entryPayload)
+    .select()
+    .maybeSingle();
+
+  if (error) return { error };
+
+  await supabase.from("active_sessions").delete().eq("operator_code", session.operator_code);
+
+  return { data: entry, error: null };
+}
+
+// ============================================================
+// SHORTAGES
+// ============================================================
+export async function fetchShortages({ limit = 5000 } = {}) {
+  const { data, error } = await supabase
+    .from("entry_shortages")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  return { data, error };
+}
+
+export async function saveShortages(entryId, shortages) {
+  if (!shortages || shortages.length === 0) return { error: null };
+  const rows = shortages.map((s) => ({
+    entry_id: entryId,
+    product_code: s.productCode,
+    quantity: s.quantity,
+  }));
+  return supabase.from("entry_shortages").insert(rows);
+}
+
+export async function deleteAllShortages() {
+  return supabase.from("entry_shortages").delete().neq("id", 0);
+}
+
+// ============================================================
+// SEPARATION ERRORS
+// ============================================================
+export async function fetchSeparationErrors() {
+  const { data, error } = await supabase
+    .from("separation_errors")
+    .select("*")
+    .order("created_at", { ascending: false });
+  return { data, error };
+}
+
+export async function logSeparationError({
+  operatorCode, operatorName, errorType, note, station,
+  orderType, orderNumber, errorOperatorCode, errorOperatorName,
+}) {
+  return supabase.from("separation_errors").insert({
+    operator_code: operatorCode,
+    operator_name: operatorName,
+    error_type: errorType,
+    note: note || null,
+    station: station || null,
+    order_type: orderType || null,
+    order_number: orderNumber || null,
+    error_operator_code: errorOperatorCode || null,
+    error_operator_name: errorOperatorName || null,
+  });
+}
+
+export async function deleteAllSeparationErrors() {
+  return supabase.from("separation_errors").delete().neq("id", 0);
+}
+
+// ============================================================
+// AUDIT LOG
+// ============================================================
+export async function fetchAuditLog({ limit = 1000 } = {}) {
+  const { data, error } = await supabase
+    .from("audit_log")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  return { data, error };
+}
+
+export async function logAudit({
+  actorCode, actorName, action, entity, entityId,
+  details, beforeData, afterData,
+}) {
   return supabase.from("audit_log").insert({
-    actor_code: actorCode || null,
-    actor_name: actorName || null,
+    actor_code: actorCode,
+    actor_name: actorName,
     action,
     entity,
-    entity_id: entityId || null,
-    details: details || null,
+    entity_id: entityId,
+    details,
     before_data: beforeData || null,
     after_data: afterData || null,
   });
 }
 
-export async function fetchAuditLog({ limit = 500, entity = null, action = null, actorCode = null, since = null } = {}) {
-  let q = supabase.from("audit_log").select("*").order("created_at", { ascending: false }).limit(limit);
-  if (entity) q = q.eq("entity", entity);
-  if (action) q = q.eq("action", action);
-  if (actorCode) q = q.eq("actor_code", actorCode);
-  if (since) q = q.gte("created_at", since);
-  return q;
-}
-
 export async function deleteAllAuditLog() {
-  return supabase.rpc("delete_all_audit_log");
+  return supabase.from("audit_log").delete().neq("id", 0);
 }
 
-// ---------- Agendamentos de recebimento ----------
-
-export async function fetchSchedules({ limit = 500, fromDate = null, toDate = null } = {}) {
-  let q = supabase.from("delivery_schedules").select("*").order("scheduled_at", { ascending: true }).limit(limit);
-  if (fromDate) q = q.gte("scheduled_date", fromDate);
-  if (toDate) q = q.lte("scheduled_date", toDate);
-  return q;
+// ============================================================
+// DELIVERY SCHEDULES
+// ============================================================
+export async function fetchSchedules({ limit = 2000 } = {}) {
+  const { data, error } = await supabase
+    .from("delivery_schedules")
+    .select("*")
+    .order("scheduled_at", { ascending: true })
+    .limit(limit);
+  return { data, error };
 }
 
-export async function checkScheduleConflict(scheduledAt, excludeId = null) {
-  return supabase.rpc("check_schedule_conflict", {
-    p_scheduled_at: scheduledAt,
-    p_exclude_id: excludeId,
-  });
-}
-
-export async function addSchedule({
-  scheduledDate,
-  scheduledTime,
-  scheduledAt,
-  supplierName,
-  invoiceNumber,
-  carrier = null,
-  purchaseOrder = null,
-  volumeWeight,
-  responsibleName,
-  observation = null,
-  isException = false,
-  exceptionReason = null,
-  createdByCode = null,
-  createdByName = null,
-}) {
-  return supabase.from("delivery_schedules").insert({
-    scheduled_date: scheduledDate,
-    scheduled_time: scheduledTime,
-    scheduled_at: scheduledAt,
-    supplier_name: supplierName,
-    invoice_number: invoiceNumber,
-    carrier,
-    purchase_order: purchaseOrder,
-    volume_weight: volumeWeight,
-    responsible_name: responsibleName,
-    observation,
-    is_exception: isException,
-    exception_reason: exceptionReason,
-    created_by_code: createdByCode,
-    created_by_name: createdByName,
-  }).select("id").single();
+export async function addSchedule(payload) {
+  return supabase
+    .from("delivery_schedules")
+    .insert({
+      scheduled_date: payload.scheduledDate,
+      scheduled_time: payload.scheduledTime,
+      scheduled_at: payload.scheduledAt,
+      supplier_name: payload.supplierName,
+      invoice_number: payload.invoiceNumber,
+      carrier: payload.carrier,
+      purchase_order: payload.purchaseOrder,
+      volume_weight: payload.volumeWeight,
+      responsible_name: payload.responsibleName,
+      observation: payload.observation,
+      is_exception: payload.isException,
+      exception_reason: payload.exceptionReason,
+      created_by_code: payload.createdByCode,
+      created_by_name: payload.createdByName,
+    })
+    .select()
+    .maybeSingle();
 }
 
 export async function updateSchedule(id, fields) {
@@ -391,26 +442,47 @@ export async function deleteSchedule(id) {
   return supabase.from("delivery_schedules").delete().eq("id", id);
 }
 
-export async function updateScheduleGoogleEventId(id, googleEventId) {
-  return supabase.from("delivery_schedules").update({ google_event_id: googleEventId }).eq("id", id);
+export async function checkScheduleConflict(scheduledAt, excludeId = null) {
+  const target = new Date(scheduledAt).getTime();
+  const window = 30 * 60 * 1000;
+  const from = new Date(target - window).toISOString();
+  const to = new Date(target + window).toISOString();
+
+  let query = supabase
+    .from("delivery_schedules")
+    .select("id, scheduled_at")
+    .gte("scheduled_at", from)
+    .lte("scheduled_at", to);
+
+  if (excludeId) query = query.neq("id", excludeId);
+
+  const { data, error } = await query;
+  if (error) return { data: false, error };
+  return { data: (data || []).length > 0, error: null };
 }
 
-// ====================================================================
-// EQUIPE DE VENDAS
-// ====================================================================
+export async function updateScheduleGoogleEventId(id, googleEventId) {
+  return supabase
+    .from("delivery_schedules")
+    .update({ google_event_id: googleEventId })
+    .eq("id", id);
+}
 
-// ---------- Líderes ----------
-
+// ============================================================
+// SALES TEAM
+// ============================================================
 export async function fetchSalesLeaders() {
-  return supabase.from("sales_leaders").select("*").order("code");
+  const { data, error } = await supabase.from("sales_leaders").select("*").order("code");
+  return { data, error };
+}
+
+export async function fetchSalesMembers() {
+  const { data, error } = await supabase.from("sales_members").select("*").order("code");
+  return { data, error };
 }
 
 export async function addSalesLeader({ code, name, teamName }) {
-  return supabase.from("sales_leaders").insert({
-    code: code.trim(),
-    name: name.trim(),
-    team_name: teamName.trim(),
-  });
+  return supabase.from("sales_leaders").insert({ code, name, team_name: teamName });
 }
 
 export async function updateSalesLeader(code, fields) {
@@ -421,17 +493,11 @@ export async function deleteSalesLeader(code) {
   return supabase.from("sales_leaders").delete().eq("code", code);
 }
 
-// ---------- Vendedores / Auxiliares ----------
-
-export async function fetchSalesMembers() {
-  return supabase.from("sales_members").select("*").order("code");
-}
-
 export async function addSalesMember({ code, name, role, leaderCode }) {
   return supabase.from("sales_members").insert({
-    code: code.trim(),
-    name: name.trim(),
-    role: role.trim() || "Vendedor",
+    code,
+    name,
+    role,
     leader_code: leaderCode || null,
   });
 }
@@ -444,48 +510,172 @@ export async function deleteSalesMember(code) {
   return supabase.from("sales_members").delete().eq("code", code);
 }
 
-// Promove um vendedor a líder:
-// 1. Cria o líder na tabela sales_leaders
-// 2. Atualiza o próprio vendedor para apontar pro seu novo código de líder
-// (opcional — se quiser que ele continue como vendedor também)
 export async function promoteMemberToLeader(memberCode, { leaderCode, teamName }) {
-  // Pega dados do vendedor
-  const { data: member, error: err1 } = await supabase
+  const { data: member } = await supabase
     .from("sales_members")
     .select("*")
     .eq("code", memberCode)
     .maybeSingle();
-  if (err1) return { error: err1 };
+
   if (!member) return { error: { message: "Vendedor não encontrado." } };
 
-  // Cria o líder
-  const { error: err2 } = await supabase.from("sales_leaders").insert({
-    code: leaderCode.trim(),
+  const { error: insErr } = await supabase.from("sales_leaders").insert({
+    code: leaderCode,
     name: member.name,
-    team_name: teamName.trim(),
+    team_name: teamName,
   });
-  if (err2) return { error: err2 };
+  if (insErr) return { error: insErr };
 
-  return { error: null };
-}
-
-// Remove um líder:
-// - Os vendedores dele ficam SEM líder (leader_code = null)
-// - A linha do líder é apagada
-export async function demoteLeaderToMember(leaderCode) {
-  // Desvincula os vendedores
-  const { error: err1 } = await supabase
+  const { error: updErr } = await supabase
     .from("sales_members")
     .update({ leader_code: null })
-    .eq("leader_code", leaderCode);
-  if (err1) return { error: err1 };
+    .eq("leader_code", memberCode);
 
-  // Apaga o líder
-  const { error: err2 } = await supabase
+  const { error: delErr } = await supabase.from("sales_members").delete().eq("code", memberCode);
+
+  return { error: updErr || delErr || null };
+}
+
+export async function demoteLeaderToMember(leaderCode) {
+  const { data: leader } = await supabase
+    .from("sales_leaders")
+    .select("*")
+    .eq("code", leaderCode)
+    .maybeSingle();
+
+  if (!leader) return { error: { message: "Líder não encontrado." } };
+
+  const { error: delErr } = await supabase
     .from("sales_leaders")
     .delete()
     .eq("code", leaderCode);
-  if (err2) return { error: err2 };
 
+  if (delErr) return { error: delErr };
+
+  // Rebaixa: só remove da lista de líderes. Não recria como vendedor
+  // (o admin pode recadastrar manualmente se quiser)
   return { error: null };
+}
+
+// ============================================================
+// CONFERENCE QUEUE (MESA DE CONFERÊNCIA)
+// ============================================================
+export async function fetchConferenceQueue({ includeFinished = false } = {}) {
+  let query = supabase
+    .from("conference_queue")
+    .select("*")
+    .order("separated_at", { ascending: true });
+
+  if (!includeFinished) {
+    query = query.in("status", ["aguardando", "em_conferencia"]);
+  }
+
+  const { data, error } = await query;
+  return { data: data || [], error };
+}
+
+export async function fetchConferenceHistory({ limit = 500 } = {}) {
+  const { data, error } = await supabase
+    .from("conference_queue")
+    .select("*")
+    .in("status", ["conferido", "com_problema"])
+    .order("conference_finished_at", { ascending: false })
+    .limit(limit);
+  return { data: data || [], error };
+}
+
+export async function addToConferenceQueue(entry) {
+  const payload = {
+    entry_id: entry.id,
+    order_number: entry.order_number || null,
+    customer_name: entry.customer_name || null,
+    transfer_type: entry.transfer_type || null,
+    transfer_number: entry.transfer_number || null,
+    transfer_urgent: entry.transfer_urgent ?? null,
+    is_encaixe: entry.is_encaixe || false,
+    separated_by_code: entry.operator_code,
+    separated_by_name: entry.operator_name,
+    separated_at: entry.end_time,
+    status: "aguardando",
+  };
+
+  const { data, error } = await supabase
+    .from("conference_queue")
+    .insert(payload)
+    .select()
+    .maybeSingle();
+
+  return { data, error };
+}
+
+export async function startConference(id, operator) {
+  const { data, error } = await supabase
+    .from("conference_queue")
+    .update({
+      status: "em_conferencia",
+      conference_started_at: new Date().toISOString(),
+      conference_started_by_code: operator.code,
+      conference_started_by_name: operator.name,
+    })
+    .eq("id", id)
+    .select()
+    .maybeSingle();
+
+  return { data, error };
+}
+
+export async function finishConference(id, operator, note = "") {
+  const startedAt = await getConferenceStartedAt(id);
+  const duration = startedAt
+    ? Math.round((Date.now() - new Date(startedAt).getTime()) / 1000)
+    : null;
+
+  const { data, error } = await supabase
+    .from("conference_queue")
+    .update({
+      status: "conferido",
+      conference_finished_at: new Date().toISOString(),
+      conference_finished_by_code: operator.code,
+      conference_finished_by_name: operator.name,
+      duration_seconds: duration,
+      note: note || null,
+    })
+    .eq("id", id)
+    .select()
+    .maybeSingle();
+
+  return { data, error };
+}
+
+export async function reportConferenceProblem(id, operator, reason, note = "") {
+  const startedAt = await getConferenceStartedAt(id);
+  const duration = startedAt
+    ? Math.round((Date.now() - new Date(startedAt).getTime()) / 1000)
+    : null;
+
+  const { data, error } = await supabase
+    .from("conference_queue")
+    .update({
+      status: "com_problema",
+      conference_finished_at: new Date().toISOString(),
+      conference_finished_by_code: operator.code,
+      conference_finished_by_name: operator.name,
+      problem_reason: reason,
+      note: note || null,
+      duration_seconds: duration,
+    })
+    .eq("id", id)
+    .select()
+    .maybeSingle();
+
+  return { data, error };
+}
+
+async function getConferenceStartedAt(id) {
+  const { data } = await supabase
+    .from("conference_queue")
+    .select("conference_started_at")
+    .eq("id", id)
+    .maybeSingle();
+  return data?.conference_started_at || null;
 }

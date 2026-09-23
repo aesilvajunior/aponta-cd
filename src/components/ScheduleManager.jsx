@@ -8,6 +8,7 @@ import {
   updateScheduleGoogleEventId,
 } from "../lib/api";
 import { supabase } from "../supabaseClient";
+import useKeyboardNav from "../hooks/useKeyboardNav";
 
 // ============================================================
 // Helpers
@@ -80,7 +81,6 @@ export default function ScheduleManager({ operators, isAdmin }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  // Login do operador (sessionStorage — some ao fechar o navegador)
   const [loggedOperator, setLoggedOperator] = useState(null);
   const [codeInput, setCodeInput] = useState("");
   const [loginError, setLoginError] = useState("");
@@ -114,10 +114,30 @@ export default function ScheduleManager({ operators, isAdmin }) {
   codeInputRef.current = codeInput;
   const loggedOperatorRef = useRef(loggedOperator);
   loggedOperatorRef.current = loggedOperator;
+  const mainContainerRef = useRef(null);
+  const modalRef = useRef(null);
 
   function bump() {
     lastInteractionRef.current = Date.now();
   }
+
+  // Navegação por setas + Esc no container principal
+  useKeyboardNav({
+    containerRef: mainContainerRef,
+    enabled: !showModal,
+    onEscape: () => {
+      if (loginError) setLoginError("");
+    },
+  });
+
+  // Navegação no modal
+  useKeyboardNav({
+    containerRef: modalRef,
+    enabled: showModal,
+    onEscape: () => {
+      if (!formBusy) closeModal();
+    },
+  });
 
   // -------- Login: restaurar da sessão ao abrir --------
   useEffect(() => {
@@ -149,13 +169,10 @@ export default function ScheduleManager({ operators, isAdmin }) {
 
   // -------- Teclado físico (SOMENTE quando NÃO tá logado e NÃO é admin) --------
   useEffect(() => {
-    // Se já tá logado (ou é admin), não captura
     if (loggedOperator || isAdmin) return;
-    // Se o modal de agendamento tá aberto, não captura (deixa o operador digitar nos campos)
     if (showModal) return;
 
     function onKeyDown(e) {
-      // Se o foco tá num input/textarea, deixa o navegador tratar normalmente
       const tag = (e.target && e.target.tagName) || "";
       if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
 
@@ -216,6 +233,7 @@ export default function ScheduleManager({ operators, isAdmin }) {
     setCodeInput((p) => p.slice(0, -1));
   }
   function handleLogin() {
+    if (checkingLogin) return;
     const current = codeInputRef.current.trim();
     if (current.length < CODE_LENGTH) return;
     setCheckingLogin(true);
@@ -478,14 +496,11 @@ export default function ScheduleManager({ operators, isAdmin }) {
     await load();
   }
 
-  // ============================================================
-  // Tela de LOGIN (só quando não é admin E não tá logado)
-  // ============================================================
   const needsLogin = !isAdmin && !loggedOperator;
 
   if (needsLogin) {
     return (
-      <div>
+      <div ref={mainContainerRef}>
         <div className="page-header-row" style={{ marginBottom: 22 }}>
           <div>
             <h1 className="page-title">Agendamentos de recebimento</h1>
@@ -533,11 +548,8 @@ export default function ScheduleManager({ operators, isAdmin }) {
     );
   }
 
-  // ============================================================
-  // Tela NORMAL (logado ou admin)
-  // ============================================================
   return (
-    <div>
+    <div ref={mainContainerRef}>
       <div className="page-header-row" style={{ marginBottom: 22 }}>
         <div>
           <h1 className="page-title">Agendamentos de recebimento</h1>
@@ -736,7 +748,7 @@ export default function ScheduleManager({ operators, isAdmin }) {
 
       {showModal && (
         <div className="kiosk-modal-backdrop" onClick={closeModal}>
-          <div className="kiosk-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 620 }}>
+          <div className="kiosk-modal" ref={modalRef} onClick={(e) => e.stopPropagation()} style={{ maxWidth: 620 }}>
             <div className="kiosk-modal-header">
               <div>
                 <div className="kiosk-modal-title">{editingId ? "Editar agendamento" : "Novo agendamento"}</div>

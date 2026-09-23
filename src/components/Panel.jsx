@@ -6,6 +6,7 @@ import { fmtClock, fmtDate, fmtDuration } from "../lib/format";
 import { computeMetrics, computeWeeklyTrend, computeMonthlyBuckets, monthLabel, mean as meanM } from "../lib/metrics";
 import { exportHistoricoExcel, exportShortagesExcel, exportErrorsExcel } from "../utils/excel";
 import OperatorProfile from "./OperatorProfile";
+import { fetchConferenceHistory } from "../lib/api";
 import logo from "../assets/logo.png";
 
 const COLORS = ["#0a3d7a", "#00a0e4", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444", "#06b6d4", "#6b7280"];
@@ -113,10 +114,6 @@ export default function Panel({
   externalFilter = null,
   onExternalFilterHandled,
 }) {
-  // ============================================================
-  // TODOS OS HOOKS AQUI EM CIMA
-  // ============================================================
-
   const [viewOperator, setViewOperator] = useState(null);
 
   const [filterOperator, setFilterOperator] = useState("");
@@ -127,7 +124,7 @@ export default function Panel({
   const [filterShortage, setFilterShortage] = useState("");
   const [filterProductCode, setFilterProductCode] = useState("");
   const [filterCustomer, setFilterCustomer] = useState("");
-  const [filterOrderNumber, setFilterOrderNumber] = useState("");   // ← NOVO
+  const [filterOrderNumber, setFilterOrderNumber] = useState("");
   const [filterErrorOperator, setFilterErrorOperator] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -153,13 +150,22 @@ export default function Panel({
   const [monthA, setMonthA] = useState("");
   const [monthB, setMonthB] = useState("");
 
-  // ----- Relógio (atualiza a cada 15s) -----
+  // Histórico da mesa de conferência
+  const [conferenceHistory, setConferenceHistory] = useState([]);
+
   useEffect(() => {
     const iv = setInterval(() => setNow(Date.now()), 15000);
     return () => clearInterval(iv);
   }, []);
 
-  // ----- Comandos externos (Ctrl+K) -----
+  // Carrega histórico da mesa
+  useEffect(() => {
+    (async () => {
+      const { data } = await fetchConferenceHistory({ limit: 2000 });
+      setConferenceHistory(data || []);
+    })();
+  }, []);
+
   useEffect(() => {
     if (externalProfileOperator) {
       setViewOperator(externalProfileOperator);
@@ -170,7 +176,6 @@ export default function Panel({
   useEffect(() => {
     if (!externalFilter) return;
 
-    // Filtros de período
     if (
       externalFilter.type === "hoje" ||
       externalFilter.type === "ontem" ||
@@ -183,18 +188,13 @@ export default function Panel({
       setDateTo(range.to);
     }
 
-    // Filtro por pedido (vindo da CommandPalette)
     if (externalFilter.type === "pedido" && externalFilter.value) {
       setFilterOrderNumber(String(externalFilter.value));
     }
 
     onExternalFilterHandled?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [externalFilter, onExternalFilterHandled]);
-
-  // ============================================================
-  // DADOS DERIVADOS
-  // ============================================================
+  }, [externalFilter, onExternalProfileHandled]);
 
   const shortagesByEntry = useMemo(() => {
     const map = {};
@@ -330,7 +330,6 @@ export default function Panel({
       .sort((a, b) => new Date(b.start_time) - new Date(a.start_time));
   }, [dateFilteredEntries, shortagesByEntry, filterProductCode, filterCustomer, filterOrderNumber, filterOperator, filterActivity, filterShift]);
 
-  // ⬇️ IMPORTANTE: activityAlerts PRECISA vir antes do useEffect que usa ele
   const activityAlerts = useMemo(() => {
     return activeSessions
       .map((s) => {
@@ -344,13 +343,11 @@ export default function Panel({
       .sort((a, b) => b.elapsed - a.elapsed);
   }, [activeSessions, activities, alertThreshold, now]);
 
-  // ⬇️ AGORA SIM: efeito do som (usa activityAlerts que já foi criado acima)
   useEffect(() => {
     if (!soundEnabled) return;
     const currentKeys = new Set(activityAlerts.map((a) => a.operator_code));
     activityAlerts.forEach((a) => {
       if (!alertedRef.current.has(a.operator_code)) {
-        // beep
         try {
           const ctx = new (window.AudioContext || window.webkitAudioContext)();
           const osc = ctx.createOscillator();
@@ -455,6 +452,81 @@ export default function Panel({
   const monthlyBuckets = useMemo(() => computeMonthlyBuckets(entries, activities), [entries, activities]);
   const availableMonths = useMemo(() => Object.keys(monthlyBuckets).sort(), [monthlyBuckets]);
 
+  // ============================================================
+  // MÉTRICAS DA MESA DE CONFERÊNCIA
+  // ============================================================
+  const conferenceFiltered = useMemo(() => {
+    return conferenceHistory.filter((c) => {
+      if (!c.conference_finished_at) return false;
+      const d = new Date(c.conference_finished_at);
+      if (dateFrom && d < new Date(dateFrom + "T00:00:00")) return false;
+      if (dateTo && d > new Date(dateTo + "T23:59:59")) return false;
+      return true;
+    });
+  }, [conferenceHistory, dateFrom, dateTo]);
+
+  const conferenceStats = useMemo(() => {
+    const total = conferenceFiltered.length;
+    const ok = conferenceFiltered.filter((c) => c.status === "conferido").length;
+    const problems = conferenceFiltered.filter((c) => c.status === "com_problema").length;
+    const durations = conferenceFiltered.map((c) => c.duration_seconds || 0).filter((d) => d > 0);
+    const avgDuration = durations.length > 0
+      ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length)
+      : 0;
+    const problemRate = total > 0 ? Math.round((problems / total) * 100) : 0;
+    return { total, ok, problems, avgDuration, problemRate };
+  }, [conferenceFiltered]);
+
+  const conferenceRanking = useMemo(() => {
+    const byOp = {};
+    conferenceFiltered
+      .filter((c) => c.status === "conferido")
+      .forEach((c) => {
+        const key = c.conference_finished_by_code || "?";
+        if (!byOp[key]) {
+          byOp[key] = {
+            code: key,
+            name: c.conference_finished_by_name || "—",
+            count: 0,
+            totalSeconds: 0,
+          };
+        }
+        byOp[key].count += 1;
+        byOp[key].totalSeconds += c.duration_seconds || 0;
+      });
+    return Object.values(byOp)
+      .map((o) => ({ ...o, avg: o.count > 0 ? Math.round(o.totalSeconds / o.count) : 0 }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+  }, [conferenceFiltered]);
+
+  const conferenceProblems = useMemo(() => {
+    const byReason = {};
+    conferenceFiltered
+      .filter((c) => c.status === "com_problema")
+      .forEach((c) => {
+        const r = c.problem_reason || "Sem motivo";
+        byReason[r] = (byReason[r] || 0) + 1;
+      });
+    return Object.entries(byReason)
+      .map(([name, total]) => ({ name, total }))
+      .sort((a, b) => b.total - a.total);
+  }, [conferenceFiltered]);
+
+  const conferenceSeparatorsRanking = useMemo(() => {
+    const byOp = {};
+    conferenceFiltered.forEach((c) => {
+      const key = c.separated_by_code || "?";
+      if (!byOp[key]) byOp[key] = { code: key, name: c.separated_by_name || "—", count: 0, problems: 0 };
+      byOp[key].count += 1;
+      if (c.status === "com_problema") byOp[key].problems += 1;
+    });
+    return Object.values(byOp)
+      .map((o) => ({ ...o, problemRate: o.count > 0 ? Math.round((o.problems / o.count) * 100) : 0 }))
+      .sort((a, b) => b.problems - a.problems || b.count - a.count)
+      .slice(0, 10);
+  }, [conferenceFiltered]);
+
   useEffect(() => {
     if (availableMonths.length === 0) return;
     if (!monthA && !monthB) {
@@ -515,7 +587,7 @@ export default function Panel({
     setFilterShortage("");
     setFilterProductCode("");
     setFilterCustomer("");
-    setFilterOrderNumber("");     // ← NOVO
+    setFilterOrderNumber("");
     setFilterErrorOperator("");
     setDateFrom("");
     setDateTo("");
@@ -534,7 +606,7 @@ export default function Panel({
     if (filterShortage === "no") lines.push(`Faltas:;Sem falta`);
     if (filterProductCode) lines.push(`Produto filtrado:;${filterProductCode}`);
     if (filterCustomer) lines.push(`Cliente filtrado:;${filterCustomer}`);
-    if (filterOrderNumber) lines.push(`Pedido filtrado:;${filterOrderNumber}`);   // ← NOVO
+    if (filterOrderNumber) lines.push(`Pedido filtrado:;${filterOrderNumber}`);
     if (filterErrorOperator) {
       const op = errorOperatorsList.find((o) => o.code === filterErrorOperator);
       lines.push(`Operador que errou:;${op?.name || filterErrorOperator}`);
@@ -812,6 +884,38 @@ export default function Panel({
     const topProductsRows = topShortageProducts.map((p) => `<tr><td>${esc(p.code)}</td><td class="right">${p.count}</td><td class="right">${p.totalQty}</td></tr>`).join("");
     const topCustomersRows = topShortageCustomers.map((c) => `<tr><td>${esc(c.name)}</td><td class="right">${c.entriesCount}</td><td class="right">${c.totalFaltas}</td><td class="right">${c.totalQty}</td></tr>`).join("");
 
+    // Bloco da mesa
+    const conferenceBlock = conferenceStats.total > 0 ? `
+      <h2>Mesa de conferência</h2>
+      <table>
+        <thead><tr><th>Métrica</th><th class="right">Valor</th></tr></thead>
+        <tbody>
+          <tr><td>Total conferido</td><td class="right">${conferenceStats.total}</td></tr>
+          <tr><td>Sem problema</td><td class="right">${conferenceStats.ok}</td></tr>
+          <tr><td>Com problema</td><td class="right">${conferenceStats.problems} (${conferenceStats.problemRate}%)</td></tr>
+          <tr><td>Tempo médio de conferência</td><td class="right">${esc(fmtDuration(conferenceStats.avgDuration))}</td></tr>
+        </tbody>
+      </table>
+      ${conferenceRanking.length > 0 ? `
+        <h2>Ranking de conferentes</h2>
+        <table>
+          <thead><tr><th class="center">Posição</th><th>Conferente</th><th class="right">Conferências</th><th>Tempo médio</th></tr></thead>
+          <tbody>
+            ${conferenceRanking.map((r, i) => `<tr><td class="center">${i + 1}º</td><td>${esc(r.name)}</td><td class="right">${r.count}</td><td>${esc(fmtDuration(r.avg))}</td></tr>`).join("")}
+          </tbody>
+        </table>
+      ` : ""}
+      ${conferenceProblems.length > 0 ? `
+        <h2>Problemas por motivo</h2>
+        <table>
+          <thead><tr><th>Motivo</th><th class="right">Ocorrências</th></tr></thead>
+          <tbody>
+            ${conferenceProblems.map((p) => `<tr><td>${esc(p.name)}</td><td class="right">${p.total}</td></tr>`).join("")}
+          </tbody>
+        </table>
+      ` : ""}
+    ` : "";
+
     const html = `<!doctype html>
 <html lang="pt-BR"><head><meta charset="utf-8"><title>Relatório Aponta CD</title>
 <style>
@@ -874,6 +978,8 @@ export default function Panel({
   ${errorsByType.length > 0 ? `<h2>Erros de separação por tipo</h2><table><thead><tr><th>Tipo de erro</th><th class="right">Ocorrências</th></tr></thead><tbody>${errorRows}</tbody></table>` : ""}
 
   ${errorRanking.length > 0 ? `<h2>Ranking — Operadores que mais erraram</h2><table><thead><tr><th class="center">Posição</th><th>Operador</th><th>Código</th><th class="right">Total</th></tr></thead><tbody>${errorRankingRows}</tbody></table>` : ""}
+
+  ${conferenceBlock}
 
   <div class="signature">
     <div class="signature-line">Responsável pelo CD</div>
@@ -958,7 +1064,7 @@ export default function Panel({
   const hasFilters = filterOperator || filterActivity || filterShift || filterStation || filterEncaixe || filterShortage || filterProductCode || filterCustomer || filterOrderNumber || filterErrorOperator || dateFrom || dateTo;
 
   // ============================================================
-  // RETORNO CONDICIONAL — SÓ DEPOIS DE TODOS OS HOOKS
+  // RETORNO CONDICIONAL
   // ============================================================
 
   if (viewOperator) {
@@ -1002,7 +1108,14 @@ export default function Panel({
             Não afeta a lista de operadores nem de atividades. Para confirmar, digite <strong>ZERAR</strong> abaixo.
           </p>
           <div style={{ display: "flex", gap: 8 }}>
-            <input className="field" style={{ flex: 1 }} placeholder="Digite ZERAR" value={resetPhrase} onChange={(e) => setResetPhrase(e.target.value)} />
+            <input
+              className="field"
+              style={{ flex: 1 }}
+              placeholder="Digite ZERAR"
+              value={resetPhrase}
+              onChange={(e) => setResetPhrase(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && confirmReset()}
+            />
             <button className="btn-danger-outline" onClick={confirmReset} disabled={resetPhrase.trim().toUpperCase() !== "ZERAR" || resetting}>
               {resetting ? "Apagando..." : "Confirmar"}
             </button>
@@ -1124,6 +1237,111 @@ export default function Panel({
           {hasFilters && <button className="btn-small" onClick={clearFilters}>Limpar todos os filtros</button>}
         </div>
       </div>
+
+      {/* ============ MESA DE CONFERÊNCIA ============ */}
+      {conferenceStats.total > 0 && (
+        <div className="card" style={{ marginBottom: 20 }}>
+          <div className="card-title">✅ Mesa de conferência</div>
+
+          <div className="stat-strip" style={{ marginBottom: 16 }}>
+            <div className="stat-cell">
+              <div className="stat-num accent">{conferenceStats.total}</div>
+              <div className="stat-label">Total conferido</div>
+            </div>
+            <div className="stat-cell">
+              <div className="stat-num" style={{ color: "var(--ok)" }}>{conferenceStats.ok}</div>
+              <div className="stat-label">Sem problema</div>
+            </div>
+            <div className="stat-cell">
+              <div className="stat-num danger">{conferenceStats.problems}</div>
+              <div className="stat-label">Com problema ({conferenceStats.problemRate}%)</div>
+            </div>
+            <div className="stat-cell">
+              <div className="stat-num">{fmtDuration(conferenceStats.avgDuration)}</div>
+              <div className="stat-label">Tempo médio de conferência</div>
+            </div>
+          </div>
+
+          {conferenceRanking.length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 10 }}>
+                🏆 Ranking de conferentes
+              </div>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Posição</th>
+                    <th>Conferente</th>
+                    <th>Conferências</th>
+                    <th>Tempo médio</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {conferenceRanking.map((r, i) => (
+                    <tr key={r.code}>
+                      <td>
+                        <span style={{ fontSize: 16 }}>
+                          {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}º`}
+                        </span>
+                      </td>
+                      <td style={{ fontFamily: "var(--font-display)", fontWeight: 600 }}>{r.name}</td>
+                      <td>{r.count}</td>
+                      <td>{fmtDuration(r.avg)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {conferenceProblems.length > 0 && (
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 10 }}>
+                ⚠ Problemas por motivo
+              </div>
+              <ResponsiveContainer width="100%" height={Math.max(140, conferenceProblems.length * 34)}>
+                <BarChart data={conferenceProblems} layout="vertical">
+                  <CartesianGrid stroke="var(--border)" horizontal={false} />
+                  <XAxis type="number" tick={{ fill: "var(--text-muted)", fontSize: 11 }} allowDecimals={false} />
+                  <YAxis type="category" dataKey="name" tick={{ fill: "var(--text-muted)", fontSize: 11 }} width={140} />
+                  <Tooltip contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", fontSize: 12, borderRadius: 8 }} labelStyle={{ color: "var(--text)" }} />
+                  <Bar dataKey="total" fill="var(--danger)" radius={[0, 3, 3, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {conferenceSeparatorsRanking.length > 0 && (
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 10 }}>
+                🎯 Separadores com mais problemas na conferência
+              </div>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Separador</th>
+                    <th>Total conferido</th>
+                    <th>Com problema</th>
+                    <th>% problema</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {conferenceSeparatorsRanking.map((r) => (
+                    <tr key={r.code}>
+                      <td style={{ fontFamily: "var(--font-display)", fontWeight: 600 }}>{r.name}</td>
+                      <td>{r.count}</td>
+                      <td style={{ color: r.problems > 0 ? "var(--danger)" : "var(--text-muted)", fontWeight: 600 }}>{r.problems}</td>
+                      <td style={{ color: r.problemRate > 20 ? "var(--danger)" : r.problemRate > 0 ? "var(--warning)" : "var(--ok)", fontWeight: 600 }}>
+                        {r.problemRate}%
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="card" style={{ marginBottom: 20 }}>
         <div className="card-title">Tempo médio por atividade (segundos)</div>
@@ -1264,7 +1482,14 @@ export default function Panel({
           <div className="confirm-box" style={{ marginBottom: 14 }}>
             <strong style={{ color: "var(--danger)", fontSize: 14 }}>Isso apaga todo o histórico de erros de separação, permanentemente.</strong>
             <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-              <input className="field" style={{ flex: 1 }} placeholder="Digite ZERAR" value={resetErrorsPhrase} onChange={(e) => setResetErrorsPhrase(e.target.value)} />
+              <input
+                className="field"
+                style={{ flex: 1 }}
+                placeholder="Digite ZERAR"
+                value={resetErrorsPhrase}
+                onChange={(e) => setResetErrorsPhrase(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && confirmResetErrors()}
+              />
               <button className="btn-danger-outline" onClick={confirmResetErrors} disabled={resetErrorsPhrase.trim().toUpperCase() !== "ZERAR" || resettingErrors}>
                 {resettingErrors ? "Apagando..." : "Confirmar"}
               </button>
@@ -1488,7 +1713,14 @@ export default function Panel({
               Os registros de atividades (histórico) <strong>não</strong> são apagados. Digite <strong>ZERAR</strong> abaixo pra confirmar.
             </p>
             <div style={{ display: "flex", gap: 8 }}>
-              <input className="field" style={{ flex: 1 }} placeholder="Digite ZERAR" value={resetShortagesPhrase} onChange={(e) => setResetShortagesPhrase(e.target.value)} />
+              <input
+                className="field"
+                style={{ flex: 1 }}
+                placeholder="Digite ZERAR"
+                value={resetShortagesPhrase}
+                onChange={(e) => setResetShortagesPhrase(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && confirmResetShortages()}
+              />
               <button className="btn-danger-outline" onClick={confirmResetShortages} disabled={resetShortagesPhrase.trim().toUpperCase() !== "ZERAR" || resettingShortages}>
                 {resettingShortages ? "Apagando..." : "Confirmar"}
               </button>
