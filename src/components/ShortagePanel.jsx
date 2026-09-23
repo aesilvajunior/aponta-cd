@@ -1,0 +1,434 @@
+import React, { useEffect, useMemo, useState } from "react";
+import { fetchShortages, fetchEntries, fetchOperators, fetchActivities } from "../lib/api";
+import { fmtClock, fmtDate, fmtDuration } from "../lib/format";
+import { exportShortagesCsv } from "../utils/csv";
+import { supabase } from "../supabaseClient";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
+} from "recharts";
+
+// ============================================================
+// Consulta de faltas — tela focada, sem PIN de admin
+// Lista todas as faltas de produto reportadas + filtros + gráfico + export
+// ============================================================
+
+const COLORS = ["#0a3d7a", "#00a0e4", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444"];
+
+function todayISO() {
+  const d = new Date();
+  const tz = d.getTimezoneOffset() * 60000;
+  return new Date(d - tz).toISOString().slice(0, 10);
+}
+
+function periodLabel(rows) {
+  if (!rows.length) return "todo o histórico";
+  const sorted = [...rows].sort((a, b) => new Date(a.date) - new Date(b.date));
+  return `${fmtDate(sorted[0].date)} até ${fmtDate(sorted[sorted.length - 1].date)}`;
+}
+
+export default function ShortagePanel() {
+  const [shortages, setShortages] = useState([]);
+  const [entries, setEntries] = useState([]);
+  const [operators, setOperators] = useState([]);
+  const [activities, setActivities] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  // Filtros
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [filterProduct, setFilterProduct] = useState("");
+  const [filterCustomer, setFilterCustomer] = useState("");
+  const [filterOperator, setFilterOperator] = useState("");
+  const [filterEncaixe, setFilterEncaixe] = useState("");
+
+  async function load() {
+    setLoading(true);
+    const [
+      { data: s, error: e1 },
+      { data: e, error: e2 },
+      { data: o, error: e3 },
+      { data: a, error: e4 },
+    ] = await Promise.all([
+      fetchShortages({ limit: 5000 }),
+      fetchEntries({ limit: 5000 }),
+      fetchOperators(),
+      fetchActivities(),
+    ]);
+    const firstError = e1 || e2 || e3 || e4;
+    if (firstError) {
+      setError(firstError.message);
+      setLoading(false);
+      return;
+    }
+    setShortages(s || []);
+    setEntries(e || []);
+    setOperators(o || []);
+    setActivities(a || []);
+    setError("");
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    load();
+    const ch = supabase
+      .channel("shortage-panel-changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "entry_shortages" }, load)
+      .on("postgres_changes", { event: "*", schema: "public", table: "entries" }, load)
+      .subscribe();
+    return () => supabase.removeChannel(ch);
+  }, []);
+
+  // Mapa de entry_id -> entry
+  const entryById = useMemo(() => {
+    const map = {};
+    entries.forEach((e) => { map[e.id] = e; });
+    return map;
+  }, [entries]);
+
+  // Junta cada falta com os dados do entry correspondente
+  const rows = useMemo(() => {
+    return shortages
+      .map((s) => {
+        const e = entryById[s.entry_id];
+        if (!e) return null;
+        return {
+          id: s.id,
+          date: e.start_time,
+          time: fmtClock(e.start_time).slice(0, 5),
+          productCode: s.product_code,
+          quantity: s.quantity,
+          operatorName: e.operator_name,
+          operatorCode: e.operator_code,
+          activity: e.activity,
+          shift: e.shift,
+          orderNumber: e.order_number,
+          customerName: e.customer_name,
+          isEncaixe: e.is_encaixe,
+          station: e.station,
+          note: e.note,
+        };
+      })
+      .filter(Boolean);
+  }, [shortages, entryById]);
+
+  // Aplica filtros
+  const filteredRows = useMemo(() => {
+    return rows
+      .filter((r) => {
+        const d = r.date.slice(0, 10);
+        if (dateFrom && d < dateFrom) return false;
+        if (dateTo && d > dateTo) return false;
+        return true;
+      })
+      .filter((r) => !filterProduct.trim() || r.productCode.toLowerCase().includes(filterProduct.trim().toLowerCase()))
+      .filter((r) => !filterCustomer.trim() || (r.customerName || "").toLowerCase().includes(filterCustomer.trim().toLowerCase()))
+      .filter((r) => !filterOperator || r.operatorCode === filterOperator)
+      .filter((r) => {
+        if (filterEncaixe === "yes") return r.isEncaixe === true;
+        if (filterEncaixe === "no") return !r.isEncaixe;
+        return true;
+      })
+      .sort((a, b) => new Date(b.date) - new Date(a.date));
+  }, [rows, dateFrom, dateTo, filterProduct, filterCustomer, filterOperator, filterEncaixe]);
+
+  // Estatísticas
+  const stats = useMemo(() => {
+    const totalFaltas = filteredRows.length;
+    const totalPedidos = new Set(filteredRows.map((r) => r.orderNumber).filter(Boolean)).size;
+    const totalQtd = filteredRows.reduce((sum, r) => sum + (r.quantity || 0), 0);
+    const totalProdutos = new Set(filteredRows.map((r) => r.productCode)).size;
+    return { totalFaltas, totalPedidos, totalQtd, totalProdutos };
+  }, [filteredRows]);
+
+  // Top produtos
+  const topProducts = useMemo(() => {
+    const byCode = {};
+    filteredRows.forEach((r) => {
+      if (!byCode[r.productCode]) byCode[r.productCode] = { code: r.productCode, totalQty: 0, count: 0 };
+      byCode[r.productCode].totalQty += r.quantity || 0;
+      byCode[r.productCode].count += 1;
+    });
+    return Object.values(byCode).sort((a, b) => b.totalQty - a.totalQty).slice(0, 10);
+  }, [filteredRows]);
+
+  // Top clientes
+  const topCustomers = useMemo(() => {
+    const byCustomer = {};
+    filteredRows.forEach((r) => {
+      const name = r.customerName || "(sem cliente)";
+      if (!byCustomers) return;
+      if (!byCustomer[name]) byCustomer[name] = { name, totalQty: 0, count: 0 };
+      byCustomer[name].totalQty += r.quantity || 0;
+      byCustomer[name].count += 1;
+    });
+    return Object.values(byCustomer).sort((a, b) => b.totalQty - a.totalQty).slice(0, 10);
+  }, [filteredRows]);
+
+  function clearFilters() {
+    setDateFrom("");
+    setDateTo("");
+    setFilterProduct("");
+    setFilterCustomer("");
+    setFilterOperator("");
+    setFilterEncaixe("");
+  }
+
+  function handleExport() {
+    if (!filteredRows.length) {
+      alert("Nada para exportar.");
+      return;
+    }
+    exportShortagesCsv(filteredRows);
+  }
+
+  // Estações únicas (pra filtro, se tiver)
+  const knownStations = useMemo(() => {
+    const set = new Set();
+    rows.forEach((r) => r.station && set.add(r.station));
+    return Array.from(set).sort();
+  }, [rows]);
+
+  const hasFilters = dateFrom || dateTo || filterProduct || filterCustomer || filterOperator || filterEncaixe;
+
+  return (
+    <div>
+      {/* Header */}
+      <div className="page-header-row" style={{ marginBottom: 22 }}>
+        <div>
+          <h1 className="page-title">Consulta de faltas</h1>
+          <p className="page-sub" style={{ marginBottom: 0 }}>
+            {filteredRows.length} falta{filteredRows.length !== 1 ? "s" : ""} no período · {stats.totalPedidos} pedido{stats.totalPedidos !== 1 ? "s" : ""} afetado{stats.totalPedidos !== 1 ? "s" : ""}
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button className="btn-small btn-excel" onClick={handleExport}>
+            📥 Exportar CSV
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <div className="alert-card alert-danger" style={{ marginBottom: 20 }}>
+          Erro ao carregar: <code>{error}</code>
+        </div>
+      )}
+
+      {/* Cards de resumo */}
+      <div className="stat-strip" style={{ marginBottom: 20 }}>
+        <div className="stat-cell">
+          <div className="stat-num danger">{stats.totalFaltas}</div>
+          <div className="stat-label">Faltas registradas</div>
+        </div>
+        <div className="stat-cell">
+          <div className="stat-num">{stats.totalPedidos}</div>
+          <div className="stat-label">Pedidos afetados</div>
+        </div>
+        <div className="stat-cell">
+          <div className="stat-num accent">{stats.totalProdutos}</div>
+          <div className="stat-label">Produtos distintos</div>
+        </div>
+        <div className="stat-cell">
+          <div className="stat-num">{stats.totalQtd}</div>
+          <div className="stat-label">Unidades faltantes</div>
+        </div>
+      </div>
+
+      {/* Filtros */}
+      <div className="card" style={{ marginBottom: 20 }}>
+        <div className="card-title">Filtros</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <input
+            type="date"
+            className="field"
+            style={{ width: "auto" }}
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+          />
+          <span style={{ color: "var(--text-faint)", fontSize: 12 }}>até</span>
+          <input
+            type="date"
+            className="field"
+            style={{ width: "auto" }}
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+          />
+          <input
+            className="field"
+            style={{ width: 140, fontFamily: "var(--font-mono)" }}
+            placeholder="Código produto..."
+            value={filterProduct}
+            onChange={(e) => setFilterProduct(e.target.value)}
+          />
+          <input
+            className="field"
+            style={{ width: 180 }}
+            placeholder="Cliente..."
+            value={filterCustomer}
+            onChange={(e) => setFilterCustomer(e.target.value)}
+          />
+          <select
+            className="field"
+            style={{ width: "auto" }}
+            value={filterOperator}
+            onChange={(e) => setFilterOperator(e.target.value)}
+          >
+            <option value="">Todos operadores</option>
+            {operators.map((o) => (
+              <option key={o.code} value={o.code}>{o.name}</option>
+            ))}
+          </select>
+          <select
+            className="field"
+            style={{ width: "auto" }}
+            value={filterEncaixe}
+            onChange={(e) => setFilterEncaixe(e.target.value)}
+          >
+            <option value="">Todos (encaixe)</option>
+            <option value="yes">Só encaixes</option>
+            <option value="no">Sem encaixe</option>
+          </select>
+          {hasFilters && (
+            <button className="btn-small" onClick={clearFilters}>Limpar filtros</button>
+          )}
+        </div>
+      </div>
+
+      {/* Gráfico: produtos que mais faltam */}
+      {topProducts.length > 0 && (
+        <div className="card" style={{ marginBottom: 20 }}>
+          <div className="card-title">📦 Produtos que mais faltam</div>
+          <ResponsiveContainer width="100%" height={Math.max(180, topProducts.length * 32)}>
+            <BarChart data={topProducts} layout="vertical">
+              <CartesianGrid stroke="var(--border)" horizontal={false} />
+              <XAxis type="number" tick={{ fill: "var(--text-muted)", fontSize: 11 }} allowDecimals={false} />
+              <YAxis
+                type="category"
+                dataKey="code"
+                tick={{ fill: "var(--text-muted)", fontSize: 11 }}
+                width={90}
+              />
+              <Tooltip
+                contentStyle={{
+                  background: "var(--surface)",
+                  border: "1px solid var(--border)",
+                  fontSize: 12,
+                  borderRadius: 8,
+                }}
+                labelStyle={{ color: "var(--text)" }}
+              />
+              <Bar dataKey="totalQty" name="Quantidade" radius={[0, 3, 3, 0]}>
+                {topProducts.map((_, i) => (
+                  <Cell key={i} fill={COLORS[i % COLORS.length]} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* Top clientes */}
+      {topCustomers.length > 0 && (
+        <div className="card" style={{ marginBottom: 20 }}>
+          <div className="card-title">🏢 Clientes mais afetados</div>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Cliente</th>
+                <th>Faltas</th>
+                <th>Quantidade total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {topCustomers.map((c) => (
+                <tr key={c.name}>
+                  <td style={{ fontFamily: "var(--font-display)" }}>{c.name}</td>
+                  <td>{c.count}</td>
+                  <td style={{ color: "var(--danger)", fontWeight: 600 }}>{c.totalQty}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Lista detalhada */}
+      <div className="card">
+        <div className="card-title">📋 Todas as faltas</div>
+
+        {loading ? (
+          <div className="schedule-empty">Carregando…</div>
+        ) : filteredRows.length === 0 ? (
+          <div className="schedule-empty">
+            <div className="schedule-empty-icon">📭</div>
+            <div>Nenhuma falta registrada {hasFilters ? "com esses filtros" : "ainda"}.</div>
+          </div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Hora</th>
+                  <th>Cód. Produto</th>
+                  <th>Qtd.</th>
+                  <th>Operador</th>
+                  <th>Atividade</th>
+                  <th>Pedido</th>
+                  <th>Cliente</th>
+                  <th>Encaixe</th>
+                  <th>Estação</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredRows.slice(0, 300).map((r) => (
+                  <tr key={r.id}>
+                    <td>{fmtDate(r.date)}</td>
+                    <td style={{ fontFamily: "var(--font-mono)" }}>{r.time}</td>
+                    <td style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>{r.productCode}</td>
+                    <td style={{ color: "var(--danger)", fontWeight: 600 }}>{r.quantity}</td>
+                    <td style={{ fontFamily: "var(--font-display)" }}>{r.operatorName}</td>
+                    <td>{r.activity}</td>
+                    <td style={{ fontFamily: "var(--font-mono)" }}>{r.orderNumber || "—"}</td>
+                    <td style={{ color: "var(--text-muted)" }}>{r.customerName || "—"}</td>
+                    <td>
+                      {r.isEncaixe ? (
+                        <span
+                          style={{
+                            background: "var(--accent-2-soft)",
+                            color: "var(--accent-2)",
+                            padding: "2px 7px",
+                            borderRadius: 4,
+                            fontSize: 10.5,
+                            fontWeight: 600,
+                          }}
+                        >
+                          ENC.
+                        </span>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td style={{ color: "var(--text-muted)" }}>{r.station || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {filteredRows.length > 300 && (
+              <p
+                style={{
+                  fontSize: 12,
+                  color: "var(--text-faint)",
+                  marginTop: 12,
+                  textAlign: "center",
+                }}
+              >
+                Mostrando 300 de {filteredRows.length} faltas. Use os filtros ou exporte o CSV pra ver tudo.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

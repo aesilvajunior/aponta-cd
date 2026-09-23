@@ -28,6 +28,7 @@ import ExecutiveView from "./components/ExecutiveView";
 import ScheduleManager from "./components/ScheduleManager";
 import SalesTeamQuery from "./components/SalesTeamQuery";
 import SalesTeamManager from "./components/SalesTeamManager";
+import ShortagePanel from "./components/ShortagePanel";
 import LoginScreen from "./components/LoginScreen";
 import logo from "./assets/logo.png";
 import {
@@ -160,7 +161,6 @@ export default function App() {
     return { error: null };
   }, [loadShortages]);
 
-  // Só carrega dados DEPOIS que logar
   useEffect(() => {
     if (!session) return;
 
@@ -215,11 +215,6 @@ export default function App() {
   function handleViewOperator(op) { setProfileOperator(op); setTab("panel"); }
   function handleApplyFilter({ type, value }) { setGlobalFilter({ type, value, ts: Date.now() }); }
 
-  // ============================================================
-  // Estados de carregamento / login
-  // ============================================================
-
-  // 1) Ainda verificando sessão
   if (authLoading) {
     return (
       <div className="loading-screen">
@@ -229,12 +224,10 @@ export default function App() {
     );
   }
 
-  // 2) Sem login → tela de login
   if (!session) {
     return <LoginScreen />;
   }
 
-  // 3) Logado mas dados ainda carregando
   if (!loaded) {
     return (
       <div className="loading-screen">
@@ -244,7 +237,6 @@ export default function App() {
     );
   }
 
-  // 4) Logado e dados prontos → site normal
   return (
     <div className="app-shell">
       {missingConfig && (
@@ -284,9 +276,17 @@ export default function App() {
           {tab === "schedules" && (
             <ScheduleManager operators={operators} isAdmin={isAdmin} />
           )}
+
+          {/* Consulta de faltas — livre pra qualquer um logado */}
+          {tab === "shortages" && (
+            <ShortagePanel />
+          )}
+
+          {/* Consulta líder — livre pra qualquer um logado */}
           {tab === "sales-query" && (
             <SalesTeamQuery />
           )}
+
           {(tab === "executive" || tab === "panel" || tab === "team" || tab === "manual" || tab === "audit" || tab === "sales-team") && !isAdmin && (
             <AdminGate correctPin={adminPin} onUnlock={() => setIsAdmin(true)} />
           )}
