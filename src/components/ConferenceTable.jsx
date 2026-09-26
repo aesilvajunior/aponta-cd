@@ -7,6 +7,10 @@ import {
   reportConferenceProblem,
   computeConferenceStats,
   waitingSeconds,
+  updateConferenceItem,
+  deleteConferenceItem,
+  resetConferenceItem,
+  logAudit,
 } from "../lib/conference";
 import { fmtClock, fmtDate, fmtDuration } from "../lib/format";
 import { supabase } from "../supabaseClient";
@@ -14,6 +18,13 @@ import useKeyboardNav from "../hooks/useKeyboardNav";
 
 const CODE_LENGTH = 3;
 const AUTO_RETURN_MS = 3000;
+
+const CONFERENCE_STATUS = [
+  { value: "aguardando", label: "⏳ Aguardando" },
+  { value: "em_conferencia", label: "🔍 Em conferência" },
+  { value: "conferido", label: "✓ Conferido" },
+  { value: "com_problema", label: "⚠ Com problema" },
+];
 
 function waitingColor(seconds) {
   if (seconds < 5 * 60) return "var(--ok)";
@@ -30,7 +41,7 @@ function waitingLabel(seconds) {
   return m > 0 ? `${h}h ${m}min` : `${h}h`;
 }
 
-export default function ConferenceTable({ operators }) {
+export default function ConferenceTable({ operators, isAdmin = false }) {
   const [queue, setQueue] = useState([]);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -44,6 +55,7 @@ export default function ConferenceTable({ operators }) {
 
   const [finishModal, setFinishModal] = useState(null);
   const [problemModal, setProblemModal] = useState(null);
+  const [adminEdit, setAdminEdit] = useState(null);
   const [problemReason, setProblemReason] = useState("");
   const [problemNote, setProblemNote] = useState("");
   const [finishNote, setFinishNote] = useState("");
@@ -64,7 +76,7 @@ export default function ConferenceTable({ operators }) {
 
   useKeyboardNav({
     containerRef: mainContainerRef,
-    enabled: !finishModal && !problemModal,
+    enabled: !finishModal && !problemModal && !adminEdit,
     onEscape: () => {
       if (loginError) setLoginError("");
     },
@@ -72,11 +84,12 @@ export default function ConferenceTable({ operators }) {
 
   useKeyboardNav({
     containerRef: modalRef,
-    enabled: !!(finishModal || problemModal),
+    enabled: !!(finishModal || problemModal || adminEdit),
     onEscape: () => {
       if (busy) return;
       setFinishModal(null);
       setProblemModal(null);
+      setAdminEdit(null);
     },
   });
 
@@ -101,14 +114,11 @@ export default function ConferenceTable({ operators }) {
     setLoading(false);
   }
 
-  // Carrega dados só depois do login
   useEffect(() => {
-    if (loggedOperator) {
-      load();
-    }
+    if (loggedOperator) load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loggedOperator]);
 
-  // Realtime só depois do login
   useEffect(() => {
     if (!loggedOperator) return;
     const ch = supabase
@@ -116,6 +126,7 @@ export default function ConferenceTable({ operators }) {
       .on("postgres_changes", { event: "*", schema: "public", table: "conference_queue" }, load)
       .subscribe();
     return () => supabase.removeChannel(ch);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loggedOperator]);
 
   useEffect(() => {
@@ -125,9 +136,7 @@ export default function ConferenceTable({ operators }) {
   }, []);
 
   function handleDigit(d) {
-    if (codeInputRef.current.length < CODE_LENGTH) {
-      setCodeInput(codeInputRef.current + d);
-    }
+    if (codeInputRef.current.length < CODE_LENGTH) setCodeInput(codeInputRef.current + d);
   }
   function handleBackspace() {
     setCodeInput((p) => p.slice(0, -1));
@@ -165,7 +174,7 @@ export default function ConferenceTable({ operators }) {
 
   useEffect(() => {
     if (loggedOperator) return;
-    if (finishModal || problemModal) return;
+    if (finishModal || problemModal || adminEdit) return;
     function onKeyDown(e) {
       const tag = (e.target && e.target.tagName) || "";
       if (tag === "INPUT" || tag === "TEXTAREA") return;
@@ -186,7 +195,7 @@ export default function ConferenceTable({ operators }) {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loggedOperator, finishModal, problemModal]);
+  }, [loggedOperator, finishModal, problemModal, adminEdit]);
 
   const stats = useMemo(() => computeConferenceStats(queue, history), [queue, history]);
 
@@ -217,26 +226,16 @@ export default function ConferenceTable({ operators }) {
     await load();
   }
 
-  function openFinish(item) {
-    setFinishModal(item);
-    setFinishNote("");
-  }
-
-  function openProblem(item) {
-    setProblemModal(item);
-    setProblemReason("");
-    setProblemNote("");
-  }
+  function openFinish(item) { setFinishModal(item); setFinishNote(""); }
+  function openProblem(item) { setProblemModal(item); setProblemReason(""); setProblemNote(""); }
+  function openAdminEdit(item) { setAdminEdit({ ...item }); }
 
   async function confirmFinish() {
     if (!finishModal || busy) return;
     setBusy(true);
     const { error: err } = await finishConference(finishModal.id, loggedOperator, finishNote.trim());
     setBusy(false);
-    if (err) {
-      setError(err.message);
-      return;
-    }
+    if (err) { setError(err.message); return; }
     setFinishModal(null);
     setFinishNote("");
     setConfirmation({ kind: "conferido", order: finishModal.order_number || finishModal.transfer_number });
@@ -250,15 +249,88 @@ export default function ConferenceTable({ operators }) {
     setBusy(true);
     const { error: err } = await reportConferenceProblem(problemModal.id, loggedOperator, problemReason.trim(), problemNote.trim());
     setBusy(false);
-    if (err) {
-      setError(err.message);
-      return;
-    }
+    if (err) { setError(err.message); return; }
     setProblemModal(null);
     setProblemReason("");
     setProblemNote("");
     setConfirmation({ kind: "problema", order: problemModal.order_number || problemModal.transfer_number });
     autoReturnRef.current = setTimeout(() => setConfirmation(null), AUTO_RETURN_MS);
+    await load();
+  }
+
+  // Admin actions
+  async function saveAdminEdit() {
+    if (!adminEdit || busy) return;
+    setBusy(true);
+    const fields = {
+      order_number: adminEdit.order_number || null,
+      customer_name: adminEdit.customer_name || null,
+      transfer_type: adminEdit.transfer_type || null,
+      transfer_number: adminEdit.transfer_number || null,
+      transfer_urgent: adminEdit.transfer_urgent ?? null,
+      is_encaixe: !!adminEdit.is_encaixe,
+      status: adminEdit.status,
+      problem_reason: adminEdit.problem_reason || null,
+      note: adminEdit.note || null,
+    };
+    const { error: err } = await updateConferenceItem(adminEdit.id, fields);
+    setBusy(false);
+    if (err) { setError(err.message); return; }
+    try {
+      await logAudit({
+        actorCode: loggedOperator?.code || "admin",
+        actorName: loggedOperator?.name || "Admin",
+        action: "editar",
+        entity: "conference",
+        entityId: String(adminEdit.id),
+        details: "Item da mesa editado (ConferenceTable admin)",
+        beforeData: null,
+        afterData: fields,
+      });
+    } catch {}
+    setAdminEdit(null);
+    await load();
+  }
+
+  async function adminDelete(item) {
+    const label = item.transfer_type
+      ? `transferência ${item.transfer_type} #${item.transfer_number}`
+      : item.order_number
+      ? `pedido #${item.order_number}`
+      : "este item";
+    if (!window.confirm(`Remover ${label} da mesa?`)) return;
+    const { error: err } = await deleteConferenceItem(item.id);
+    if (err) { setError(err.message); return; }
+    try {
+      await logAudit({
+        actorCode: loggedOperator?.code || "admin",
+        actorName: loggedOperator?.name || "Admin",
+        action: "remover",
+        entity: "conference",
+        entityId: String(item.id),
+        details: "Item removido da mesa",
+        beforeData: item,
+      });
+    } catch {}
+    await load();
+  }
+
+  async function adminReset(item) {
+    if (!window.confirm("Voltar este item para 'Aguardando'?")) return;
+    const { error: err } = await resetConferenceItem(item.id);
+    if (err) { setError(err.message); return; }
+    try {
+      await logAudit({
+        actorCode: loggedOperator?.code || "admin",
+        actorName: loggedOperator?.name || "Admin",
+        action: "editar",
+        entity: "conference",
+        entityId: String(item.id),
+        details: "Item resetado para 'aguardando'",
+        beforeData: item,
+        afterData: { status: "aguardando" },
+      });
+    } catch {}
     await load();
   }
 
@@ -284,18 +356,13 @@ export default function ConferenceTable({ operators }) {
                 <div key={i} className={`kiosk-dot ${filled ? "filled" : ""}`} />
               ))}
             </div>
-            <div
-              className="kiosk-keypad"
-              style={{ opacity: checkingLogin ? 0.55 : 1, pointerEvents: checkingLogin ? "none" : "auto" }}
-            >
+            <div className="kiosk-keypad" style={{ opacity: checkingLogin ? 0.55 : 1, pointerEvents: checkingLogin ? "none" : "auto" }}>
               {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((d) => (
                 <button key={d} className="kiosk-key" onClick={() => handleDigit(d)}>{d}</button>
               ))}
               <button className="kiosk-key kiosk-key-muted" onClick={handleBackspace}>⌫</button>
               <button className="kiosk-key" onClick={() => handleDigit("0")}>0</button>
-              <button className="kiosk-key kiosk-key-primary" onClick={handleLogin}>
-                {checkingLogin ? "..." : "OK"}
-              </button>
+              <button className="kiosk-key kiosk-key-primary" onClick={handleLogin}>{checkingLogin ? "..." : "OK"}</button>
             </div>
             {loginError ? (
               <p className="kiosk-terminal-error">{loginError}</p>
@@ -318,6 +385,7 @@ export default function ConferenceTable({ operators }) {
             <span style={{ marginLeft: 8, color: "var(--accent)", fontWeight: 600 }}>
               · {loggedOperator.name} #{loggedOperator.code}
             </span>
+            {isAdmin && <span style={{ marginLeft: 8, color: "var(--danger)", fontWeight: 600 }}>· modo admin</span>}
           </p>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -407,45 +475,39 @@ export default function ConferenceTable({ operators }) {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                       {item.is_encaixe && (
-                        <span style={{ background: "var(--accent-2-soft)", color: "var(--accent-2)", padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
-                          ⚡ ENCAIXE
-                        </span>
+                        <span style={{ background: "var(--accent-2-soft)", color: "var(--accent-2)", padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>⚡ ENCAIXE</span>
                       )}
                       {item.transfer_type && (
                         <span style={{ background: "var(--accent-soft)", color: "var(--accent)", padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
-                          🔄 {item.transfer_type}
-                          {item.transfer_number && ` #${item.transfer_number}`}
+                          🔄 {item.transfer_type}{item.transfer_number && ` #${item.transfer_number}`}
                         </span>
                       )}
                       {item.transfer_urgent && (
-                        <span style={{ background: "var(--danger-soft)", color: "var(--danger)", padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
-                          🔴 URGENTE
-                        </span>
+                        <span style={{ background: "var(--danger-soft)", color: "var(--danger)", padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>🔴 URGENTE</span>
                       )}
                       {item.order_number && !item.transfer_type && (
-                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 16, fontWeight: 700, color: "var(--text)" }}>
-                          📦 #{item.order_number}
-                        </span>
+                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 16, fontWeight: 700, color: "var(--text)" }}>📦 #{item.order_number}</span>
                       )}
                     </div>
                     {item.customer_name && (
-                      <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)", marginTop: 4 }}>
-                        👤 {item.customer_name}
-                      </div>
+                      <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)", marginTop: 4 }}>👤 {item.customer_name}</div>
                     )}
                     <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
                       Separado por <strong>{item.separated_by_name}</strong> às {fmtClock(item.separated_at)} · esperando há{" "}
                       <span style={{ color, fontWeight: 700 }}>{waitingLabel(seconds)}</span>
                     </div>
                   </div>
-                  <button
-                    className="btn-small btn-excel"
-                    onClick={() => handleAssume(item)}
-                    disabled={busy}
-                    style={{ padding: "10px 16px", fontSize: 13, fontWeight: 600, whiteSpace: "nowrap" }}
-                  >
-                    Assumir conferência
-                  </button>
+                  <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                    <button className="btn-small btn-excel" onClick={() => handleAssume(item)} disabled={busy} style={{ padding: "10px 14px", fontSize: 13, fontWeight: 600, whiteSpace: "nowrap" }}>
+                      Assumir
+                    </button>
+                    {isAdmin && (
+                      <>
+                        <button className="btn-small" style={{ padding: "10px 10px" }} onClick={() => openAdminEdit(item)} title="Editar (admin)">✏️</button>
+                        <button className="btn-small" style={{ padding: "10px 10px", color: "var(--danger)", borderColor: "var(--danger)" }} onClick={() => adminDelete(item)} title="Excluir (admin)">🗑</button>
+                      </>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -483,58 +545,39 @@ export default function ConferenceTable({ operators }) {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                       {item.is_encaixe && (
-                        <span style={{ background: "var(--accent-2-soft)", color: "var(--accent-2)", padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
-                          ⚡ ENCAIXE
-                        </span>
+                        <span style={{ background: "var(--accent-2-soft)", color: "var(--accent-2)", padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>⚡ ENCAIXE</span>
                       )}
                       {item.transfer_type && (
                         <span style={{ background: "var(--accent-soft)", color: "var(--accent)", padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
                           🔄 {item.transfer_type} {item.transfer_number && `#${item.transfer_number}`}
                         </span>
                       )}
-                      {item.transfer_urgent && (
-                        <span style={{ background: "var(--danger-soft)", color: "var(--danger)", padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
-                          🔴 URGENTE
-                        </span>
-                      )}
                       {item.order_number && !item.transfer_type && (
-                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 16, fontWeight: 700, color: "var(--text)" }}>
-                          📦 #{item.order_number}
-                        </span>
+                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 16, fontWeight: 700, color: "var(--text)" }}>📦 #{item.order_number}</span>
                       )}
                     </div>
                     {item.customer_name && (
-                      <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)", marginTop: 4 }}>
-                        👤 {item.customer_name}
-                      </div>
+                      <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)", marginTop: 4 }}>👤 {item.customer_name}</div>
                     )}
                     <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
-                      Separado por {item.separated_by_name} · conferindo há{" "}
-                      <strong style={{ fontFamily: "var(--font-mono)" }}>{waitingLabel(elapsed)}</strong>
+                      Separado por {item.separated_by_name} · conferindo há <strong style={{ fontFamily: "var(--font-mono)" }}>{waitingLabel(elapsed)}</strong>
                     </div>
                   </div>
                   {mine ? (
-                    <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
-                      <button
-                        className="btn-small"
-                        style={{ background: "var(--ok-soft)", borderColor: "var(--ok)", color: "var(--ok)", fontWeight: 700, padding: "10px 16px" }}
-                        onClick={() => openFinish(item)}
-                        disabled={busy}
-                      >
-                        ✓ Finalizar
-                      </button>
-                      <button
-                        className="btn-danger-outline"
-                        style={{ padding: "10px 16px" }}
-                        onClick={() => openProblem(item)}
-                        disabled={busy}
-                      >
-                        ⚠ Problema
-                      </button>
+                    <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                      <button className="btn-small" style={{ background: "var(--ok-soft)", borderColor: "var(--ok)", color: "var(--ok)", fontWeight: 700, padding: "10px 14px" }} onClick={() => openFinish(item)} disabled={busy}>✓ Finalizar</button>
+                      <button className="btn-danger-outline" style={{ padding: "10px 14px" }} onClick={() => openProblem(item)} disabled={busy}>⚠ Problema</button>
                     </div>
                   ) : (
                     <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600, whiteSpace: "nowrap" }}>
                       👤 {item.conference_started_by_name}
+                    </div>
+                  )}
+                  {isAdmin && (
+                    <div style={{ display: "flex", gap: 6, flexShrink: 0, marginLeft: 8 }}>
+                      <button className="btn-small" style={{ padding: "10px 10px" }} onClick={() => openAdminEdit(item)} title="Editar (admin)">✏️</button>
+                      <button className="btn-small" style={{ padding: "10px 10px" }} onClick={() => adminReset(item)} title="Voltar pra Aguardando">🔄</button>
+                      <button className="btn-small" style={{ padding: "10px 10px", color: "var(--danger)", borderColor: "var(--danger)" }} onClick={() => adminDelete(item)} title="Excluir (admin)">🗑</button>
                     </div>
                   )}
                 </div>
@@ -555,13 +598,8 @@ export default function ConferenceTable({ operators }) {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Pedido/Transf.</th>
-                  <th>Cliente</th>
-                  <th>Separado por</th>
-                  <th>Conferido por</th>
-                  <th>Horário</th>
-                  <th>Duração</th>
-                  <th>Status</th>
+                  <th>Pedido/Transf.</th><th>Cliente</th><th>Separado por</th><th>Conferido por</th><th>Horário</th><th>Duração</th><th>Status</th>
+                  {isAdmin && <th style={{ width: 110 }}>Admin</th>}
                 </tr>
               </thead>
               <tbody>
@@ -580,11 +618,15 @@ export default function ConferenceTable({ operators }) {
                       {h.status === "conferido" ? (
                         <span style={{ color: "var(--ok)", fontWeight: 600 }}>✓ OK</span>
                       ) : (
-                        <span style={{ color: "var(--danger)", fontWeight: 600 }} title={h.problem_reason || ""}>
-                          ⚠ {h.problem_reason || "Problema"}
-                        </span>
+                        <span style={{ color: "var(--danger)", fontWeight: 600 }} title={h.problem_reason || ""}>⚠ {h.problem_reason || "Problema"}</span>
                       )}
                     </td>
+                    {isAdmin && (
+                      <td style={{ whiteSpace: "nowrap" }}>
+                        <button className="btn-small" style={{ padding: "4px 8px", marginRight: 4 }} onClick={() => openAdminEdit(h)}>✏️</button>
+                        <button className="btn-small" style={{ padding: "4px 8px", color: "var(--danger)", borderColor: "var(--danger)" }} onClick={() => adminDelete(h)}>🗑</button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -610,26 +652,13 @@ export default function ConferenceTable({ operators }) {
             <div className="kiosk-modal-body">
               <div className="kiosk-modal-section">
                 <label className="kiosk-modal-label">Observação (opcional)</label>
-                <textarea
-                  className="kiosk-field kiosk-field-textarea"
-                  placeholder="Ex: tudo certo, sem avarias"
-                  value={finishNote}
-                  onChange={(e) => setFinishNote(e.target.value)}
-                  rows={3}
-                />
+                <textarea className="kiosk-field kiosk-field-textarea" placeholder="Ex: tudo certo, sem avarias" value={finishNote} onChange={(e) => setFinishNote(e.target.value)} rows={3} />
               </div>
             </div>
 
             <div className="kiosk-modal-footer">
-              <button className="kiosk-btn kiosk-btn-secondary" onClick={() => setFinishModal(null)} disabled={busy}>
-                Cancelar
-              </button>
-              <button
-                className="kiosk-btn kiosk-btn-primary"
-                style={{ background: "var(--ok)" }}
-                onClick={confirmFinish}
-                disabled={busy}
-              >
+              <button className="kiosk-btn kiosk-btn-secondary" onClick={() => setFinishModal(null)} disabled={busy}>Cancelar</button>
+              <button className="kiosk-btn kiosk-btn-primary" style={{ background: "var(--ok)" }} onClick={confirmFinish} disabled={busy}>
                 {busy ? "Salvando..." : "✓ Confirmar conferência"}
               </button>
             </div>
@@ -655,49 +684,92 @@ export default function ConferenceTable({ operators }) {
                 <label className="kiosk-modal-label">Motivo do problema *</label>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                   {["Falta produto", "Produto errado", "Avaria", "Quantidade errada", "Pedido incorreto"].map((r) => (
-                    <button
-                      key={r}
-                      className={`quick-filter-btn ${problemReason === r ? "active" : ""}`}
-                      onClick={() => setProblemReason(r)}
-                      type="button"
-                    >
-                      {r}
-                    </button>
+                    <button key={r} className={`quick-filter-btn ${problemReason === r ? "active" : ""}`} onClick={() => setProblemReason(r)} type="button">{r}</button>
                   ))}
                 </div>
-                <input
-                  className="kiosk-field"
-                  style={{ marginTop: 8 }}
-                  placeholder="Ou digite o motivo"
-                  value={problemReason}
-                  onChange={(e) => setProblemReason(e.target.value)}
-                  autoFocus
-                />
+                <input className="kiosk-field" style={{ marginTop: 8 }} placeholder="Ou digite o motivo" value={problemReason} onChange={(e) => setProblemReason(e.target.value)} autoFocus />
               </div>
 
               <div className="kiosk-modal-section">
                 <label className="kiosk-modal-label">Observação (opcional)</label>
-                <textarea
-                  className="kiosk-field kiosk-field-textarea"
-                  placeholder="Detalhe o problema..."
-                  value={problemNote}
-                  onChange={(e) => setProblemNote(e.target.value)}
-                  rows={3}
-                />
+                <textarea className="kiosk-field kiosk-field-textarea" placeholder="Detalhe o problema..." value={problemNote} onChange={(e) => setProblemNote(e.target.value)} rows={3} />
               </div>
             </div>
 
             <div className="kiosk-modal-footer">
-              <button className="kiosk-btn kiosk-btn-secondary" onClick={() => setProblemModal(null)} disabled={busy}>
-                Cancelar
-              </button>
-              <button
-                className="kiosk-btn"
-                style={{ background: "var(--danger)", color: "#fff", flex: 1 }}
-                onClick={confirmProblem}
-                disabled={busy || !problemReason.trim()}
-              >
+              <button className="kiosk-btn kiosk-btn-secondary" onClick={() => setProblemModal(null)} disabled={busy}>Cancelar</button>
+              <button className="kiosk-btn" style={{ background: "var(--danger)", color: "#fff", flex: 1 }} onClick={confirmProblem} disabled={busy || !problemReason.trim()}>
                 {busy ? "Salvando..." : "Reportar problema"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {adminEdit && (
+        <div className="kiosk-modal-backdrop" onClick={() => !busy && setAdminEdit(null)}>
+          <div className="kiosk-modal" ref={modalRef} onClick={(e) => e.stopPropagation()} style={{ maxWidth: 600 }}>
+            <div className="kiosk-modal-header">
+              <div>
+                <div className="kiosk-modal-title" style={{ color: "var(--danger)" }}>✏️ Editar item (admin)</div>
+                <div className="kiosk-modal-sub">Você está editando como admin</div>
+              </div>
+              <button className="kiosk-modal-close" onClick={() => setAdminEdit(null)}>✕</button>
+            </div>
+
+            <div className="kiosk-modal-body">
+              <div className="schedule-modal-grid">
+                <div>
+                  <label className="schedule-modal-label">Status</label>
+                  <select className="schedule-modal-field" value={adminEdit.status} onChange={(e) => setAdminEdit({ ...adminEdit, status: e.target.value })} disabled={busy}>
+                    {CONFERENCE_STATUS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="schedule-modal-label">Nº pedido</label>
+                  <input className="schedule-modal-field" value={adminEdit.order_number || ""} onChange={(e) => setAdminEdit({ ...adminEdit, order_number: e.target.value.replace(/\D/g, "") })} disabled={busy} />
+                </div>
+                <div className="schedule-modal-full">
+                  <label className="schedule-modal-label">Cliente</label>
+                  <input className="schedule-modal-field" value={adminEdit.customer_name || ""} onChange={(e) => setAdminEdit({ ...adminEdit, customer_name: e.target.value })} disabled={busy} />
+                </div>
+                <div>
+                  <label className="schedule-modal-label">Tipo transferência</label>
+                  <select className="schedule-modal-field" value={adminEdit.transfer_type || ""} onChange={(e) => setAdminEdit({ ...adminEdit, transfer_type: e.target.value || null })} disabled={busy}>
+                    <option value="">—</option>
+                    <option value="AP">AP</option>
+                    <option value="ZN">ZN</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="schedule-modal-label">Nº transferência</label>
+                  <input className="schedule-modal-field" value={adminEdit.transfer_number || ""} onChange={(e) => setAdminEdit({ ...adminEdit, transfer_number: e.target.value.replace(/\D/g, "") })} disabled={busy} />
+                </div>
+                <div className="schedule-modal-full">
+                  <label className="schedule-modal-label">Motivo do problema</label>
+                  <input className="schedule-modal-field" value={adminEdit.problem_reason || ""} onChange={(e) => setAdminEdit({ ...adminEdit, problem_reason: e.target.value })} disabled={busy} />
+                </div>
+                <div className="schedule-modal-full">
+                  <label className="schedule-modal-label">Observação</label>
+                  <textarea className="schedule-modal-field" rows={2} style={{ resize: "none" }} value={adminEdit.note || ""} onChange={(e) => setAdminEdit({ ...adminEdit, note: e.target.value })} disabled={busy} />
+                </div>
+                <div className="schedule-modal-full" style={{ display: "flex", gap: 16 }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                    <input type="checkbox" checked={!!adminEdit.is_encaixe} onChange={(e) => setAdminEdit({ ...adminEdit, is_encaixe: e.target.checked })} disabled={busy} />
+                    Encaixe
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                    <input type="checkbox" checked={!!adminEdit.transfer_urgent} onChange={(e) => setAdminEdit({ ...adminEdit, transfer_urgent: e.target.checked })} disabled={busy} />
+                    Transferência urgente
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div className="kiosk-modal-footer">
+              <button className="kiosk-btn kiosk-btn-secondary" onClick={() => setAdminEdit(null)} disabled={busy}>Cancelar</button>
+              <button className="kiosk-btn kiosk-btn-primary" onClick={saveAdminEdit} disabled={busy}>
+                {busy ? "Salvando..." : "Salvar"}
               </button>
             </div>
           </div>

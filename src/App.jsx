@@ -216,6 +216,13 @@ export default function App() {
   function lockAdmin() { setIsAdmin(false); setTab("kiosk"); }
   function handleViewOperator(op) { setProfileOperator(op); setTab("panel"); }
   function handleApplyFilter({ type, value }) { setGlobalFilter({ type, value, ts: Date.now() }); }
+  function handleOpenAdminMaster(payload) {
+    setIsAdmin(true);
+    setTab("admin-master");
+    // O AdminMaster pode receber `initialTab` e `initialId` no futuro
+    // Nesta versão simplificada, só abre o Admin Master.
+    void payload;
+  }
 
   if (authLoading) {
     return (
@@ -279,7 +286,7 @@ export default function App() {
             <ScheduleManager operators={operators} isAdmin={isAdmin} />
           )}
           {tab === "conference" && (
-            <ConferenceTable operators={operators} />
+            <ConferenceTable operators={operators} isAdmin={isAdmin} />
           )}
           {tab === "shortages" && (
             <ShortagePanel />
@@ -295,13 +302,29 @@ export default function App() {
             <ExecutiveView entries={entries} activities={activities} operators={operators} activeSessions={activeSessions} separationErrors={separationErrors} shortages={shortages} onViewOperator={handleViewOperator} />
           )}
           {tab === "panel" && isAdmin && (
-            <Panel entries={entries} activities={activities} operators={operators} activeSessions={activeSessions} separationErrors={separationErrors} shortages={shortages} alertThreshold={alertThreshold} onResetEntries={resetEntries} onResetSeparationErrors={resetSeparationErrors} onResetShortages={resetShortages} externalProfileOperator={profileOperator} onExternalProfileHandled={() => setProfileOperator(null)} externalFilter={globalFilter} onExternalFilterHandled={() => setGlobalFilter(null)} />
+            <Panel
+              entries={entries}
+              activities={activities}
+              operators={operators}
+              activeSessions={activeSessions}
+              separationErrors={separationErrors}
+              shortages={shortages}
+              alertThreshold={alertThreshold}
+              onResetEntries={resetEntries}
+              onResetSeparationErrors={resetSeparationErrors}
+              onResetShortages={resetShortages}
+              externalProfileOperator={profileOperator}
+              onExternalProfileHandled={() => setProfileOperator(null)}
+              externalFilter={globalFilter}
+              onExternalFilterHandled={() => setGlobalFilter(null)}
+              onOpenAdminMaster={handleOpenAdminMaster}
+            />
           )}
           {tab === "manual" && isAdmin && (
             <ManualEntry operators={operators} activities={activities} refreshEntries={loadEntries} />
           )}
           {tab === "admin-master" && isAdmin && (
-            <AdminMaster operators={operators} />
+            <AdminMaster operators={operators} adminPin={adminPin} />
           )}
           {tab === "team" && isAdmin && (
             <TeamManager operators={operators} activities={activities} errorTypes={errorTypes} vehicles={vehicles} adminPin={adminPin} alertThreshold={alertThreshold} refreshConfig={loadAll} />

@@ -6,7 +6,8 @@ import { fmtClock, fmtDate, fmtDuration } from "../lib/format";
 import { computeMetrics, computeWeeklyTrend, computeMonthlyBuckets, monthLabel, mean as meanM } from "../lib/metrics";
 import { exportHistoricoExcel, exportShortagesExcel, exportErrorsExcel } from "../utils/excel";
 import OperatorProfile from "./OperatorProfile";
-import { fetchConferenceHistory } from "../lib/api";
+import { fetchConferenceHistory, deleteEntry } from "../lib/api";
+import { logAudit } from "../lib/api";
 import logo from "../assets/logo.png";
 
 const COLORS = ["#0a3d7a", "#00a0e4", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444", "#06b6d4", "#6b7280"];
@@ -113,6 +114,7 @@ export default function Panel({
   onExternalProfileHandled,
   externalFilter = null,
   onExternalFilterHandled,
+  onOpenAdminMaster = null,
 }) {
   const [viewOperator, setViewOperator] = useState(null);
 
@@ -150,7 +152,6 @@ export default function Panel({
   const [monthA, setMonthA] = useState("");
   const [monthB, setMonthB] = useState("");
 
-  // Histórico da mesa de conferência
   const [conferenceHistory, setConferenceHistory] = useState([]);
 
   useEffect(() => {
@@ -158,7 +159,6 @@ export default function Panel({
     return () => clearInterval(iv);
   }, []);
 
-  // Carrega histórico da mesa
   useEffect(() => {
     (async () => {
       const { data } = await fetchConferenceHistory({ limit: 2000 });
@@ -452,9 +452,6 @@ export default function Panel({
   const monthlyBuckets = useMemo(() => computeMonthlyBuckets(entries, activities), [entries, activities]);
   const availableMonths = useMemo(() => Object.keys(monthlyBuckets).sort(), [monthlyBuckets]);
 
-  // ============================================================
-  // MÉTRICAS DA MESA DE CONFERÊNCIA
-  // ============================================================
   const conferenceFiltered = useMemo(() => {
     return conferenceHistory.filter((c) => {
       if (!c.conference_finished_at) return false;
@@ -637,6 +634,34 @@ export default function Panel({
         Notification.requestPermission();
       }
     }
+  }
+
+  // ==================== ADMIN QUICK ACTIONS ====================
+
+  function openInAdminMaster(entityId, entityType) {
+    if (onOpenAdminMaster) {
+      onOpenAdminMaster({ tab: entityType, id: entityId });
+    }
+  }
+
+  async function quickDeleteEntry(entry) {
+    if (!window.confirm(`Apagar este lançamento de "${entry.operator_name}" (${entry.activity})?`)) return;
+    const { error } = await deleteEntry(entry.id);
+    if (error) {
+      alert("Erro ao apagar: " + error.message);
+      return;
+    }
+    try {
+      await logAudit({
+        actorCode: "admin",
+        actorName: "Admin (rápido)",
+        action: "remover",
+        entity: "entry",
+        entityId: String(entry.id),
+        details: `Lançamento apagado rápido pelo admin`,
+        beforeData: entry,
+      });
+    } catch {}
   }
 
   // ==================== EXPORTAÇÕES ====================
@@ -884,7 +909,6 @@ export default function Panel({
     const topProductsRows = topShortageProducts.map((p) => `<tr><td>${esc(p.code)}</td><td class="right">${p.count}</td><td class="right">${p.totalQty}</td></tr>`).join("");
     const topCustomersRows = topShortageCustomers.map((c) => `<tr><td>${esc(c.name)}</td><td class="right">${c.entriesCount}</td><td class="right">${c.totalFaltas}</td><td class="right">${c.totalQty}</td></tr>`).join("");
 
-    // Bloco da mesa
     const conferenceBlock = conferenceStats.total > 0 ? `
       <h2>Mesa de conferência</h2>
       <table>
@@ -896,24 +920,6 @@ export default function Panel({
           <tr><td>Tempo médio de conferência</td><td class="right">${esc(fmtDuration(conferenceStats.avgDuration))}</td></tr>
         </tbody>
       </table>
-      ${conferenceRanking.length > 0 ? `
-        <h2>Ranking de conferentes</h2>
-        <table>
-          <thead><tr><th class="center">Posição</th><th>Conferente</th><th class="right">Conferências</th><th>Tempo médio</th></tr></thead>
-          <tbody>
-            ${conferenceRanking.map((r, i) => `<tr><td class="center">${i + 1}º</td><td>${esc(r.name)}</td><td class="right">${r.count}</td><td>${esc(fmtDuration(r.avg))}</td></tr>`).join("")}
-          </tbody>
-        </table>
-      ` : ""}
-      ${conferenceProblems.length > 0 ? `
-        <h2>Problemas por motivo</h2>
-        <table>
-          <thead><tr><th>Motivo</th><th class="right">Ocorrências</th></tr></thead>
-          <tbody>
-            ${conferenceProblems.map((p) => `<tr><td>${esc(p.name)}</td><td class="right">${p.total}</td></tr>`).join("")}
-          </tbody>
-        </table>
-      ` : ""}
     ` : "";
 
     const html = `<!doctype html>
@@ -1238,7 +1244,6 @@ export default function Panel({
         </div>
       </div>
 
-      {/* ============ MESA DE CONFERÊNCIA ============ */}
       {conferenceStats.total > 0 && (
         <div className="card" style={{ marginBottom: 20 }}>
           <div className="card-title">✅ Mesa de conferência</div>
@@ -1269,21 +1274,12 @@ export default function Panel({
               </div>
               <table className="data-table">
                 <thead>
-                  <tr>
-                    <th>Posição</th>
-                    <th>Conferente</th>
-                    <th>Conferências</th>
-                    <th>Tempo médio</th>
-                  </tr>
+                  <tr><th>Posição</th><th>Conferente</th><th>Conferências</th><th>Tempo médio</th></tr>
                 </thead>
                 <tbody>
                   {conferenceRanking.map((r, i) => (
                     <tr key={r.code}>
-                      <td>
-                        <span style={{ fontSize: 16 }}>
-                          {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}º`}
-                        </span>
-                      </td>
+                      <td><span style={{ fontSize: 16 }}>{i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}º`}</span></td>
                       <td style={{ fontFamily: "var(--font-display)", fontWeight: 600 }}>{r.name}</td>
                       <td>{r.count}</td>
                       <td>{fmtDuration(r.avg)}</td>
@@ -1314,16 +1310,11 @@ export default function Panel({
           {conferenceSeparatorsRanking.length > 0 && (
             <div>
               <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 10 }}>
-                🎯 Separadores com mais problemas na conferência
+                🎯 Separadores com mais problemas
               </div>
               <table className="data-table">
                 <thead>
-                  <tr>
-                    <th>Separador</th>
-                    <th>Total conferido</th>
-                    <th>Com problema</th>
-                    <th>% problema</th>
-                  </tr>
+                  <tr><th>Separador</th><th>Total conferido</th><th>Com problema</th><th>% problema</th></tr>
                 </thead>
                 <tbody>
                   {conferenceSeparatorsRanking.map((r) => (
@@ -1465,7 +1456,6 @@ export default function Panel({
         </table>
       </div>
 
-      {/* ERROS */}
       <div className="card" style={{ marginBottom: 20 }}>
         <div className="page-header-row" style={{ marginBottom: 14 }}>
           <div className="card-title" style={{ marginBottom: 0 }}>🚨 Erros de separação no período</div>
@@ -1619,7 +1609,6 @@ export default function Panel({
         )}
       </div>
 
-      {/* FALTAS */}
       <div className="card" style={{ marginBottom: 20 }}>
         <div className="page-header-row" style={{ marginBottom: 14 }}>
           <div className="card-title" style={{ marginBottom: 0 }}>📦 Produtos que mais faltam</div>
@@ -1772,13 +1761,21 @@ export default function Panel({
       </div>
 
       <div className="card">
-        <div className="card-title">Histórico detalhado</div>
+        <div className="page-header-row" style={{ marginBottom: 14 }}>
+          <div className="card-title" style={{ marginBottom: 0 }}>Histórico detalhado</div>
+          {onOpenAdminMaster && (
+            <button className="btn-small" onClick={() => onOpenAdminMaster({ tab: "entries" })}>
+              ✏️ Abrir no Admin Master
+            </button>
+          )}
+        </div>
         <div style={{ overflowX: "auto" }}>
           <table className="data-table">
             <thead>
               <tr>
                 <th>Data</th><th>Operador</th><th>Atividade</th><th>Turno</th>
                 <th>Estação</th><th>Início</th><th>Fim</th><th>Duração</th><th>Flags</th>
+                <th style={{ width: 130 }}>Admin</th>
               </tr>
             </thead>
             <tbody>
@@ -1834,10 +1831,27 @@ export default function Panel({
                         </span>
                       )}
                     </td>
+                    <td style={{ whiteSpace: "nowrap" }}>
+                      {onOpenAdminMaster && (
+                        <button className="btn-small" style={{ padding: "4px 8px", marginRight: 4 }} onClick={() => onOpenAdminMaster({ tab: "entries", id: e.id })}>
+                          ✏️
+                        </button>
+                      )}
+                      <button
+                        className="btn-small"
+                        style={{ padding: "4px 8px", color: "var(--danger)", borderColor: "var(--danger)" }}
+                        onClick={async () => {
+                          await quickDeleteEntry(e);
+                          onOpenAdminMaster?.({ tab: "entries", refresh: true });
+                        }}
+                      >
+                        🗑
+                      </button>
+                    </td>
                   </tr>
                 );
               })}
-              {filteredEntries.length === 0 && <tr><td colSpan={9}>Nenhum registro encontrado.</td></tr>}
+              {filteredEntries.length === 0 && <tr><td colSpan={10}>Nenhum registro encontrado.</td></tr>}
             </tbody>
           </table>
         </div>
