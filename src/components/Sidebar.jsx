@@ -148,6 +148,23 @@ function IconExpand() {
   );
 }
 
+function IconConference() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 11l3 3L22 4" />
+      <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+    </svg>
+  );
+}
+
+function IconMaster() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
+    </svg>
+  );
+}
+
 /* ============ ESTRUTURA ============ */
 
 const SECTIONS = [
@@ -157,6 +174,7 @@ const SECTIONS = [
       { key: "kiosk", label: "Registrar atividade", Icon: IconActivity },
       { key: "errors-kiosk", label: "Registrar erro", Icon: IconAlert },
       { key: "schedules", label: "Agendamentos", Icon: IconCalendar },
+      { key: "conference", label: "Mesa de conferência", Icon: IconConference },
       { key: "shortages", label: "Consulta de faltas", Icon: IconBox },
       { key: "sales-query", label: "Consulta líder da equipe", Icon: IconSearch },
     ],
@@ -167,6 +185,7 @@ const SECTIONS = [
       { key: "executive", label: "Visão executiva", Icon: IconExecutive },
       { key: "panel", label: "Painel de métricas", Icon: IconDashboard },
       { key: "manual", label: "Lançamento retroativo", Icon: IconManual },
+      { key: "admin-master", label: "Admin Master", Icon: IconMaster },
       { key: "team", label: "Gestão e cadastros", Icon: IconSettings },
       { key: "sales-team", label: "Equipe de vendas", Icon: IconSettings },
       { key: "audit", label: "Histórico de alterações", Icon: IconHistory },

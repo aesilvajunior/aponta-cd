@@ -29,6 +29,8 @@ import ScheduleManager from "./components/ScheduleManager";
 import SalesTeamQuery from "./components/SalesTeamQuery";
 import SalesTeamManager from "./components/SalesTeamManager";
 import ShortagePanel from "./components/ShortagePanel";
+import ConferenceTable from "./components/ConferenceTable";
+import AdminMaster from "./components/AdminMaster";
 import LoginScreen from "./components/LoginScreen";
 import logo from "./assets/logo.png";
 import {
@@ -276,18 +278,17 @@ export default function App() {
           {tab === "schedules" && (
             <ScheduleManager operators={operators} isAdmin={isAdmin} />
           )}
-
-          {/* Consulta de faltas — livre pra qualquer um logado */}
+          {tab === "conference" && (
+            <ConferenceTable operators={operators} />
+          )}
           {tab === "shortages" && (
             <ShortagePanel />
           )}
-
-          {/* Consulta líder — livre pra qualquer um logado */}
           {tab === "sales-query" && (
             <SalesTeamQuery />
           )}
 
-          {(tab === "executive" || tab === "panel" || tab === "team" || tab === "manual" || tab === "audit" || tab === "sales-team") && !isAdmin && (
+          {(tab === "executive" || tab === "panel" || tab === "team" || tab === "manual" || tab === "audit" || tab === "sales-team" || tab === "admin-master") && !isAdmin && (
             <AdminGate correctPin={adminPin} onUnlock={() => setIsAdmin(true)} />
           )}
           {tab === "executive" && isAdmin && (
@@ -298,6 +299,9 @@ export default function App() {
           )}
           {tab === "manual" && isAdmin && (
             <ManualEntry operators={operators} activities={activities} refreshEntries={loadEntries} />
+          )}
+          {tab === "admin-master" && isAdmin && (
+            <AdminMaster operators={operators} />
           )}
           {tab === "team" && isAdmin && (
             <TeamManager operators={operators} activities={activities} errorTypes={errorTypes} vehicles={vehicles} adminPin={adminPin} alertThreshold={alertThreshold} refreshConfig={loadAll} />
