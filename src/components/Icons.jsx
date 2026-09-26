@@ -422,7 +422,6 @@ export function IconHash({ size = 20, strokeWidth = 1.5, className = "" }) {
 }
 
 export function IconDelete({ size = 20, strokeWidth = 1.5, className = "" }) {
-  // Ícone de backspace
   return (
     <svg {...baseProps(size, strokeWidth, className)}>
       <path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z" />
@@ -560,8 +559,6 @@ export function IconCommand({ size = 20, strokeWidth = 1.5, className = "" }) {
   );
 }
 
-/* ============ ÍCONES DE BANDEIRA/FLAG ============ */
-
 export function IconFlag({ size = 20, strokeWidth = 1.5, className = "" }) {
   return (
     <svg {...baseProps(size, strokeWidth, className)}>
@@ -571,12 +568,81 @@ export function IconFlag({ size = 20, strokeWidth = 1.5, className = "" }) {
   );
 }
 
-/* ============ ÍCONE FALLBACK (ponto médio) ============ */
-
 export function IconDot({ size = 20, strokeWidth = 1.5, className = "" }) {
   return (
     <svg {...baseProps(size, strokeWidth, className)}>
       <circle cx="12" cy="12" r="3" fill="currentColor" />
+    </svg>
+  );
+}
+
+/* ============ NOVOS — ADICIONADOS ============ */
+
+export function IconBuilding({ size = 20, strokeWidth = 1.5, className = "" }) {
+  return (
+    <svg {...baseProps(size, strokeWidth, className)}>
+      <rect x="4" y="2" width="16" height="20" rx="1.5" />
+      <line x1="9" y1="6" x2="9.01" y2="6" />
+      <line x1="15" y1="6" x2="15.01" y2="6" />
+      <line x1="9" y1="10" x2="9.01" y2="10" />
+      <line x1="15" y1="10" x2="15.01" y2="10" />
+      <line x1="9" y1="14" x2="9.01" y2="14" />
+      <line x1="15" y1="14" x2="15.01" y2="14" />
+      <line x1="9" y1="18" x2="15" y2="18" />
+    </svg>
+  );
+}
+
+export function IconEye({ size = 20, strokeWidth = 1.5, className = "" }) {
+  return (
+    <svg {...baseProps(size, strokeWidth, className)}>
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+export function IconEyeOff({ size = 20, strokeWidth = 1.5, className = "" }) {
+  return (
+    <svg {...baseProps(size, strokeWidth, className)}>
+      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+      <line x1="1" y1="1" x2="23" y2="23" />
+    </svg>
+  );
+}
+
+export function IconVolume2({ size = 20, strokeWidth = 1.5, className = "" }) {
+  return (
+    <svg {...baseProps(size, strokeWidth, className)}>
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+      <path d="M15.54 8.46a5 5 0 0 1 0 7.07" />
+      <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+    </svg>
+  );
+}
+
+export function IconVolumeX({ size = 20, strokeWidth = 1.5, className = "" }) {
+  return (
+    <svg {...baseProps(size, strokeWidth, className)}>
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+      <line x1="23" y1="9" x2="17" y2="15" />
+      <line x1="17" y1="9" x2="23" y2="15" />
+    </svg>
+  );
+}
+
+export function IconMaximize({ size = 20, strokeWidth = 1.5, className = "" }) {
+  return (
+    <svg {...baseProps(size, strokeWidth, className)}>
+      <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+    </svg>
+  );
+}
+
+export function IconMinimize({ size = 20, strokeWidth = 1.5, className = "" }) {
+  return (
+    <svg {...baseProps(size, strokeWidth, className)}>
+      <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" />
     </svg>
   );
 }
