@@ -9,10 +9,22 @@ import {
 } from "../lib/api";
 import { supabase } from "../supabaseClient";
 import useKeyboardNav from "../hooks/useKeyboardNav";
-
-// ============================================================
-// Helpers
-// ============================================================
+import {
+  IconCalendar,
+  IconChevronLeft,
+  IconChevronRight,
+  IconX,
+  IconDelete,
+  IconPlus,
+  IconClock,
+  IconUser,
+  IconPackage,
+  IconTruck,
+  IconAlertTriangle,
+  IconEdit,
+  IconTrash,
+  IconRefresh,
+} from "./Icons";
 
 const WEEKDAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const MONTHS = [
@@ -72,10 +84,6 @@ function isWithinBusinessHours(iso) {
 
 const MAX_VISIBLE = 2;
 
-// ============================================================
-// Componente
-// ============================================================
-
 export default function ScheduleManager({ operators, isAdmin }) {
   const [schedules, setSchedules] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -121,7 +129,6 @@ export default function ScheduleManager({ operators, isAdmin }) {
     lastInteractionRef.current = Date.now();
   }
 
-  // Navegação por setas + Esc no container principal
   useKeyboardNav({
     containerRef: mainContainerRef,
     enabled: !showModal,
@@ -130,7 +137,6 @@ export default function ScheduleManager({ operators, isAdmin }) {
     },
   });
 
-  // Navegação no modal
   useKeyboardNav({
     containerRef: modalRef,
     enabled: showModal,
@@ -139,7 +145,6 @@ export default function ScheduleManager({ operators, isAdmin }) {
     },
   });
 
-  // -------- Login: restaurar da sessão ao abrir --------
   useEffect(() => {
     try {
       const raw = sessionStorage.getItem(SESSION_KEY);
@@ -155,7 +160,6 @@ export default function ScheduleManager({ operators, isAdmin }) {
     } catch {}
   }, [operators]);
 
-  // -------- Timeout de inatividade --------
   useEffect(() => {
     const iv = setInterval(() => {
       if (!loggedOperator) return;
@@ -167,7 +171,6 @@ export default function ScheduleManager({ operators, isAdmin }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loggedOperator]);
 
-  // -------- Teclado físico (SOMENTE quando NÃO tá logado e NÃO é admin) --------
   useEffect(() => {
     if (loggedOperator || isAdmin) return;
     if (showModal) return;
@@ -198,7 +201,6 @@ export default function ScheduleManager({ operators, isAdmin }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loggedOperator, isAdmin, showModal, operators]);
 
-  // -------- Carrega agendamentos --------
   async function load() {
     setLoading(true);
     const { data, error } = await fetchSchedules({ limit: 2000 });
@@ -221,7 +223,6 @@ export default function ScheduleManager({ operators, isAdmin }) {
     return () => supabase.removeChannel(ch);
   }, []);
 
-  // -------- Ações de login --------
   function handleDigit(d) {
     bump();
     if (codeInputRef.current.length < CODE_LENGTH) {
@@ -245,7 +246,7 @@ export default function ScheduleManager({ operators, isAdmin }) {
       return;
     }
     if (!op.can_schedule_delivery) {
-      setLoginError("Você não tem permissão pra agendar recebimento. Fale com o admin.");
+      setLoginError("Você não tem permissão para agendar recebimento. Fale com o administrador.");
       setCodeInput("");
       setCheckingLogin(false);
       return;
@@ -503,9 +504,9 @@ export default function ScheduleManager({ operators, isAdmin }) {
       <div ref={mainContainerRef}>
         <div className="page-header-row" style={{ marginBottom: 22 }}>
           <div>
-            <h1 className="page-title">Agendamentos de recebimento</h1>
+            <h1 className="page-title">Agenda</h1>
             <p className="page-sub" style={{ marginBottom: 0 }}>
-              Digite seu código pra agendar uma entrega
+              Digite seu código para agendar uma entrega
             </p>
           </div>
         </div>
@@ -528,7 +529,7 @@ export default function ScheduleManager({ operators, isAdmin }) {
                 </button>
               ))}
               <button className="kiosk-key kiosk-key-muted" onClick={handleBackspace}>
-                ⌫
+                <IconDelete size={20} />
               </button>
               <button className="kiosk-key" onClick={() => handleDigit("0")}>
                 0
@@ -552,12 +553,12 @@ export default function ScheduleManager({ operators, isAdmin }) {
     <div ref={mainContainerRef}>
       <div className="page-header-row" style={{ marginBottom: 22 }}>
         <div>
-          <h1 className="page-title">Agendamentos de recebimento</h1>
+          <h1 className="page-title">Agenda</h1>
           <p className="page-sub" style={{ marginBottom: 0 }}>
             {schedules.length} agendamento{schedules.length !== 1 ? "s" : ""}
             {loggedOperator && (
               <span style={{ marginLeft: 8, color: "var(--accent)", fontWeight: 600 }}>
-                · Operador: {loggedOperator.name} #{loggedOperator.code}
+                · {loggedOperator.name} #{loggedOperator.code}
               </span>
             )}
             {isAdmin && !loggedOperator && (
@@ -570,12 +571,12 @@ export default function ScheduleManager({ operators, isAdmin }) {
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {canCreate && (
             <button className="btn-small btn-excel" onClick={openCreateModal}>
-              + Novo agendamento
+              <IconPlus size={14} /> Novo agendamento
             </button>
           )}
           {loggedOperator && (
             <button className="btn-small" onClick={logout}>
-              🚪 Sair
+              Sair
             </button>
           )}
           {isAdmin && (
@@ -584,8 +585,9 @@ export default function ScheduleManager({ operators, isAdmin }) {
               href="https://calendar.google.com"
               target="_blank"
               rel="noopener noreferrer"
+              style={{ textDecoration: "none" }}
             >
-              📅 Google Calendar
+              Google Calendar
             </a>
           )}
         </div>
@@ -603,9 +605,15 @@ export default function ScheduleManager({ operators, isAdmin }) {
             {MONTHS[viewMonth]} {viewYear}
           </div>
           <div className="schedule-calendar-nav">
-            <button onClick={() => { bump(); if (viewMonth === 0) { setViewMonth(11); setViewYear(viewYear - 1); } else setViewMonth(viewMonth - 1); }}>‹</button>
-            <button className="today-btn" onClick={() => { bump(); const t = new Date(); setViewYear(t.getFullYear()); setViewMonth(t.getMonth()); setSelectedDate(todayISO()); }}>Hoje</button>
-            <button onClick={() => { bump(); if (viewMonth === 11) { setViewMonth(0); setViewYear(viewYear + 1); } else setViewMonth(viewMonth + 1); }}>›</button>
+            <button onClick={() => { bump(); if (viewMonth === 0) { setViewMonth(11); setViewYear(viewYear - 1); } else setViewMonth(viewMonth - 1); }}>
+              <IconChevronLeft size={16} />
+            </button>
+            <button className="today-btn" onClick={() => { bump(); const t = new Date(); setViewYear(t.getFullYear()); setViewMonth(t.getMonth()); setSelectedDate(todayISO()); }}>
+              Hoje
+            </button>
+            <button onClick={() => { bump(); if (viewMonth === 11) { setViewMonth(0); setViewYear(viewYear + 1); } else setViewMonth(viewMonth + 1); }}>
+              <IconChevronRight size={16} />
+            </button>
           </div>
         </div>
 
@@ -652,7 +660,7 @@ export default function ScheduleManager({ operators, isAdmin }) {
                         <div className="schedule-day-event-invoice">NF {s.invoice_number}</div>
                       </div>
                     ))}
-                    {remaining > 0 && <div className="schedule-day-more">+{remaining} mais…</div>}
+                    {remaining > 0 && <div className="schedule-day-more">+{remaining} mais</div>}
                   </div>
                 )}
               </div>
@@ -663,18 +671,18 @@ export default function ScheduleManager({ operators, isAdmin }) {
 
       <div className="card" style={{ marginBottom: 20 }} onClick={bump}>
         <div className="card-title">
-          📅 {fmtDateBR(selectedDate)} — {daySchedules.length} agendamento{daySchedules.length !== 1 ? "s" : ""}
+          {fmtDateBR(selectedDate)} — {daySchedules.length} agendamento{daySchedules.length !== 1 ? "s" : ""}
         </div>
 
         {loading ? (
-          <div className="schedule-empty">Carregando…</div>
+          <div className="schedule-empty">Carregando...</div>
         ) : daySchedules.length === 0 ? (
           <div className="schedule-empty">
-            <div className="schedule-empty-icon">📭</div>
+            <div className="schedule-empty-icon"><IconCalendar size={36} /></div>
             <div>Nenhum agendamento nesse dia.</div>
             {canCreate && (
-              <button className="btn-small" style={{ marginTop: 14 }} onClick={openCreateModal}>
-                + Criar agendamento pra {fmtDateBR(selectedDate)}
+              <button className="btn-small" style={{ marginTop: 16 }} onClick={openCreateModal}>
+                <IconPlus size={14} /> Criar agendamento para {fmtDateBR(selectedDate)}
               </button>
             )}
           </div>
@@ -686,31 +694,40 @@ export default function ScheduleManager({ operators, isAdmin }) {
                 <div className="schedule-item-content">
                   <div className="schedule-item-supplier">
                     {s.supplier_name}
-                    {s.is_exception && <span className="schedule-item-badge exception" style={{ marginLeft: 8 }}>⚠ Exceção</span>}
+                    {s.is_exception && (
+                      <span className="schedule-item-badge exception" style={{ marginLeft: 8 }}>
+                        <IconAlertTriangle size={11} /> Exceção
+                      </span>
+                    )}
                   </div>
                   <div className="schedule-item-details">
-                    <span>📄 NF {s.invoice_number}</span>
-                    {s.carrier && <span>🚚 {s.carrier}</span>}
-                    {s.purchase_order && <span>🛒 Pedido {s.purchase_order}</span>}
-                    <span>📦 {s.volume_weight}</span>
-                    <span>👤 {s.responsible_name}</span>
-                    {s.created_by_name && <span>✍ {s.created_by_name}</span>}
+                    <span>NF {s.invoice_number}</span>
+                    {s.carrier && <span>{s.carrier}</span>}
+                    {s.purchase_order && <span>Pedido {s.purchase_order}</span>}
+                    <span>{s.volume_weight}</span>
+                    <span>{s.responsible_name}</span>
+                    {s.created_by_name && <span>por {s.created_by_name}</span>}
                   </div>
                   {s.is_exception && s.exception_reason && (
-                    <div style={{ fontSize: 12, color: "var(--warning)", marginTop: 6 }}>
-                      <strong>Motivo da exceção:</strong> {s.exception_reason}
+                    <div style={{ fontSize: 12, color: "var(--warning)", marginTop: 8, display: "flex", alignItems: "flex-start", gap: 6 }}>
+                      <IconAlertTriangle size={13} style={{ marginTop: 2, flexShrink: 0 }} />
+                      <span><strong>Motivo da exceção:</strong> {s.exception_reason}</span>
                     </div>
                   )}
                   {s.observation && (
-                    <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 6, fontStyle: "italic" }}>
+                    <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 8, fontStyle: "italic" }}>
                       "{s.observation}"
                     </div>
                   )}
                 </div>
                 {(isAdmin || s.created_by_code === loggedOperator?.code) && (
                   <div className="schedule-item-actions">
-                    <button className="btn-small" onClick={() => openEditModal(s)}>Editar</button>
-                    <button className="btn-danger-outline" onClick={() => removeSchedule(s)}>Remover</button>
+                    <button className="btn-small" onClick={() => openEditModal(s)}>
+                      <IconEdit size={13} /> Editar
+                    </button>
+                    <button className="btn-danger-outline" onClick={() => removeSchedule(s)}>
+                      <IconTrash size={13} /> Remover
+                    </button>
                   </div>
                 )}
               </div>
@@ -721,7 +738,7 @@ export default function ScheduleManager({ operators, isAdmin }) {
 
       {upcoming.length > 0 && (
         <div className="card" onClick={bump}>
-          <div className="card-title">⏭ Próximos agendamentos</div>
+          <div className="card-title">Próximos agendamentos</div>
           <div style={{ overflowX: "auto" }}>
             <table className="data-table">
               <thead>
@@ -748,16 +765,18 @@ export default function ScheduleManager({ operators, isAdmin }) {
 
       {showModal && (
         <div className="kiosk-modal-backdrop" onClick={closeModal}>
-          <div className="kiosk-modal" ref={modalRef} onClick={(e) => e.stopPropagation()} style={{ maxWidth: 620 }}>
+          <div className="kiosk-modal" ref={modalRef} onClick={(e) => e.stopPropagation()} style={{ maxWidth: 640 }}>
             <div className="kiosk-modal-header">
               <div>
                 <div className="kiosk-modal-title">{editingId ? "Editar agendamento" : "Novo agendamento"}</div>
                 <div className="kiosk-modal-sub">Preencha os dados da entrega do fornecedor</div>
               </div>
-              <button className="kiosk-modal-close" onClick={closeModal}>✕</button>
+              <button className="kiosk-modal-close" onClick={closeModal}>
+                <IconX size={18} />
+              </button>
             </div>
 
-            <div className="kiosk-modal-body" style={{ maxHeight: "60vh" }}>
+            <div className="kiosk-modal-body" style={{ maxHeight: "62vh" }}>
               <div className="schedule-modal-grid">
                 <div>
                   <label className="schedule-modal-label">Data *</label>
@@ -799,15 +818,17 @@ export default function ScheduleManager({ operators, isAdmin }) {
 
               {formData.is_exception && (
                 <div className="schedule-exception-box">
-                  <div className="title">⚠ Agendamento fora do horário padrão</div>
-                  <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 10px 0" }}>
+                  <div className="title">
+                    <IconAlertTriangle size={14} /> Agendamento fora do horário padrão
+                  </div>
+                  <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 12px 0" }}>
                     O horário padrão é <strong>segunda a sexta, 08h às 15h</strong>. Justifique o motivo abaixo.
                   </p>
                   <textarea className="schedule-modal-field" placeholder="Motivo da exceção (obrigatório)" rows={2} style={{ resize: "none" }} value={formData.exception_reason} onChange={(e) => updateField("exception_reason", e.target.value)} disabled={formBusy} />
                 </div>
               )}
 
-              {formError && <p style={{ color: "var(--danger)", fontSize: 13, marginTop: 12, marginBottom: 0 }}>{formError}</p>}
+              {formError && <p style={{ color: "var(--danger)", fontSize: 13, marginTop: 14, marginBottom: 0 }}>{formError}</p>}
             </div>
 
             <div className="kiosk-modal-footer">

@@ -17,15 +17,32 @@ import {
 import { fmtClock, fmtDate, fmtDuration } from "../lib/format";
 import { supabase } from "../supabaseClient";
 import useKeyboardNav from "../hooks/useKeyboardNav";
+import {
+  IconPackage,
+  IconZap,
+  IconArrowLeftRight,
+  IconFlag,
+  IconUser,
+  IconCheck,
+  IconAlertTriangle,
+  IconAlertCircle,
+  IconClock,
+  IconEdit,
+  IconTrash,
+  IconRefresh,
+  IconRotateCcw,
+  IconX,
+  IconDelete,
+} from "./Icons";
 
 const CODE_LENGTH = 3;
 const AUTO_RETURN_MS = 3000;
 
 const CONFERENCE_STATUS = [
-  { value: "aguardando", label: "⏳ Aguardando" },
-  { value: "em_conferencia", label: "🔍 Em conferência" },
-  { value: "conferido", label: "✓ Conferido" },
-  { value: "com_problema", label: "⚠ Com problema" },
+  { value: "aguardando", label: "Aguardando" },
+  { value: "em_conferencia", label: "Em conferência" },
+  { value: "conferido", label: "Conferido" },
+  { value: "com_problema", label: "Com problema" },
 ];
 
 function waitingColor(seconds) {
@@ -156,7 +173,7 @@ export default function ConferenceTable({ operators, isAdmin = false }) {
       return;
     }
     if (!op.can_conference) {
-      setLoginError("Você não está cadastrado como conferente. Fale com o admin.");
+      setLoginError("Você não está cadastrado como conferente. Fale com o administrador.");
       setCodeInput("");
       setCheckingLogin(false);
       return;
@@ -342,9 +359,9 @@ export default function ConferenceTable({ operators, isAdmin = false }) {
       <div ref={mainContainerRef}>
         <div className="page-header-row" style={{ marginBottom: 22 }}>
           <div>
-            <h1 className="page-title">Mesa de conferência</h1>
+            <h1 className="page-title">Conferência</h1>
             <p className="page-sub" style={{ marginBottom: 0 }}>
-              Digite seu código de conferente pra acessar
+              Digite seu código de conferente para acessar
             </p>
           </div>
         </div>
@@ -361,7 +378,9 @@ export default function ConferenceTable({ operators, isAdmin = false }) {
               {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((d) => (
                 <button key={d} className="kiosk-key" onClick={() => handleDigit(d)}>{d}</button>
               ))}
-              <button className="kiosk-key kiosk-key-muted" onClick={handleBackspace}>⌫</button>
+              <button className="kiosk-key kiosk-key-muted" onClick={handleBackspace}>
+                <IconDelete size={20} />
+              </button>
               <button className="kiosk-key" onClick={() => handleDigit("0")}>0</button>
               <button className="kiosk-key kiosk-key-primary" onClick={handleLogin}>{checkingLogin ? "..." : "OK"}</button>
             </div>
@@ -380,7 +399,7 @@ export default function ConferenceTable({ operators, isAdmin = false }) {
     <div ref={mainContainerRef}>
       <div className="page-header-row" style={{ marginBottom: 22 }}>
         <div>
-          <h1 className="page-title">Mesa de conferência</h1>
+          <h1 className="page-title">Conferência</h1>
           <p className="page-sub" style={{ marginBottom: 0 }}>
             {stats.waiting} aguardando · {stats.inProgress} em conferência · {stats.todayFinished} conferidos hoje
             <span style={{ marginLeft: 8, color: "var(--accent)", fontWeight: 600 }}>
@@ -390,8 +409,12 @@ export default function ConferenceTable({ operators, isAdmin = false }) {
           </p>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button className="btn-small" onClick={load}>🔄 Atualizar</button>
-          <button className="btn-small" onClick={logout}>🚪 Sair</button>
+          <button className="btn-small" onClick={load}>
+            <IconRefresh size={14} /> Atualizar
+          </button>
+          <button className="btn-small" onClick={logout}>
+            Sair
+          </button>
         </div>
       </div>
 
@@ -411,7 +434,7 @@ export default function ConferenceTable({ operators, isAdmin = false }) {
               color: confirmation.kind === "conferido" ? "var(--ok)" : "var(--danger)",
             }}
           >
-            {confirmation.kind === "conferido" ? "✓" : "⚠"}
+            {confirmation.kind === "conferido" ? <IconCheck size={30} /> : <IconAlertTriangle size={30} />}
           </div>
           <div className="kiosk-confirm-title">
             {confirmation.kind === "conferido" ? "Conferência finalizada" : "Problema reportado"}
@@ -446,13 +469,13 @@ export default function ConferenceTable({ operators, isAdmin = false }) {
       </div>
 
       <div className="card" style={{ marginBottom: 20 }}>
-        <div className="card-title">⏳ Aguardando conferência ({waiting.length})</div>
+        <div className="card-title">Aguardando conferência ({waiting.length})</div>
         {loading ? (
-          <div className="schedule-empty">Carregando…</div>
+          <div className="schedule-empty">Carregando...</div>
         ) : waiting.length === 0 ? (
           <div className="schedule-empty">
-            <div className="schedule-empty-icon">✅</div>
-            <div>Nenhum pedido aguardando. Mesa limpa!</div>
+            <div className="schedule-empty-icon"><IconCheck size={36} /></div>
+            <div>Nenhum pedido aguardando. Mesa limpa.</div>
           </div>
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -466,7 +489,7 @@ export default function ConferenceTable({ operators, isAdmin = false }) {
                     display: "flex",
                     alignItems: "center",
                     gap: 14,
-                    padding: "14px 16px",
+                    padding: "16px 18px",
                     background: "var(--surface-raised)",
                     border: `1px solid var(--border)`,
                     borderLeft: `4px solid ${color}`,
@@ -476,36 +499,48 @@ export default function ConferenceTable({ operators, isAdmin = false }) {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                       {item.is_encaixe && (
-                        <span style={{ background: "var(--accent-2-soft)", color: "var(--accent-2)", padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>⚡ ENCAIXE</span>
+                        <span style={{ background: "var(--accent-2-soft)", color: "var(--accent-2)", padding: "3px 9px", borderRadius: 5, fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                          <IconZap size={11} /> ENCAIXE
+                        </span>
                       )}
                       {item.transfer_type && (
-                        <span style={{ background: "var(--accent-soft)", color: "var(--accent)", padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
-                          🔄 {item.transfer_type}{item.transfer_number && ` #${item.transfer_number}`}
+                        <span style={{ background: "var(--accent-soft)", color: "var(--accent)", padding: "3px 9px", borderRadius: 5, fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                          <IconArrowLeftRight size={11} /> {item.transfer_type}{item.transfer_number && ` #${item.transfer_number}`}
                         </span>
                       )}
                       {item.transfer_urgent && (
-                        <span style={{ background: "var(--danger-soft)", color: "var(--danger)", padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>🔴 URGENTE</span>
+                        <span style={{ background: "var(--danger-soft)", color: "var(--danger)", padding: "3px 9px", borderRadius: 5, fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                          <IconFlag size={11} /> URGENTE
+                        </span>
                       )}
                       {item.order_number && !item.transfer_type && (
-                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 16, fontWeight: 700, color: "var(--text)" }}>📦 #{item.order_number}</span>
+                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 16, fontWeight: 700, color: "var(--text)", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                          <IconPackage size={14} /> #{item.order_number}
+                        </span>
                       )}
                     </div>
                     {item.customer_name && (
-                      <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)", marginTop: 4 }}>👤 {item.customer_name}</div>
+                      <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)", marginTop: 6, display: "flex", alignItems: "center", gap: 6 }}>
+                        <IconUser size={13} /> {item.customer_name}
+                      </div>
                     )}
-                    <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
+                    <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>
                       Separado por <strong>{item.separated_by_name}</strong> às {fmtClock(item.separated_at)} · esperando há{" "}
                       <span style={{ color, fontWeight: 700 }}>{waitingLabel(seconds)}</span>
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                    <button className="btn-small btn-excel" onClick={() => handleAssume(item)} disabled={busy} style={{ padding: "10px 14px", fontSize: 13, fontWeight: 600, whiteSpace: "nowrap" }}>
+                    <button className="btn-small btn-excel" onClick={() => handleAssume(item)} disabled={busy} style={{ padding: "10px 16px", fontSize: 13, fontWeight: 600, whiteSpace: "nowrap" }}>
                       Assumir
                     </button>
                     {isAdmin && (
                       <>
-                        <button className="btn-small" style={{ padding: "10px 10px" }} onClick={() => openAdminEdit(item)} title="Editar (admin)">✏️</button>
-                        <button className="btn-small" style={{ padding: "10px 10px", color: "var(--danger)", borderColor: "var(--danger)" }} onClick={() => adminDelete(item)} title="Excluir (admin)">🗑</button>
+                        <button className="btn-small" style={{ padding: "10px 12px" }} onClick={() => openAdminEdit(item)} title="Editar">
+                          <IconEdit size={14} />
+                        </button>
+                        <button className="btn-small" style={{ padding: "10px 12px", color: "var(--danger)", borderColor: "var(--danger)" }} onClick={() => adminDelete(item)} title="Excluir">
+                          <IconTrash size={14} />
+                        </button>
                       </>
                     )}
                   </div>
@@ -517,7 +552,7 @@ export default function ConferenceTable({ operators, isAdmin = false }) {
       </div>
 
       <div className="card" style={{ marginBottom: 20 }}>
-        <div className="card-title">🔍 Em conferência ({inProgress.length})</div>
+        <div className="card-title">Em conferência ({inProgress.length})</div>
         {inProgress.length === 0 ? (
           <div className="schedule-empty" style={{ padding: "20px 0" }}>
             <div style={{ fontSize: 13 }}>Nenhum pedido em conferência agora.</div>
@@ -536,7 +571,7 @@ export default function ConferenceTable({ operators, isAdmin = false }) {
                     display: "flex",
                     alignItems: "center",
                     gap: 14,
-                    padding: "14px 16px",
+                    padding: "16px 18px",
                     background: mine ? "var(--accent-soft)" : "var(--surface-raised)",
                     border: `1px solid ${mine ? "var(--accent)" : "var(--border)"}`,
                     borderLeft: `4px solid ${mine ? "var(--accent)" : "var(--warning)"}`,
@@ -546,39 +581,55 @@ export default function ConferenceTable({ operators, isAdmin = false }) {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                       {item.is_encaixe && (
-                        <span style={{ background: "var(--accent-2-soft)", color: "var(--accent-2)", padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>⚡ ENCAIXE</span>
+                        <span style={{ background: "var(--accent-2-soft)", color: "var(--accent-2)", padding: "3px 9px", borderRadius: 5, fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                          <IconZap size={11} /> ENCAIXE
+                        </span>
                       )}
                       {item.transfer_type && (
-                        <span style={{ background: "var(--accent-soft)", color: "var(--accent)", padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700 }}>
-                          🔄 {item.transfer_type} {item.transfer_number && `#${item.transfer_number}`}
+                        <span style={{ background: "var(--accent-soft)", color: "var(--accent)", padding: "3px 9px", borderRadius: 5, fontSize: 11, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                          <IconArrowLeftRight size={11} /> {item.transfer_type} {item.transfer_number && `#${item.transfer_number}`}
                         </span>
                       )}
                       {item.order_number && !item.transfer_type && (
-                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 16, fontWeight: 700, color: "var(--text)" }}>📦 #{item.order_number}</span>
+                        <span style={{ fontFamily: "var(--font-mono)", fontSize: 16, fontWeight: 700, color: "var(--text)", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                          <IconPackage size={14} /> #{item.order_number}
+                        </span>
                       )}
                     </div>
                     {item.customer_name && (
-                      <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)", marginTop: 4 }}>👤 {item.customer_name}</div>
+                      <div style={{ fontSize: 13.5, fontWeight: 600, color: "var(--text)", marginTop: 6, display: "flex", alignItems: "center", gap: 6 }}>
+                        <IconUser size={13} /> {item.customer_name}
+                      </div>
                     )}
-                    <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
+                    <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 6 }}>
                       Separado por {item.separated_by_name} · conferindo há <strong style={{ fontFamily: "var(--font-mono)" }}>{waitingLabel(elapsed)}</strong>
                     </div>
                   </div>
                   {mine ? (
                     <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                      <button className="btn-small" style={{ background: "var(--ok-soft)", borderColor: "var(--ok)", color: "var(--ok)", fontWeight: 700, padding: "10px 14px" }} onClick={() => openFinish(item)} disabled={busy}>✓ Finalizar</button>
-                      <button className="btn-danger-outline" style={{ padding: "10px 14px" }} onClick={() => openProblem(item)} disabled={busy}>⚠ Problema</button>
+                      <button className="btn-small" style={{ background: "var(--ok-soft)", borderColor: "var(--ok)", color: "var(--ok)", fontWeight: 700, padding: "10px 16px" }} onClick={() => openFinish(item)} disabled={busy}>
+                        <IconCheck size={14} /> Finalizar
+                      </button>
+                      <button className="btn-danger-outline" style={{ padding: "10px 16px" }} onClick={() => openProblem(item)} disabled={busy}>
+                        <IconAlertTriangle size={14} /> Problema
+                      </button>
                     </div>
                   ) : (
                     <div style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 600, whiteSpace: "nowrap" }}>
-                      👤 {item.conference_started_by_name}
+                      {item.conference_started_by_name}
                     </div>
                   )}
                   {isAdmin && (
                     <div style={{ display: "flex", gap: 6, flexShrink: 0, marginLeft: 8 }}>
-                      <button className="btn-small" style={{ padding: "10px 10px" }} onClick={() => openAdminEdit(item)} title="Editar (admin)">✏️</button>
-                      <button className="btn-small" style={{ padding: "10px 10px" }} onClick={() => adminReset(item)} title="Voltar pra Aguardando">🔄</button>
-                      <button className="btn-small" style={{ padding: "10px 10px", color: "var(--danger)", borderColor: "var(--danger)" }} onClick={() => adminDelete(item)} title="Excluir (admin)">🗑</button>
+                      <button className="btn-small" style={{ padding: "10px 12px" }} onClick={() => openAdminEdit(item)} title="Editar">
+                        <IconEdit size={14} />
+                      </button>
+                      <button className="btn-small" style={{ padding: "10px 12px" }} onClick={() => adminReset(item)} title="Voltar para aguardando">
+                        <IconRotateCcw size={14} />
+                      </button>
+                      <button className="btn-small" style={{ padding: "10px 12px", color: "var(--danger)", borderColor: "var(--danger)" }} onClick={() => adminDelete(item)} title="Excluir">
+                        <IconTrash size={14} />
+                      </button>
                     </div>
                   )}
                 </div>
@@ -589,7 +640,7 @@ export default function ConferenceTable({ operators, isAdmin = false }) {
       </div>
 
       <div className="card">
-        <div className="card-title">📋 Conferidos hoje ({historyToday.length})</div>
+        <div className="card-title">Conferidos hoje ({historyToday.length})</div>
         {historyToday.length === 0 ? (
           <div className="schedule-empty" style={{ padding: "20px 0" }}>
             <div style={{ fontSize: 13 }}>Nada conferido hoje ainda.</div>
@@ -617,15 +668,23 @@ export default function ConferenceTable({ operators, isAdmin = false }) {
                     <td>{h.duration_seconds ? fmtDuration(h.duration_seconds) : "—"}</td>
                     <td>
                       {h.status === "conferido" ? (
-                        <span style={{ color: "var(--ok)", fontWeight: 600 }}>✓ OK</span>
+                        <span style={{ color: "var(--ok)", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                          <IconCheck size={12} /> OK
+                        </span>
                       ) : (
-                        <span style={{ color: "var(--danger)", fontWeight: 600 }} title={h.problem_reason || ""}>⚠ {h.problem_reason || "Problema"}</span>
+                        <span style={{ color: "var(--danger)", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 4 }} title={h.problem_reason || ""}>
+                          <IconAlertTriangle size={12} /> {h.problem_reason || "Problema"}
+                        </span>
                       )}
                     </td>
                     {isAdmin && (
                       <td style={{ whiteSpace: "nowrap" }}>
-                        <button className="btn-small" style={{ padding: "4px 8px", marginRight: 4 }} onClick={() => openAdminEdit(h)}>✏️</button>
-                        <button className="btn-small" style={{ padding: "4px 8px", color: "var(--danger)", borderColor: "var(--danger)" }} onClick={() => adminDelete(h)}>🗑</button>
+                        <button className="btn-small" style={{ padding: "4px 8px", marginRight: 4 }} onClick={() => openAdminEdit(h)}>
+                          <IconEdit size={12} />
+                        </button>
+                        <button className="btn-small" style={{ padding: "4px 8px", color: "var(--danger)", borderColor: "var(--danger)" }} onClick={() => adminDelete(h)}>
+                          <IconTrash size={12} />
+                        </button>
                       </td>
                     )}
                   </tr>
@@ -647,7 +706,9 @@ export default function ConferenceTable({ operators, isAdmin = false }) {
                   {finishModal.customer_name && ` · ${finishModal.customer_name}`}
                 </div>
               </div>
-              <button className="kiosk-modal-close" onClick={() => setFinishModal(null)}>✕</button>
+              <button className="kiosk-modal-close" onClick={() => setFinishModal(null)}>
+                <IconX size={18} />
+              </button>
             </div>
 
             <div className="kiosk-modal-body">
@@ -660,7 +721,7 @@ export default function ConferenceTable({ operators, isAdmin = false }) {
             <div className="kiosk-modal-footer">
               <button className="kiosk-btn kiosk-btn-secondary" onClick={() => setFinishModal(null)} disabled={busy}>Cancelar</button>
               <button className="kiosk-btn kiosk-btn-primary" style={{ background: "var(--ok)" }} onClick={confirmFinish} disabled={busy}>
-                {busy ? "Salvando..." : "✓ Confirmar conferência"}
+                {busy ? "Salvando..." : "Confirmar conferência"}
               </button>
             </div>
           </div>
@@ -672,12 +733,14 @@ export default function ConferenceTable({ operators, isAdmin = false }) {
           <div className="kiosk-modal" ref={modalRef} onClick={(e) => e.stopPropagation()} style={{ maxWidth: 560 }}>
             <div className="kiosk-modal-header">
               <div>
-                <div className="kiosk-modal-title" style={{ color: "var(--danger)" }}>⚠ Reportar problema</div>
+                <div className="kiosk-modal-title" style={{ color: "var(--danger)" }}>Reportar problema</div>
                 <div className="kiosk-modal-sub">
                   {problemModal.order_number ? `Pedido #${problemModal.order_number}` : problemModal.transfer_type ? `${problemModal.transfer_type} #${problemModal.transfer_number}` : "Item"}
                 </div>
               </div>
-              <button className="kiosk-modal-close" onClick={() => setProblemModal(null)}>✕</button>
+              <button className="kiosk-modal-close" onClick={() => setProblemModal(null)}>
+                <IconX size={18} />
+              </button>
             </div>
 
             <div className="kiosk-modal-body">
@@ -712,10 +775,12 @@ export default function ConferenceTable({ operators, isAdmin = false }) {
           <div className="kiosk-modal" ref={modalRef} onClick={(e) => e.stopPropagation()} style={{ maxWidth: 600 }}>
             <div className="kiosk-modal-header">
               <div>
-                <div className="kiosk-modal-title" style={{ color: "var(--danger)" }}>✏️ Editar item (admin)</div>
+                <div className="kiosk-modal-title" style={{ color: "var(--danger)" }}>Editar item (admin)</div>
                 <div className="kiosk-modal-sub">Você está editando como admin</div>
               </div>
-              <button className="kiosk-modal-close" onClick={() => setAdminEdit(null)}>✕</button>
+              <button className="kiosk-modal-close" onClick={() => setAdminEdit(null)}>
+                <IconX size={18} />
+              </button>
             </div>
 
             <div className="kiosk-modal-body">

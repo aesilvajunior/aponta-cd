@@ -1,30 +1,20 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { fetchShortages, fetchEntries, fetchOperators, fetchActivities } from "../lib/api";
-import { fmtClock, fmtDate, fmtDuration } from "../lib/format";
+import { fmtClock, fmtDate } from "../lib/format";
 import { exportShortagesCsv } from "../utils/csv";
 import { supabase } from "../supabaseClient";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
+import {
+  IconDownload,
+  IconPackage,
+  IconBuilding,
+  IconList,
+  IconX,
+} from "./Icons";
 
-// ============================================================
-// Consulta de faltas — tela focada, sem PIN de admin
-// Lista todas as faltas de produto reportadas + filtros + gráfico + export
-// ============================================================
-
-const COLORS = ["#0a3d7a", "#00a0e4", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444"];
-
-function todayISO() {
-  const d = new Date();
-  const tz = d.getTimezoneOffset() * 60000;
-  return new Date(d - tz).toISOString().slice(0, 10);
-}
-
-function periodLabel(rows) {
-  if (!rows.length) return "todo o histórico";
-  const sorted = [...rows].sort((a, b) => new Date(a.date) - new Date(b.date));
-  return `${fmtDate(sorted[0].date)} até ${fmtDate(sorted[sorted.length - 1].date)}`;
-}
+const COLORS = ["#1e3a5f", "#4a7ba7", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444"];
 
 export default function ShortagePanel() {
   const [shortages, setShortages] = useState([]);
@@ -34,7 +24,6 @@ export default function ShortagePanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  // Filtros
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [filterProduct, setFilterProduct] = useState("");
@@ -79,14 +68,12 @@ export default function ShortagePanel() {
     return () => supabase.removeChannel(ch);
   }, []);
 
-  // Mapa de entry_id -> entry
   const entryById = useMemo(() => {
     const map = {};
     entries.forEach((e) => { map[e.id] = e; });
     return map;
   }, [entries]);
 
-  // Junta cada falta com os dados do entry correspondente
   const rows = useMemo(() => {
     return shortages
       .map((s) => {
@@ -112,7 +99,6 @@ export default function ShortagePanel() {
       .filter(Boolean);
   }, [shortages, entryById]);
 
-  // Aplica filtros
   const filteredRows = useMemo(() => {
     return rows
       .filter((r) => {
@@ -132,7 +118,6 @@ export default function ShortagePanel() {
       .sort((a, b) => new Date(b.date) - new Date(a.date));
   }, [rows, dateFrom, dateTo, filterProduct, filterCustomer, filterOperator, filterEncaixe]);
 
-  // Estatísticas
   const stats = useMemo(() => {
     const totalFaltas = filteredRows.length;
     const totalPedidos = new Set(filteredRows.map((r) => r.orderNumber).filter(Boolean)).size;
@@ -141,7 +126,6 @@ export default function ShortagePanel() {
     return { totalFaltas, totalPedidos, totalQtd, totalProdutos };
   }, [filteredRows]);
 
-  // Top produtos
   const topProducts = useMemo(() => {
     const byCode = {};
     filteredRows.forEach((r) => {
@@ -152,7 +136,6 @@ export default function ShortagePanel() {
     return Object.values(byCode).sort((a, b) => b.totalQty - a.totalQty).slice(0, 10);
   }, [filteredRows]);
 
-  // Top clientes
   const topCustomers = useMemo(() => {
     const byCustomer = {};
     filteredRows.forEach((r) => {
@@ -181,28 +164,20 @@ export default function ShortagePanel() {
     exportShortagesCsv(filteredRows);
   }
 
-  // Estações únicas (pra filtro, se tiver)
-  const knownStations = useMemo(() => {
-    const set = new Set();
-    rows.forEach((r) => r.station && set.add(r.station));
-    return Array.from(set).sort();
-  }, [rows]);
-
   const hasFilters = dateFrom || dateTo || filterProduct || filterCustomer || filterOperator || filterEncaixe;
 
   return (
     <div>
-      {/* Header */}
       <div className="page-header-row" style={{ marginBottom: 22 }}>
         <div>
-          <h1 className="page-title">Consulta de faltas</h1>
+          <h1 className="page-title">Faltas</h1>
           <p className="page-sub" style={{ marginBottom: 0 }}>
             {filteredRows.length} falta{filteredRows.length !== 1 ? "s" : ""} no período · {stats.totalPedidos} pedido{stats.totalPedidos !== 1 ? "s" : ""} afetado{stats.totalPedidos !== 1 ? "s" : ""}
           </p>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button className="btn-small btn-excel" onClick={handleExport}>
-            📥 Exportar CSV
+            <IconDownload size={14} /> Exportar CSV
           </button>
         </div>
       </div>
@@ -213,7 +188,6 @@ export default function ShortagePanel() {
         </div>
       )}
 
-      {/* Cards de resumo */}
       <div className="stat-strip" style={{ marginBottom: 20 }}>
         <div className="stat-cell">
           <div className="stat-num danger">{stats.totalFaltas}</div>
@@ -233,70 +207,36 @@ export default function ShortagePanel() {
         </div>
       </div>
 
-      {/* Filtros */}
       <div className="card" style={{ marginBottom: 20 }}>
         <div className="card-title">Filtros</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <input
-            type="date"
-            className="field"
-            style={{ width: "auto" }}
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-          />
+          <input type="date" className="field" style={{ width: "auto" }} value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
           <span style={{ color: "var(--text-faint)", fontSize: 12 }}>até</span>
-          <input
-            type="date"
-            className="field"
-            style={{ width: "auto" }}
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-          />
-          <input
-            className="field"
-            style={{ width: 140, fontFamily: "var(--font-mono)" }}
-            placeholder="Código produto..."
-            value={filterProduct}
-            onChange={(e) => setFilterProduct(e.target.value)}
-          />
-          <input
-            className="field"
-            style={{ width: 180 }}
-            placeholder="Cliente..."
-            value={filterCustomer}
-            onChange={(e) => setFilterCustomer(e.target.value)}
-          />
-          <select
-            className="field"
-            style={{ width: "auto" }}
-            value={filterOperator}
-            onChange={(e) => setFilterOperator(e.target.value)}
-          >
+          <input type="date" className="field" style={{ width: "auto" }} value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+          <input className="field" style={{ width: 160, fontFamily: "var(--font-mono)" }} placeholder="Código produto" value={filterProduct} onChange={(e) => setFilterProduct(e.target.value)} />
+          <input className="field" style={{ width: 200 }} placeholder="Cliente" value={filterCustomer} onChange={(e) => setFilterCustomer(e.target.value)} />
+          <select className="field" style={{ width: "auto" }} value={filterOperator} onChange={(e) => setFilterOperator(e.target.value)}>
             <option value="">Todos operadores</option>
             {operators.map((o) => (
               <option key={o.code} value={o.code}>{o.name}</option>
             ))}
           </select>
-          <select
-            className="field"
-            style={{ width: "auto" }}
-            value={filterEncaixe}
-            onChange={(e) => setFilterEncaixe(e.target.value)}
-          >
+          <select className="field" style={{ width: "auto" }} value={filterEncaixe} onChange={(e) => setFilterEncaixe(e.target.value)}>
             <option value="">Todos (encaixe)</option>
             <option value="yes">Só encaixes</option>
             <option value="no">Sem encaixe</option>
           </select>
           {hasFilters && (
-            <button className="btn-small" onClick={clearFilters}>Limpar filtros</button>
+            <button className="btn-small" onClick={clearFilters}>
+              <IconX size={13} /> Limpar filtros
+            </button>
           )}
         </div>
       </div>
 
-      {/* Gráfico: produtos que mais faltam */}
       {topProducts.length > 0 && (
         <div className="card" style={{ marginBottom: 20 }}>
-          <div className="card-title">📦 Produtos que mais faltam</div>
+          <div className="card-title">Produtos que mais faltam</div>
           <ResponsiveContainer width="100%" height={Math.max(180, topProducts.length * 32)}>
             <BarChart data={topProducts} layout="vertical">
               <CartesianGrid stroke="var(--border)" horizontal={false} />
@@ -312,11 +252,11 @@ export default function ShortagePanel() {
                   background: "var(--surface)",
                   border: "1px solid var(--border)",
                   fontSize: 12,
-                  borderRadius: 8,
+                  borderRadius: 10,
                 }}
                 labelStyle={{ color: "var(--text)" }}
               />
-              <Bar dataKey="totalQty" name="Quantidade" radius={[0, 3, 3, 0]}>
+              <Bar dataKey="totalQty" name="Quantidade" radius={[0, 4, 4, 0]}>
                 {topProducts.map((_, i) => (
                   <Cell key={i} fill={COLORS[i % COLORS.length]} />
                 ))}
@@ -326,10 +266,9 @@ export default function ShortagePanel() {
         </div>
       )}
 
-      {/* Top clientes */}
       {topCustomers.length > 0 && (
         <div className="card" style={{ marginBottom: 20 }}>
-          <div className="card-title">🏢 Clientes mais afetados</div>
+          <div className="card-title">Clientes mais afetados</div>
           <table className="data-table">
             <thead>
               <tr>
@@ -351,15 +290,14 @@ export default function ShortagePanel() {
         </div>
       )}
 
-      {/* Lista detalhada */}
       <div className="card">
-        <div className="card-title">📋 Todas as faltas</div>
+        <div className="card-title">Todas as faltas</div>
 
         {loading ? (
-          <div className="schedule-empty">Carregando…</div>
+          <div className="schedule-empty">Carregando...</div>
         ) : filteredRows.length === 0 ? (
           <div className="schedule-empty">
-            <div className="schedule-empty-icon">📭</div>
+            <div className="schedule-empty-icon"><IconPackage size={36} /></div>
             <div>Nenhuma falta registrada {hasFilters ? "com esses filtros" : "ainda"}.</div>
           </div>
         ) : (
@@ -396,10 +334,10 @@ export default function ShortagePanel() {
                           style={{
                             background: "var(--accent-2-soft)",
                             color: "var(--accent-2)",
-                            padding: "2px 7px",
-                            borderRadius: 4,
+                            padding: "3px 8px",
+                            borderRadius: 5,
                             fontSize: 10.5,
-                            fontWeight: 600,
+                            fontWeight: 700,
                           }}
                         >
                           ENC.
@@ -418,11 +356,11 @@ export default function ShortagePanel() {
                 style={{
                   fontSize: 12,
                   color: "var(--text-faint)",
-                  marginTop: 12,
+                  marginTop: 14,
                   textAlign: "center",
                 }}
               >
-                Mostrando 300 de {filteredRows.length} faltas. Use os filtros ou exporte o CSV pra ver tudo.
+                Mostrando 300 de {filteredRows.length} faltas. Use os filtros ou exporte o CSV para ver tudo.
               </p>
             )}
           </div>
