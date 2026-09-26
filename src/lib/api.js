@@ -181,6 +181,22 @@ export async function deleteAllEntries() {
   return supabase.from("entries").delete().neq("id", "00000000-0000-0000-0000-000000000000");
 }
 
+// NOVO — admin master
+export async function updateEntry(id, fields) {
+  return supabase.from("entries").update(fields).eq("id", id).select().maybeSingle();
+}
+
+// NOVO — admin master
+export async function deleteEntry(id) {
+  return supabase.from("entries").delete().eq("id", id);
+}
+
+// NOVO — admin master (bulk)
+export async function bulkDeleteEntries(ids) {
+  if (!ids || ids.length === 0) return { error: null };
+  return supabase.from("entries").delete().in("id", ids);
+}
+
 export async function addManualEntry({
   operatorCode, operatorName, activity, startTime, endTime,
   durationSeconds, shift, isEncaixe, shortages,
@@ -309,6 +325,72 @@ export async function finishSession(session, durationSeconds, shift, note, isEnc
   return { data: entry, error: null };
 }
 
+// NOVO — admin master
+export async function updateActiveSession(operatorCode, fields) {
+  return supabase
+    .from("active_sessions")
+    .update(fields)
+    .eq("operator_code", operatorCode)
+    .select()
+    .maybeSingle();
+}
+
+// NOVO — admin master
+// Força finalização: salva no histórico como se o operador tivesse finalizado agora
+export async function forceFinishActiveSession(session, note = "") {
+  const now = new Date();
+  const duration = Math.round((now.getTime() - new Date(session.start_time).getTime()) / 1000);
+  const shift = getShiftFor(session.start_time);
+
+  const entryPayload = {
+    operator_code: session.operator_code,
+    operator_name: session.operator_name,
+    activity: session.activity,
+    start_time: session.start_time,
+    end_time: now.toISOString(),
+    duration_seconds: duration,
+    shift,
+    order_number: session.order_number || null,
+    customer_name: session.customer_name || null,
+    transfer_type: session.transfer_type || null,
+    transfer_urgent: session.transfer_urgent ?? null,
+    transfer_number: session.transfer_number || null,
+    vehicle: session.vehicle || null,
+    plate: session.plate || null,
+    supplier_name: session.supplier_name || null,
+    invoice_number: session.invoice_number || null,
+    station: session.station || null,
+    is_encaixe: session.is_encaixe || false,
+    manual_entry: false,
+    note: note || "[finalizada pelo admin]",
+  };
+
+  const { data: entry, error } = await supabase
+    .from("entries")
+    .insert(entryPayload)
+    .select()
+    .maybeSingle();
+
+  if (error) return { error };
+
+  await supabase.from("active_sessions").delete().eq("operator_code", session.operator_code);
+
+  return { data: entry, error: null };
+}
+
+// NOVO — admin master
+export async function cancelActiveSession(operatorCode) {
+  return supabase.from("active_sessions").delete().eq("operator_code", operatorCode);
+}
+
+// Helper interno de turno (espelho do lib/format.js)
+function getShiftFor(iso) {
+  const d = new Date(iso);
+  const h = d.getHours();
+  if (h >= 6 && h < 14) return "Manhã";
+  return "Tarde";
+}
+
 // ============================================================
 // SHORTAGES
 // ============================================================
@@ -333,6 +415,21 @@ export async function saveShortages(entryId, shortages) {
 
 export async function deleteAllShortages() {
   return supabase.from("entry_shortages").delete().neq("id", 0);
+}
+
+// NOVO — admin master
+export async function updateShortage(id, fields) {
+  return supabase.from("entry_shortages").update(fields).eq("id", id).select().maybeSingle();
+}
+
+// NOVO — admin master
+export async function deleteShortage(id) {
+  return supabase.from("entry_shortages").delete().eq("id", id);
+}
+
+// NOVO — admin master
+export async function deleteShortagesByEntry(entryId) {
+  return supabase.from("entry_shortages").delete().eq("entry_id", entryId);
 }
 
 // ============================================================
@@ -365,6 +462,16 @@ export async function logSeparationError({
 
 export async function deleteAllSeparationErrors() {
   return supabase.from("separation_errors").delete().neq("id", 0);
+}
+
+// NOVO — admin master
+export async function updateSeparationError(id, fields) {
+  return supabase.from("separation_errors").update(fields).eq("id", id).select().maybeSingle();
+}
+
+// NOVO — admin master
+export async function deleteSeparationError(id) {
+  return supabase.from("separation_errors").delete().eq("id", id);
 }
 
 // ============================================================
@@ -552,8 +659,6 @@ export async function demoteLeaderToMember(leaderCode) {
 
   if (delErr) return { error: delErr };
 
-  // Rebaixa: só remove da lista de líderes. Não recria como vendedor
-  // (o admin pode recadastrar manualmente se quiser)
   return { error: null };
 }
 
@@ -678,4 +783,40 @@ async function getConferenceStartedAt(id) {
     .eq("id", id)
     .maybeSingle();
   return data?.conference_started_at || null;
+}
+
+// NOVO — admin master
+export async function updateConferenceItem(id, fields) {
+  return supabase
+    .from("conference_queue")
+    .update(fields)
+    .eq("id", id)
+    .select()
+    .maybeSingle();
+}
+
+// NOVO — admin master
+export async function deleteConferenceItem(id) {
+  return supabase.from("conference_queue").delete().eq("id", id);
+}
+
+// NOVO — admin master
+// Volta o item pra "aguardando" e limpa dados de conferência
+export async function resetConferenceItem(id) {
+  return supabase
+    .from("conference_queue")
+    .update({
+      status: "aguardando",
+      conference_started_at: null,
+      conference_started_by_code: null,
+      conference_started_by_name: null,
+      conference_finished_at: null,
+      conference_finished_by_code: null,
+      conference_finished_by_name: null,
+      duration_seconds: null,
+      problem_reason: null,
+    })
+    .eq("id", id)
+    .select()
+    .maybeSingle();
 }

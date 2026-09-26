@@ -29,7 +29,6 @@ import ScheduleManager from "./components/ScheduleManager";
 import SalesTeamQuery from "./components/SalesTeamQuery";
 import SalesTeamManager from "./components/SalesTeamManager";
 import ShortagePanel from "./components/ShortagePanel";
-import ConferenceTable from "./components/ConferenceTable";
 import LoginScreen from "./components/LoginScreen";
 import logo from "./assets/logo.png";
 import {
@@ -276,11 +275,6 @@ export default function App() {
           )}
           {tab === "schedules" && (
             <ScheduleManager operators={operators} isAdmin={isAdmin} />
-          )}
-
-          {/* Mesa de conferência — livre pra qualquer um logado (mas só conferentes logam nela) */}
-          {tab === "conference" && (
-            <ConferenceTable operators={operators} />
           )}
 
           {/* Consulta de faltas — livre pra qualquer um logado */}
