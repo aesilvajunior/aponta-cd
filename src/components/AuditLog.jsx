@@ -1,16 +1,21 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { fetchAuditLog, deleteAllAuditLog } from "../lib/api";
 import { supabase } from "../supabaseClient";
-import { fmtClock, fmtDate } from "../lib/format";
+import {
+  IconPlus,
+  IconEdit,
+  IconX,
+  IconRefresh,
+  IconTrash,
+  IconList,
+} from "./Icons";
 
-// Ações possíveis (com ícone e cor)
 const ACTIONS = {
-  criar: { icon: "＋", label: "criou", className: "criar" },
-  editar: { icon: "✎", label: "editou", className: "editar" },
-  remover: { icon: "✕", label: "removeu", className: "remover" },
+  criar: { Icon: IconPlus, label: "criou", className: "criar" },
+  editar: { Icon: IconEdit, label: "editou", className: "editar" },
+  remover: { Icon: IconX, label: "removeu", className: "remover" },
 };
 
-// Entidades (com nome amigável)
 const ENTITIES = {
   operator: "Operador",
   activity: "Atividade",
@@ -21,6 +26,7 @@ const ENTITIES = {
   separation_error: "Erro de separação",
   shortage: "Falta",
   session: "Sessão",
+  conference: "Conferência",
 };
 
 function fmtDateTimeFull(iso) {
@@ -30,7 +36,6 @@ function fmtDateTimeFull(iso) {
   return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
-// Formata um objeto JSON como string legível
 function prettyJson(obj) {
   if (!obj) return null;
   try {
@@ -80,7 +85,6 @@ export default function AuditLog() {
     };
   }, []);
 
-  // Lista de operadores que aparecem no log (pra filtro)
   const knownActors = useMemo(() => {
     const map = new Map();
     log.forEach((item) => {
@@ -129,16 +133,18 @@ export default function AuditLog() {
     <div>
       <div className="page-header-row" style={{ marginBottom: 22 }}>
         <div>
-          <h1 className="page-title">Histórico de alterações</h1>
+          <h1 className="page-title">Auditoria</h1>
           <p className="page-sub" style={{ marginBottom: 0 }}>
             Todas as alterações feitas em operadores, atividades, veículos, tipos de erro e configurações.
             {filtered.length !== log.length && ` Mostrando ${filtered.length} de ${log.length}.`}
           </p>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button className="btn-small" onClick={load}>Atualizar</button>
+          <button className="btn-small" onClick={load}>
+            <IconRefresh size={14} /> Atualizar
+          </button>
           <button className="btn-danger-outline" onClick={() => setConfirmingReset((v) => !v)}>
-            Zerar histórico
+            <IconTrash size={14} /> Zerar histórico
           </button>
         </div>
       </div>
@@ -148,7 +154,7 @@ export default function AuditLog() {
           <strong style={{ color: "var(--danger)", fontSize: 14 }}>
             Isso apaga todo o histórico de alterações, permanentemente.
           </strong>
-          <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "6px 0 12px 0" }}>
+          <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "8px 0 14px 0" }}>
             As ações em si <strong>não</strong> são desfeitas — só o registro do que foi feito. Digite <strong>ZERAR</strong> abaixo.
           </p>
           <div style={{ display: "flex", gap: 8 }}>
@@ -158,6 +164,7 @@ export default function AuditLog() {
               placeholder="Digite ZERAR"
               value={resetPhrase}
               onChange={(e) => setResetPhrase(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && confirmReset()}
             />
             <button
               className="btn-danger-outline"
@@ -173,7 +180,6 @@ export default function AuditLog() {
         </div>
       )}
 
-      {/* Filtros */}
       <div className="card" style={{ marginBottom: 20 }}>
         <div className="audit-filters">
           <select className="field" style={{ width: "auto" }} value={filterEntity} onChange={(e) => setFilterEntity(e.target.value)}>
@@ -204,41 +210,45 @@ export default function AuditLog() {
           <span style={{ color: "var(--text-faint)", fontSize: 12 }}>até</span>
           <input type="date" className="field" style={{ width: "auto" }} value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
 
-          {hasFilters && <button className="btn-small" onClick={clearFilters}>Limpar filtros</button>}
+          {hasFilters && (
+            <button className="btn-small" onClick={clearFilters}>
+              <IconX size={13} /> Limpar filtros
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Lista */}
       <div className="card">
         {loading ? (
           <div className="audit-empty">
-            <div className="loading-spinner" style={{ margin: "0 auto 12px auto" }} />
-            <div>Carregando histórico…</div>
+            <div className="loading-spinner" style={{ margin: "0 auto 14px auto" }} />
+            <div>Carregando histórico...</div>
           </div>
         ) : filtered.length === 0 ? (
           <div className="audit-empty">
-            <div className="audit-empty-icon">📭</div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text)", marginBottom: 4 }}>
+            <div className="audit-empty-icon"><IconList size={40} /></div>
+            <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text)", marginBottom: 6 }}>
               {log.length === 0 ? "Nenhuma alteração registrada ainda" : "Nenhum resultado com esses filtros"}
             </div>
             <div style={{ fontSize: 13 }}>
               {log.length === 0
                 ? "Quando alguém criar, editar ou remover algo, vai aparecer aqui."
-                : "Tenta limpar os filtros pra ver tudo."}
+                : "Tente limpar os filtros para ver tudo."}
             </div>
           </div>
         ) : (
           <div className="audit-timeline">
             {filtered.map((item) => {
-              const action = ACTIONS[item.action] || { icon: "•", label: item.action, className: "" };
+              const action = ACTIONS[item.action] || { Icon: IconDot, label: item.action, className: "" };
               const entityLabel = ENTITIES[item.entity] || item.entity;
               const before = prettyJson(item.before_data);
               const after = prettyJson(item.after_data);
+              const ActionIcon = action.Icon;
 
               return (
                 <div key={item.id} className="audit-item">
                   <div className={`audit-icon ${action.className}`}>
-                    {action.icon}
+                    <ActionIcon size={15} />
                   </div>
 
                   <div className="audit-content">
@@ -261,7 +271,7 @@ export default function AuditLog() {
                     {(before || after) && item.action === "editar" && (
                       <div className="audit-diff">
                         {before && <span className="audit-diff-before">{before}</span>}
-                        {before && after && <span style={{ margin: "0 8px" }}>→</span>}
+                        {before && after && <span style={{ margin: "0 10px" }}>→</span>}
                         {after && <span className="audit-diff-after">{after}</span>}
                       </div>
                     )}

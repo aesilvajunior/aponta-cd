@@ -19,6 +19,20 @@ import {
   updateAlertThreshold,
   logAudit,
 } from "../lib/api";
+import {
+  IconSettings,
+  IconUsers,
+  IconActivity,
+  IconAlertTriangle,
+  IconTruck,
+  IconLock,
+  IconClock,
+  IconEdit,
+  IconTrash,
+  IconPlus,
+  IconChevronDown,
+  IconChevronRight,
+} from "./Icons";
 
 function minutesToSeconds(minStr) {
   const n = parseInt(minStr, 10);
@@ -170,8 +184,6 @@ export default function TeamManager({
     await refreshConfig();
   }
 
-  // ---------- Operadores ----------
-
   async function addOperator() {
     const name = newOpName.trim();
     if (!name) return setFormError("Digite o nome do operador.");
@@ -303,8 +315,6 @@ export default function TeamManager({
       return res;
     }, () => setEditingCode(null));
   }
-
-  // ---------- Atividades ----------
 
   async function addActivity() {
     const name = newActivity.trim();
@@ -438,8 +448,6 @@ export default function TeamManager({
     await runAction(() => swapActivityOrder(current.name, current.sort_order, target.name, target.sort_order));
   }
 
-  // ---------- Tipos de erro ----------
-
   async function addErrorType() {
     const name = newErrorType.trim();
     if (!name) return;
@@ -508,8 +516,6 @@ export default function TeamManager({
       return res;
     }, () => setEditingErrorType(null));
   }
-
-  // ---------- Veículos ----------
 
   async function addVehicle() {
     const plate = newVehiclePlate.trim().toUpperCase();
@@ -589,8 +595,6 @@ export default function TeamManager({
     }, () => setEditingVehiclePlate(null));
   }
 
-  // ---------- PIN ----------
-
   async function changePin() {
     const pin = newPin.trim();
     if (pin.length < 4) return setFormError("O PIN precisa ter pelo menos 4 dígitos.");
@@ -612,21 +616,23 @@ export default function TeamManager({
 
   return (
     <div>
-      <h1 className="page-title">Equipe e atividades</h1>
+      <h1 className="page-title">Cadastros</h1>
       <p className="page-sub">
         As atividades mudam mês a mês pelo rodízio. Marque quem pode agendar recebimento e/ou conferir pedidos.
       </p>
 
       {formError && (
-        <div className="confirm-box" style={{ marginBottom: 18, maxWidth: 560, padding: "10px 14px" }}>
+        <div className="confirm-box" style={{ marginBottom: 20, maxWidth: 600, padding: "12px 16px" }}>
           <span style={{ color: "var(--danger)", fontSize: 13 }}>{formError}</span>
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20, maxWidth: 720 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20, maxWidth: 780 }}>
         <div className="card">
-          <div className="card-title">PIN de administrador</div>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <IconLock size={16} /> PIN de administrador
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
             <input
               className="field"
               style={{ flex: 1 }}
@@ -639,18 +645,20 @@ export default function TeamManager({
               {busy ? "..." : "Alterar"}
             </button>
           </div>
-          <p style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: 8, marginBottom: 0 }}>PIN atual: {adminPin}</p>
+          <p style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 10, marginBottom: 0 }}>PIN atual: {adminPin}</p>
         </div>
 
         <div className="card">
-          <div className="card-title">⏱ Tempo mínimo para alerta</div>
-          <p style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: -8, marginBottom: 10 }}>
+          <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <IconClock size={16} /> Tempo mínimo para alerta
+          </div>
+          <p style={{ fontSize: 12, color: "var(--text-faint)", marginTop: -6, marginBottom: 12 }}>
             Atividades com meta própria usam a meta. As outras usam esse tempo.
           </p>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
             <input
               className="field"
-              style={{ width: 90, fontFamily: "var(--font-mono)", textAlign: "center" }}
+              style={{ width: 100, fontFamily: "var(--font-mono)", textAlign: "center" }}
               type="number"
               min="1"
               max="480"
@@ -667,17 +675,20 @@ export default function TeamManager({
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr", gap: 20, marginBottom: 20 }}>
-        {/* OPERADORES */}
         <div className="card">
-          <div className="card-title">Operadores</div>
-          <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
-            <input className="field" style={{ flex: 1, minWidth: 100 }} placeholder="Nome" value={newOpName} onChange={(e) => setNewOpName(e.target.value)} disabled={busy} />
-            <input className="field" style={{ width: 120 }} placeholder="Função" value={newOpRole} onChange={(e) => setNewOpRole(e.target.value)} disabled={busy} />
-            <input className="field" style={{ width: 80 }} placeholder="Cód. (opc.)" value={newOpCode} onChange={(e) => setNewOpCode(e.target.value.replace(/\D/g, ""))} disabled={busy} />
-            <button className="btn-small" onClick={addOperator} disabled={busy}>Adicionar</button>
+          <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <IconUsers size={16} /> Operadores
           </div>
-          <div style={{ display: "flex", gap: 14, marginBottom: 12, flexWrap: "wrap" }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-muted)" }}>
+          <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+            <input className="field" style={{ flex: 1, minWidth: 100 }} placeholder="Nome" value={newOpName} onChange={(e) => setNewOpName(e.target.value)} disabled={busy} />
+            <input className="field" style={{ width: 130 }} placeholder="Função" value={newOpRole} onChange={(e) => setNewOpRole(e.target.value)} disabled={busy} />
+            <input className="field" style={{ width: 90 }} placeholder="Cód. (opc.)" value={newOpCode} onChange={(e) => setNewOpCode(e.target.value.replace(/\D/g, ""))} disabled={busy} />
+            <button className="btn-small" onClick={addOperator} disabled={busy} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <IconPlus size={14} /> Adicionar
+            </button>
+          </div>
+          <div style={{ display: "flex", gap: 16, marginBottom: 14, flexWrap: "wrap" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--text-muted)" }}>
               <input
                 type="checkbox"
                 checked={newOpCanSchedule}
@@ -686,7 +697,7 @@ export default function TeamManager({
               />
               Pode agendar recebimento
             </label>
-            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-muted)" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--text-muted)" }}>
               <input
                 type="checkbox"
                 checked={newOpCanConference}
@@ -696,245 +707,268 @@ export default function TeamManager({
               Pode conferir
             </label>
           </div>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Cód.</th>
-                <th>Nome</th>
-                <th>Função</th>
-                <th title="Pode agendar recebimento">📅</th>
-                <th title="Pode conferir">✅</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {operators.map((o) => {
-                const isEditing = editingCode === o.code;
-                return (
-                  <tr key={o.code}>
-                    {isEditing ? (
-                      <>
-                        <td><input className="field" style={{ width: 48, padding: "4px 6px" }} value={editValues.code} onChange={(e) => setEditValues((v) => ({ ...v, code: e.target.value.replace(/\D/g, "") }))} disabled={busy} /></td>
-                        <td><input className="field" style={{ width: "100%", padding: "4px 6px" }} value={editValues.name} onChange={(e) => setEditValues((v) => ({ ...v, name: e.target.value }))} disabled={busy} /></td>
-                        <td><input className="field" style={{ width: "100%", padding: "4px 6px" }} value={editValues.role} onChange={(e) => setEditValues((v) => ({ ...v, role: e.target.value }))} disabled={busy} /></td>
-                        <td>
-                          <input
-                            type="checkbox"
-                            checked={editValues.canScheduleDelivery}
-                            onChange={(e) => setEditValues((v) => ({ ...v, canScheduleDelivery: e.target.checked }))}
-                            disabled={busy}
-                            title="Pode agendar recebimento"
-                          />
-                        </td>
-                        <td>
-                          <input
-                            type="checkbox"
-                            checked={editValues.canConference}
-                            onChange={(e) => setEditValues((v) => ({ ...v, canConference: e.target.checked }))}
-                            disabled={busy}
-                            title="Pode conferir"
-                          />
-                        </td>
-                        <td style={{ whiteSpace: "nowrap" }}>
-                          <button className="btn-small" style={{ padding: "4px 8px", marginRight: 4 }} onClick={() => saveEdit(o.code)} disabled={busy}>Salvar</button>
-                          <button className="btn-small" style={{ padding: "4px 8px" }} onClick={cancelEdit} disabled={busy}>Cancelar</button>
-                        </td>
-                      </>
-                    ) : (
-                      <>
-                        <td>{o.code}</td>
-                        <td style={{ fontFamily: "var(--font-display)" }}>{o.name}</td>
-                        <td>{o.role}</td>
-                        <td style={{ textAlign: "center" }}>
-                          {o.can_schedule_delivery ? (
-                            <span title="Pode agendar recebimento" style={{ color: "var(--ok)", fontWeight: 700 }}>✓</span>
-                          ) : (
-                            <span style={{ color: "var(--text-faint)" }}>—</span>
-                          )}
-                        </td>
-                        <td style={{ textAlign: "center" }}>
-                          {o.can_conference ? (
-                            <span title="Pode conferir" style={{ color: "var(--ok)", fontWeight: 700 }}>✓</span>
-                          ) : (
-                            <span style={{ color: "var(--text-faint)" }}>—</span>
-                          )}
-                        </td>
-                        <td style={{ whiteSpace: "nowrap" }}>
-                          <button className="btn-small" style={{ padding: "4px 8px", marginRight: 4 }} onClick={() => startEdit(o)} disabled={busy}>Editar</button>
-                          <button className="btn-small" style={{ padding: "4px 8px" }} onClick={() => removeOperator(o.code)} disabled={busy}>Remover</button>
-                        </td>
-                      </>
-                    )}
-                  </tr>
-                );
-              })}
-              {operators.length === 0 && <tr><td colSpan={6}>Nenhum operador cadastrado.</td></tr>}
-            </tbody>
-          </table>
+          <div style={{ overflowX: "auto" }}>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Cód.</th>
+                  <th>Nome</th>
+                  <th>Função</th>
+                  <th title="Pode agendar recebimento">Agenda</th>
+                  <th title="Pode conferir">Conf.</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {operators.map((o) => {
+                  const isEditing = editingCode === o.code;
+                  return (
+                    <tr key={o.code}>
+                      {isEditing ? (
+                        <>
+                          <td><input className="field" style={{ width: 55, padding: "5px 8px" }} value={editValues.code} onChange={(e) => setEditValues((v) => ({ ...v, code: e.target.value.replace(/\D/g, "") }))} disabled={busy} /></td>
+                          <td><input className="field" style={{ width: "100%", padding: "5px 8px" }} value={editValues.name} onChange={(e) => setEditValues((v) => ({ ...v, name: e.target.value }))} disabled={busy} /></td>
+                          <td><input className="field" style={{ width: "100%", padding: "5px 8px" }} value={editValues.role} onChange={(e) => setEditValues((v) => ({ ...v, role: e.target.value }))} disabled={busy} /></td>
+                          <td>
+                            <input
+                              type="checkbox"
+                              checked={editValues.canScheduleDelivery}
+                              onChange={(e) => setEditValues((v) => ({ ...v, canScheduleDelivery: e.target.checked }))}
+                              disabled={busy}
+                            />
+                          </td>
+                          <td>
+                            <input
+                              type="checkbox"
+                              checked={editValues.canConference}
+                              onChange={(e) => setEditValues((v) => ({ ...v, canConference: e.target.checked }))}
+                              disabled={busy}
+                            />
+                          </td>
+                          <td style={{ whiteSpace: "nowrap" }}>
+                            <button className="btn-small" style={{ padding: "5px 10px", marginRight: 4 }} onClick={() => saveEdit(o.code)} disabled={busy}>Salvar</button>
+                            <button className="btn-small" style={{ padding: "5px 10px" }} onClick={cancelEdit} disabled={busy}>Cancelar</button>
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          <td>{o.code}</td>
+                          <td style={{ fontFamily: "var(--font-display)" }}>{o.name}</td>
+                          <td>{o.role}</td>
+                          <td style={{ textAlign: "center" }}>
+                            {o.can_schedule_delivery ? (
+                              <span title="Pode agendar recebimento" style={{ color: "var(--ok)", fontWeight: 700 }}>✓</span>
+                            ) : (
+                              <span style={{ color: "var(--text-faint)" }}>—</span>
+                            )}
+                          </td>
+                          <td style={{ textAlign: "center" }}>
+                            {o.can_conference ? (
+                              <span title="Pode conferir" style={{ color: "var(--ok)", fontWeight: 700 }}>✓</span>
+                            ) : (
+                              <span style={{ color: "var(--text-faint)" }}>—</span>
+                            )}
+                          </td>
+                          <td style={{ whiteSpace: "nowrap" }}>
+                            <button className="btn-small" style={{ padding: "5px 10px", marginRight: 4, display: "inline-flex", alignItems: "center", gap: 4 }} onClick={() => startEdit(o)} disabled={busy}>
+                              <IconEdit size={12} /> Editar
+                            </button>
+                            <button className="btn-small" style={{ padding: "5px 10px", display: "inline-flex", alignItems: "center", gap: 4 }} onClick={() => removeOperator(o.code)} disabled={busy}>
+                              <IconTrash size={12} /> Remover
+                            </button>
+                          </td>
+                        </>
+                      )}
+                    </tr>
+                  );
+                })}
+                {operators.length === 0 && <tr><td colSpan={6} style={{ color: "var(--text-muted)" }}>Nenhum operador cadastrado.</td></tr>}
+              </tbody>
+            </table>
+          </div>
         </div>
 
-        {/* ATIVIDADES */}
         <div className="card">
-          <div className="card-title">Atividades do mês</div>
-          <p style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: -8, marginBottom: 12 }}>
-            A ordem aqui é a mesma que aparece no quiosque — use ↑/↓ para reorganizar.
+          <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <IconActivity size={16} /> Atividades do mês
+          </div>
+          <p style={{ fontSize: 12, color: "var(--text-faint)", marginTop: -6, marginBottom: 12 }}>
+            A ordem aqui é a mesma que aparece no quiosque.
           </p>
           <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
             <input className="field" style={{ flex: 1, minWidth: 100 }} placeholder="Nova atividade" value={newActivity} onChange={(e) => setNewActivity(e.target.value)} disabled={busy} />
-            <input className="field" style={{ width: 84 }} placeholder="Meta (min)" value={newActivityTarget} onChange={(e) => setNewActivityTarget(e.target.value.replace(/\D/g, ""))} disabled={busy} />
-            <button className="btn-small" onClick={addActivity} disabled={busy}>Adicionar</button>
+            <input className="field" style={{ width: 90 }} placeholder="Meta (min)" value={newActivityTarget} onChange={(e) => setNewActivityTarget(e.target.value.replace(/\D/g, ""))} disabled={busy} />
+            <button className="btn-small" onClick={addActivity} disabled={busy} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <IconPlus size={14} /> Adicionar
+            </button>
           </div>
-          <table className="data-table">
-            <thead><tr><th></th><th>Atividade</th><th>Meta</th><th></th></tr></thead>
-            <tbody>
-              {activities.map((a, index) => {
-                const isEditing = editingActivity === a.name;
-                return (
-                  <tr key={a.name}>
-                    {isEditing ? (
-                      <>
-                        <td></td>
-                        <td>
-                          <input className="field" style={{ width: "100%", padding: "4px 6px", marginBottom: 6 }} value={editActivityValues.name} onChange={(e) => setEditActivityValues((v) => ({ ...v, name: e.target.value }))} disabled={busy} />
-                          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: "var(--text-muted)", marginBottom: 6 }}>
-                            <input
-                              type="checkbox"
-                              checked={editActivityValues.requiresOrderInfo}
-                              onChange={(e) => setEditActivityValues((v) => ({ ...v, requiresOrderInfo: e.target.checked }))}
-                              disabled={busy}
-                            />
-                            Pede informação extra ao iniciar
-                          </label>
-                          {editActivityValues.requiresOrderInfo && (
+          <div style={{ overflowX: "auto" }}>
+            <table className="data-table">
+              <thead><tr><th></th><th>Atividade</th><th>Meta</th><th></th></tr></thead>
+              <tbody>
+                {activities.map((a, index) => {
+                  const isEditing = editingActivity === a.name;
+                  return (
+                    <tr key={a.name}>
+                      {isEditing ? (
+                        <>
+                          <td></td>
+                          <td>
+                            <input className="field" style={{ width: "100%", padding: "5px 8px", marginBottom: 8 }} value={editActivityValues.name} onChange={(e) => setEditActivityValues((v) => ({ ...v, name: e.target.value }))} disabled={busy} />
+                            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>
+                              <input
+                                type="checkbox"
+                                checked={editActivityValues.requiresOrderInfo}
+                                onChange={(e) => setEditActivityValues((v) => ({ ...v, requiresOrderInfo: e.target.checked }))}
+                                disabled={busy}
+                              />
+                              Pede informação extra ao iniciar
+                            </label>
+                            {editActivityValues.requiresOrderInfo && (
+                              <select
+                                className="field"
+                                style={{ width: "100%", fontSize: 12, padding: "5px 8px", marginBottom: 8 }}
+                                value={editActivityValues.extraFieldType}
+                                onChange={(e) => setEditActivityValues((v) => ({ ...v, extraFieldType: e.target.value }))}
+                                disabled={busy}
+                              >
+                                <option value="pedido">Pedido / Encaixe / Transferência</option>
+                                <option value="veiculo">Veículo + Placa (frota)</option>
+                                <option value="fornecedor">Fornecedor + Nota Fiscal</option>
+                              </select>
+                            )}
+                            <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginBottom: 6, fontWeight: 600 }}>
+                              Pergunta sobre falta ao finalizar:
+                            </div>
                             <select
                               className="field"
-                              style={{ width: "100%", fontSize: 11.5, padding: "4px 6px", marginBottom: 6 }}
-                              value={editActivityValues.extraFieldType}
-                              onChange={(e) => setEditActivityValues((v) => ({ ...v, extraFieldType: e.target.value }))}
+                              style={{ width: "100%", fontSize: 12, padding: "5px 8px" }}
+                              value={editActivityValues.asksShortage === null ? "auto" : editActivityValues.asksShortage ? "yes" : "no"}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                setEditActivityValues((prev) => ({
+                                  ...prev,
+                                  asksShortage: v === "auto" ? null : v === "yes",
+                                }));
+                              }}
                               disabled={busy}
                             >
-                              <option value="pedido">Pedido / Encaixe / Transferência</option>
-                              <option value="veiculo">Veículo + Placa (frota)</option>
-                              <option value="fornecedor">Fornecedor + Nota Fiscal</option>
+                              <option value="auto">Automático (se pediu pedido/cliente)</option>
+                              <option value="yes">Sempre pergunta</option>
+                              <option value="no">Nunca pergunta</option>
                             </select>
-                          )}
-                          <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4, fontWeight: 600 }}>
-                            Pergunta sobre falta ao finalizar:
-                          </div>
-                          <select
-                            className="field"
-                            style={{ width: "100%", fontSize: 11.5, padding: "4px 6px" }}
-                            value={editActivityValues.asksShortage === null ? "auto" : editActivityValues.asksShortage ? "yes" : "no"}
-                            onChange={(e) => {
-                              const v = e.target.value;
-                              setEditActivityValues((prev) => ({
-                                ...prev,
-                                asksShortage: v === "auto" ? null : v === "yes",
-                              }));
-                            }}
-                            disabled={busy}
-                          >
-                            <option value="auto">Automático (se pediu pedido/cliente)</option>
-                            <option value="yes">Sempre pergunta</option>
-                            <option value="no">Nunca pergunta</option>
-                          </select>
-                        </td>
-                        <td><input className="field" style={{ width: 56, padding: "4px 6px" }} placeholder="min" value={editActivityValues.target} onChange={(e) => setEditActivityValues((v) => ({ ...v, target: e.target.value.replace(/\D/g, "") }))} disabled={busy} /></td>
-                        <td style={{ whiteSpace: "nowrap" }}>
-                          <button className="btn-small" style={{ padding: "4px 8px", marginRight: 4 }} onClick={() => saveEditActivity(a)} disabled={busy}>Salvar</button>
-                          <button className="btn-small" style={{ padding: "4px 8px" }} onClick={cancelEditActivity} disabled={busy}>Cancelar</button>
-                        </td>
-                      </>
-                    ) : (
-                      <>
-                        <td style={{ whiteSpace: "nowrap" }}>
-                          <button className="btn-small" style={{ padding: "2px 6px", marginRight: 2 }} onClick={() => moveActivity(index, -1)} disabled={busy || index === 0}>↑</button>
-                          <button className="btn-small" style={{ padding: "2px 6px" }} onClick={() => moveActivity(index, 1)} disabled={busy || index === activities.length - 1}>↓</button>
-                        </td>
-                        <td>
-                          {a.name}
-                          {a.requires_order_info && (
-                            <span style={{ marginLeft: 6, fontSize: 10.5, color: "var(--accent)" }}>
-                              {a.extra_field_type === "veiculo" ? "🚚" : a.extra_field_type === "fornecedor" ? "📥" : "📦"}
-                            </span>
-                          )}
-                          {a.asks_shortage === true && (
-                            <span style={{ marginLeft: 6, fontSize: 10.5, color: "var(--danger)" }} title="Sempre pergunta sobre falta">
-                              ⚠
-                            </span>
-                          )}
-                          {a.asks_shortage === false && (
-                            <span style={{ marginLeft: 6, fontSize: 10.5, color: "var(--text-faint)" }} title="Nunca pergunta sobre falta">
-                              🚫
-                            </span>
-                          )}
-                        </td>
-                        <td style={{ color: "var(--text-muted)" }}>{a.target_seconds ? `${secondsToMinutesLabel(a.target_seconds)} min` : "—"}</td>
-                        <td style={{ whiteSpace: "nowrap" }}>
-                          <button className="btn-small" style={{ padding: "4px 8px", marginRight: 4 }} onClick={() => startEditActivity(a)} disabled={busy}>Editar</button>
-                          <button className="btn-small" style={{ padding: "4px 8px" }} onClick={() => removeActivity(a.name)} disabled={busy}>Remover</button>
-                        </td>
-                      </>
-                    )}
-                  </tr>
-                );
-              })}
-              {activities.length === 0 && <tr><td colSpan={4}>Nenhuma atividade cadastrada.</td></tr>}
-            </tbody>
-          </table>
+                          </td>
+                          <td><input className="field" style={{ width: 60, padding: "5px 8px" }} placeholder="min" value={editActivityValues.target} onChange={(e) => setEditActivityValues((v) => ({ ...v, target: e.target.value.replace(/\D/g, "") }))} disabled={busy} /></td>
+                          <td style={{ whiteSpace: "nowrap" }}>
+                            <button className="btn-small" style={{ padding: "5px 10px", marginRight: 4 }} onClick={() => saveEditActivity(a)} disabled={busy}>Salvar</button>
+                            <button className="btn-small" style={{ padding: "5px 10px" }} onClick={cancelEditActivity} disabled={busy}>Cancelar</button>
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          <td style={{ whiteSpace: "nowrap" }}>
+                            <button className="btn-small" style={{ padding: "2px 7px", marginRight: 3 }} onClick={() => moveActivity(index, -1)} disabled={busy || index === 0}>↑</button>
+                            <button className="btn-small" style={{ padding: "2px 7px" }} onClick={() => moveActivity(index, 1)} disabled={busy || index === activities.length - 1}>↓</button>
+                          </td>
+                          <td>
+                            {a.name}
+                            {a.requires_order_info && (
+                              <span style={{ marginLeft: 6, fontSize: 10.5, color: "var(--accent)" }}>
+                                {a.extra_field_type === "veiculo" ? "veículo" : a.extra_field_type === "fornecedor" ? "fornecedor" : "pedido"}
+                              </span>
+                            )}
+                            {a.asks_shortage === true && (
+                              <span style={{ marginLeft: 6, fontSize: 10.5, color: "var(--danger)" }} title="Sempre pergunta sobre falta">
+                                sempre
+                              </span>
+                            )}
+                            {a.asks_shortage === false && (
+                              <span style={{ marginLeft: 6, fontSize: 10.5, color: "var(--text-faint)" }} title="Nunca pergunta sobre falta">
+                                nunca
+                              </span>
+                            )}
+                          </td>
+                          <td style={{ color: "var(--text-muted)" }}>{a.target_seconds ? `${secondsToMinutesLabel(a.target_seconds)} min` : "—"}</td>
+                          <td style={{ whiteSpace: "nowrap" }}>
+                            <button className="btn-small" style={{ padding: "5px 10px", marginRight: 4, display: "inline-flex", alignItems: "center", gap: 4 }} onClick={() => startEditActivity(a)} disabled={busy}>
+                              <IconEdit size={12} /> Editar
+                            </button>
+                            <button className="btn-small" style={{ padding: "5px 10px", display: "inline-flex", alignItems: "center", gap: 4 }} onClick={() => removeActivity(a.name)} disabled={busy}>
+                              <IconTrash size={12} /> Remover
+                            </button>
+                          </td>
+                        </>
+                      )}
+                    </tr>
+                  );
+                })}
+                {activities.length === 0 && <tr><td colSpan={4} style={{ color: "var(--text-muted)" }}>Nenhuma atividade cadastrada.</td></tr>}
+              </tbody>
+            </table>
+          </div>
         </div>
 
-        {/* TIPOS DE ERRO */}
         <div className="card">
-          <div className="card-title">Tipos de erro</div>
+          <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <IconAlertTriangle size={16} /> Tipos de erro
+          </div>
           <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
             <input className="field" style={{ flex: 1 }} placeholder="Novo tipo" value={newErrorType} onChange={(e) => setNewErrorType(e.target.value)} disabled={busy} />
-            <button className="btn-small" onClick={addErrorType} disabled={busy}>Adicionar</button>
+            <button className="btn-small" onClick={addErrorType} disabled={busy} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <IconPlus size={14} /> Adicionar
+            </button>
           </div>
-          <table className="data-table">
-            <thead><tr><th>Tipo de erro</th><th></th></tr></thead>
-            <tbody>
-              {errorTypes.map((t) => {
-                const isEditing = editingErrorType === t.name;
-                return (
-                  <tr key={t.name}>
-                    {isEditing ? (
-                      <>
-                        <td><input className="field" style={{ width: "100%", padding: "4px 6px" }} value={editErrorTypeValue} onChange={(e) => setEditErrorTypeValue(e.target.value)} disabled={busy} /></td>
-                        <td style={{ whiteSpace: "nowrap" }}>
-                          <button className="btn-small" style={{ padding: "4px 8px", marginRight: 4 }} onClick={() => saveEditErrorType(t.name)} disabled={busy}>Salvar</button>
-                          <button className="btn-small" style={{ padding: "4px 8px" }} onClick={cancelEditErrorType} disabled={busy}>Cancelar</button>
-                        </td>
-                      </>
-                    ) : (
-                      <>
-                        <td>{t.name}</td>
-                        <td style={{ whiteSpace: "nowrap" }}>
-                          <button className="btn-small" style={{ padding: "4px 8px", marginRight: 4 }} onClick={() => startEditErrorType(t)} disabled={busy}>Editar</button>
-                          <button className="btn-small" style={{ padding: "4px 8px" }} onClick={() => removeErrorType(t.name)} disabled={busy}>Remover</button>
-                        </td>
-                      </>
-                    )}
-                  </tr>
-                );
-              })}
-              {errorTypes.length === 0 && <tr><td colSpan={2}>Nenhum tipo cadastrado.</td></tr>}
-            </tbody>
-          </table>
+          <div style={{ overflowX: "auto" }}>
+            <table className="data-table">
+              <thead><tr><th>Tipo de erro</th><th></th></tr></thead>
+              <tbody>
+                {errorTypes.map((t) => {
+                  const isEditing = editingErrorType === t.name;
+                  return (
+                    <tr key={t.name}>
+                      {isEditing ? (
+                        <>
+                          <td><input className="field" style={{ width: "100%", padding: "5px 8px" }} value={editErrorTypeValue} onChange={(e) => setEditErrorTypeValue(e.target.value)} disabled={busy} /></td>
+                          <td style={{ whiteSpace: "nowrap" }}>
+                            <button className="btn-small" style={{ padding: "5px 10px", marginRight: 4 }} onClick={() => saveEditErrorType(t.name)} disabled={busy}>Salvar</button>
+                            <button className="btn-small" style={{ padding: "5px 10px" }} onClick={cancelEditErrorType} disabled={busy}>Cancelar</button>
+                          </td>
+                        </>
+                      ) : (
+                        <>
+                          <td>{t.name}</td>
+                          <td style={{ whiteSpace: "nowrap" }}>
+                            <button className="btn-small" style={{ padding: "5px 10px", marginRight: 4, display: "inline-flex", alignItems: "center", gap: 4 }} onClick={() => startEditErrorType(t)} disabled={busy}>
+                              <IconEdit size={12} /> Editar
+                            </button>
+                            <button className="btn-small" style={{ padding: "5px 10px", display: "inline-flex", alignItems: "center", gap: 4 }} onClick={() => removeErrorType(t.name)} disabled={busy}>
+                              <IconTrash size={12} /> Remover
+                            </button>
+                          </td>
+                        </>
+                      )}
+                    </tr>
+                  );
+                })}
+                {errorTypes.length === 0 && <tr><td colSpan={2} style={{ color: "var(--text-muted)" }}>Nenhum tipo cadastrado.</td></tr>}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
-      {/* VEÍCULOS */}
       <div className="card">
-        <div className="card-title">Veículos (frota)</div>
-        <p style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: -8, marginBottom: 12 }}>
+        <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <IconTruck size={16} /> Veículos (frota)
+        </div>
+        <p style={{ fontSize: 12, color: "var(--text-faint)", marginTop: -6, marginBottom: 14 }}>
           Cadastre aqui os caminhões/veículos. Eles aparecem como botões clicáveis no quiosque quando
           a atividade é do tipo "Veículo + Placa".
         </p>
-        <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
           <input
             className="field"
-            style={{ width: 140, fontFamily: "var(--font-mono)", textTransform: "uppercase" }}
+            style={{ width: 160, fontFamily: "var(--font-mono)", textTransform: "uppercase" }}
             placeholder="Placa (ex: ABC-1234)"
             value={newVehiclePlate}
             onChange={(e) => setNewVehiclePlate(e.target.value.toUpperCase())}
@@ -942,46 +976,54 @@ export default function TeamManager({
           />
           <input
             className="field"
-            style={{ flex: 1, minWidth: 150 }}
+            style={{ flex: 1, minWidth: 180 }}
             placeholder="Modelo (ex: Volkswagen)"
             value={newVehicleModel}
             onChange={(e) => setNewVehicleModel(e.target.value)}
             disabled={busy}
           />
-          <button className="btn-small" onClick={addVehicle} disabled={busy}>Adicionar</button>
+          <button className="btn-small" onClick={addVehicle} disabled={busy} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <IconPlus size={14} /> Adicionar
+          </button>
         </div>
-        <table className="data-table">
-          <thead><tr><th>Placa</th><th>Modelo</th><th></th></tr></thead>
-          <tbody>
-            {vehicles.map((v) => {
-              const isEditing = editingVehiclePlate === v.plate;
-              return (
-                <tr key={v.plate}>
-                  {isEditing ? (
-                    <>
-                      <td><input className="field" style={{ width: 130, padding: "4px 6px", fontFamily: "var(--font-mono)", textTransform: "uppercase" }} value={editVehicleValues.plate} onChange={(e) => setEditVehicleValues((s) => ({ ...s, plate: e.target.value.toUpperCase() }))} disabled={busy} /></td>
-                      <td><input className="field" style={{ width: "100%", padding: "4px 6px" }} value={editVehicleValues.model} onChange={(e) => setEditVehicleValues((s) => ({ ...s, model: e.target.value }))} disabled={busy} /></td>
-                      <td style={{ whiteSpace: "nowrap" }}>
-                        <button className="btn-small" style={{ padding: "4px 8px", marginRight: 4 }} onClick={() => saveEditVehicle(v.plate)} disabled={busy}>Salvar</button>
-                        <button className="btn-small" style={{ padding: "4px 8px" }} onClick={cancelEditVehicle} disabled={busy}>Cancelar</button>
-                      </td>
-                    </>
-                  ) : (
-                    <>
-                      <td style={{ fontFamily: "var(--font-mono)" }}>{v.plate}</td>
-                      <td>{v.model}</td>
-                      <td style={{ whiteSpace: "nowrap" }}>
-                        <button className="btn-small" style={{ padding: "4px 8px", marginRight: 4 }} onClick={() => startEditVehicle(v)} disabled={busy}>Editar</button>
-                        <button className="btn-small" style={{ padding: "4px 8px" }} onClick={() => removeVehicle(v.plate)} disabled={busy}>Remover</button>
-                      </td>
-                    </>
-                  )}
-                </tr>
-              );
-            })}
-            {vehicles.length === 0 && <tr><td colSpan={3}>Nenhum veículo cadastrado.</td></tr>}
-          </tbody>
-        </table>
+        <div style={{ overflowX: "auto" }}>
+          <table className="data-table">
+            <thead><tr><th>Placa</th><th>Modelo</th><th></th></tr></thead>
+            <tbody>
+              {vehicles.map((v) => {
+                const isEditing = editingVehiclePlate === v.plate;
+                return (
+                  <tr key={v.plate}>
+                    {isEditing ? (
+                      <>
+                        <td><input className="field" style={{ width: 140, padding: "5px 8px", fontFamily: "var(--font-mono)", textTransform: "uppercase" }} value={editVehicleValues.plate} onChange={(e) => setEditVehicleValues((s) => ({ ...s, plate: e.target.value.toUpperCase() }))} disabled={busy} /></td>
+                        <td><input className="field" style={{ width: "100%", padding: "5px 8px" }} value={editVehicleValues.model} onChange={(e) => setEditVehicleValues((s) => ({ ...s, model: e.target.value }))} disabled={busy} /></td>
+                        <td style={{ whiteSpace: "nowrap" }}>
+                          <button className="btn-small" style={{ padding: "5px 10px", marginRight: 4 }} onClick={() => saveEditVehicle(v.plate)} disabled={busy}>Salvar</button>
+                          <button className="btn-small" style={{ padding: "5px 10px" }} onClick={cancelEditVehicle} disabled={busy}>Cancelar</button>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td style={{ fontFamily: "var(--font-mono)" }}>{v.plate}</td>
+                        <td>{v.model}</td>
+                        <td style={{ whiteSpace: "nowrap" }}>
+                          <button className="btn-small" style={{ padding: "5px 10px", marginRight: 4, display: "inline-flex", alignItems: "center", gap: 4 }} onClick={() => startEditVehicle(v)} disabled={busy}>
+                            <IconEdit size={12} /> Editar
+                          </button>
+                          <button className="btn-small" style={{ padding: "5px 10px", display: "inline-flex", alignItems: "center", gap: 4 }} onClick={() => removeVehicle(v.plate)} disabled={busy}>
+                            <IconTrash size={12} /> Remover
+                          </button>
+                        </td>
+                      </>
+                    )}
+                  </tr>
+                );
+              })}
+              {vehicles.length === 0 && <tr><td colSpan={3} style={{ color: "var(--text-muted)" }}>Nenhum veículo cadastrado.</td></tr>}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

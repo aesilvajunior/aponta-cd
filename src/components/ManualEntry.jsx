@@ -1,6 +1,13 @@
 import React, { useState } from "react";
 import { addManualEntry } from "../lib/api";
 import { shiftFor } from "../lib/format";
+import {
+  IconZap,
+  IconAlertTriangle,
+  IconPlus,
+  IconTrash,
+  IconCheck,
+} from "./Icons";
 
 function todayLocalISODate() {
   const d = new Date();
@@ -99,27 +106,39 @@ export default function ManualEntry({ operators, activities, refreshEntries }) {
 
   return (
     <div>
-      <h1 className="page-title">Lançar registro retroativo</h1>
+      <h1 className="page-title">Lançamento manual</h1>
       <p className="page-sub">
         Para digitar dados de dias ou meses anteriores direto no histórico, sem passar pelo quiosque.
-        Os registros ficam marcados como "lançado manualmente" no Painel.
+        Os registros ficam marcados como "lançado manualmente" nos Indicadores.
       </p>
 
       {error && (
-        <div className="alert-card alert-danger" style={{ maxWidth: 620 }}>
+        <div className="alert-card alert-danger" style={{ maxWidth: 640 }}>
           {error}
         </div>
       )}
       {success && (
-        <div className="alert-card" style={{ borderColor: "var(--ok)", background: "var(--ok-soft)", color: "var(--ok)", maxWidth: 620 }}>
+        <div
+          className="alert-card"
+          style={{
+            borderColor: "var(--ok)",
+            background: "var(--ok-soft)",
+            color: "var(--ok)",
+            maxWidth: 640,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+          }}
+        >
+          <IconCheck size={16} />
           {success}
         </div>
       )}
 
-      <div className="card" style={{ maxWidth: 620 }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      <div className="card" style={{ maxWidth: 640 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div>
-            <label className="modal-label">Operador</label>
+            <label className="schedule-modal-label">Operador</label>
             <select className="field" value={operatorCode} onChange={(e) => setOperatorCode(e.target.value)} disabled={saving}>
               <option value="">Selecione...</option>
               {operators.map((o) => (
@@ -129,7 +148,7 @@ export default function ManualEntry({ operators, activities, refreshEntries }) {
           </div>
 
           <div>
-            <label className="modal-label">Atividade</label>
+            <label className="schedule-modal-label">Atividade</label>
             <select className="field" value={activity} onChange={(e) => setActivity(e.target.value)} disabled={saving}>
               <option value="">Selecione...</option>
               {activities.map((a) => (
@@ -139,55 +158,57 @@ export default function ManualEntry({ operators, activities, refreshEntries }) {
           </div>
 
           <div>
-            <label className="modal-label">Data</label>
+            <label className="schedule-modal-label">Data</label>
             <input type="date" className="field" value={date} onChange={(e) => setDate(e.target.value)} disabled={saving} />
           </div>
 
-          <div style={{ display: "flex", gap: 10 }}>
+          <div style={{ display: "flex", gap: 12 }}>
             <div style={{ flex: 1 }}>
-              <label className="modal-label">Início</label>
+              <label className="schedule-modal-label">Início</label>
               <input type="time" className="field" value={startTime} onChange={(e) => setStartTime(e.target.value)} disabled={saving} />
             </div>
             <div style={{ flex: 1 }}>
-              <label className="modal-label">Fim</label>
+              <label className="schedule-modal-label">Fim</label>
               <input type="time" className="field" value={endTime} onChange={(e) => setEndTime(e.target.value)} disabled={saving} />
             </div>
           </div>
 
-          {/* Toggle encaixe */}
-          <div>
-            <button
-              type="button"
-              className="btn-small"
-              style={{
-                width: "100%",
-                padding: "10px 14px",
-                background: isEncaixe ? "var(--accent-2-soft)" : undefined,
-                borderColor: isEncaixe ? "var(--accent-2)" : undefined,
-                color: isEncaixe ? "var(--accent-2)" : undefined,
-                fontWeight: isEncaixe ? 700 : 500,
-              }}
-              onClick={() => setIsEncaixe((v) => !v)}
-              disabled={saving}
-            >
-              {isEncaixe ? "⚡ ENCAIXE marcado (clique para desmarcar)" : "⚡ Marcar como encaixe"}
-            </button>
-          </div>
+          <button
+            type="button"
+            className="btn-small"
+            style={{
+              width: "100%",
+              padding: "12px 16px",
+              background: isEncaixe ? "var(--accent-2-soft)" : undefined,
+              borderColor: isEncaixe ? "var(--accent-2)" : undefined,
+              color: isEncaixe ? "var(--accent-2)" : undefined,
+              fontWeight: isEncaixe ? 700 : 500,
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+            }}
+            onClick={() => setIsEncaixe((v) => !v)}
+            disabled={saving}
+          >
+            <IconZap size={15} />
+            {isEncaixe ? "Marcado como encaixe (clique para desmarcar)" : "Marcar como encaixe"}
+          </button>
 
-          {/* Toggle falta */}
           <div>
-            <label className="modal-label">Houve falta de produto?</label>
-            <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+            <label className="schedule-modal-label">Houve falta de produto?</label>
+            <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
               <button
                 type="button"
                 className="btn-small"
                 style={{
                   flex: 1,
-                  padding: "10px 14px",
+                  padding: "12px 16px",
                   background: !hadShortage ? "var(--ok-soft)" : undefined,
                   borderColor: !hadShortage ? "var(--ok)" : undefined,
                   color: !hadShortage ? "var(--ok)" : undefined,
                   fontWeight: !hadShortage ? 700 : 500,
+                  justifyContent: "center",
                 }}
                 onClick={() => setHadShortage(false)}
                 disabled={saving}
@@ -199,11 +220,12 @@ export default function ManualEntry({ operators, activities, refreshEntries }) {
                 className="btn-small"
                 style={{
                   flex: 1,
-                  padding: "10px 14px",
+                  padding: "12px 16px",
                   background: hadShortage ? "var(--danger-soft)" : undefined,
                   borderColor: hadShortage ? "var(--danger)" : undefined,
                   color: hadShortage ? "var(--danger)" : undefined,
                   fontWeight: hadShortage ? 700 : 500,
+                  justifyContent: "center",
                 }}
                 onClick={() => setHadShortage(true)}
                 disabled={saving}
@@ -215,10 +237,10 @@ export default function ManualEntry({ operators, activities, refreshEntries }) {
 
           {hadShortage && (
             <div>
-              <label className="modal-label">Faltas</label>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
+              <label className="schedule-modal-label">Faltas</label>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 6 }}>
                 {shortages.map((s, i) => (
-                  <div key={i} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <div key={i} style={{ display: "flex", gap: 10, alignItems: "center" }}>
                     <input
                       className="field"
                       style={{ flex: 2, fontFamily: "var(--font-mono)" }}
@@ -241,22 +263,28 @@ export default function ManualEntry({ operators, activities, refreshEntries }) {
                       type="button"
                       className="btn-small"
                       onClick={() => removeShortageRow(i)}
-                      style={{ padding: "8px 12px", color: "var(--danger)", borderColor: "var(--danger)" }}
+                      style={{ padding: "10px 12px", color: "var(--danger)", borderColor: "var(--danger)" }}
                       disabled={saving}
                       title="Remover"
                     >
-                      🗑
+                      <IconTrash size={14} />
                     </button>
                   </div>
                 ))}
-                <button type="button" className="btn-small" onClick={addShortageRow} style={{ alignSelf: "flex-start" }} disabled={saving}>
-                  + Adicionar outra falta
+                <button
+                  type="button"
+                  className="btn-small"
+                  onClick={addShortageRow}
+                  style={{ alignSelf: "flex-start", display: "inline-flex", alignItems: "center", gap: 6 }}
+                  disabled={saving}
+                >
+                  <IconPlus size={14} /> Adicionar outra falta
                 </button>
               </div>
             </div>
           )}
 
-          <button className="btn btn-primary" onClick={handleSubmit} disabled={saving} style={{ marginTop: 6 }}>
+          <button className="btn btn-primary" onClick={handleSubmit} disabled={saving} style={{ marginTop: 8 }}>
             {saving ? "Salvando..." : "Lançar registro"}
           </button>
         </div>

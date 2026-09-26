@@ -6,11 +6,26 @@ import { fmtClock, fmtDate, fmtDuration } from "../lib/format";
 import { computeMetrics, computeWeeklyTrend, computeMonthlyBuckets, monthLabel, mean as meanM } from "../lib/metrics";
 import { exportHistoricoExcel, exportShortagesExcel, exportErrorsExcel } from "../utils/excel";
 import OperatorProfile from "./OperatorProfile";
-import { fetchConferenceHistory, deleteEntry } from "../lib/api";
-import { logAudit } from "../lib/api";
-import logo from "../assets/logo.png";
+import { fetchConferenceHistory, deleteEntry, logAudit } from "../lib/api";
+import {
+  IconDownload,
+  IconPackage,
+  IconBuilding,
+  IconAlertTriangle,
+  IconCheck,
+  IconCheckCircle,
+  IconClock,
+  IconTarget,
+  IconTrendingUp,
+  IconEdit,
+  IconTrash,
+  IconX,
+  IconRefresh,
+  IconActivity,
+  IconEdit3,
+} from "./Icons";
 
-const COLORS = ["#0a3d7a", "#00a0e4", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444", "#06b6d4", "#6b7280"];
+const COLORS = ["#1e3a5f", "#4a7ba7", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444", "#06b6d4", "#6b7280"];
 const DEFAULT_ALERT_SECONDS = 1800;
 
 function todayLocalISODate() {
@@ -549,10 +564,6 @@ export default function Panel({
     });
   }, [monthA, monthB, monthlyBuckets, activities]);
 
-  // ============================================================
-  // FUNÇÕES (não são hooks)
-  // ============================================================
-
   function applyQuickFilter(type) {
     if (type === "") {
       setActiveQuickFilter("");
@@ -636,8 +647,6 @@ export default function Panel({
     }
   }
 
-  // ==================== ADMIN QUICK ACTIONS ====================
-
   function openInAdminMaster(entityId, entityType) {
     if (onOpenAdminMaster) {
       onOpenAdminMaster({ tab: entityType, id: entityId });
@@ -664,8 +673,6 @@ export default function Panel({
     } catch {}
   }
 
-  // ==================== EXPORTAÇÕES ====================
-
   function exportHistoricoCSV() {
     if (filteredEntries.length === 0) { alert("Nenhum registro no período para exportar."); return; }
     const totalRegistros = filteredEntries.length;
@@ -677,7 +684,7 @@ export default function Panel({
 
     const lines = [];
     lines.push("RELATÓRIO DE APONTAMENTOS");
-    lines.push("Hidráulica Tropeiro — Aponta CD");
+    lines.push("Aponta CD");
     lines.push("");
     lines.push(`Período:;${periodLabel(dateFrom, dateTo, filteredEntries)}`);
     lines.push(`Gerado em:;${fmtDateTime(new Date())}`);
@@ -767,7 +774,7 @@ export default function Panel({
 
     const lines = [];
     lines.push("RELATÓRIO DE FALTAS DE PRODUTO");
-    lines.push("Hidráulica Tropeiro — Aponta CD");
+    lines.push("Aponta CD");
     lines.push("");
     lines.push(`Período:;${periodLabel(dateFrom, dateTo, shortageEntries)}`);
     lines.push(`Gerado em:;${fmtDateTime(new Date())}`);
@@ -831,7 +838,7 @@ export default function Panel({
 
     const lines = [];
     lines.push("RELATÓRIO DE ERROS DE SEPARAÇÃO");
-    lines.push("Hidráulica Tropeiro — Aponta CD");
+    lines.push("Aponta CD");
     lines.push("");
     lines.push(`Período:;${periodLabel(dateFrom, dateTo, dateFilteredErrors.map((e) => ({ start_time: e.created_at })))}`);
     lines.push(`Gerado em:;${fmtDateTime(new Date())}`);
@@ -928,18 +935,17 @@ export default function Panel({
   @page { size: A4; margin: 14mm 12mm; }
   * { box-sizing: border-box; }
   body { font-family: "Inter", Arial, Helvetica, sans-serif; color: #1a1d21; padding: 0; margin: 0; font-size: 11.5px; line-height: 1.5; }
-  header { display: flex; align-items: center; gap: 14px; border-bottom: 3px solid #0a3d7a; padding-bottom: 14px; margin-bottom: 18px; }
-  header img { width: 52px; height: 52px; border-radius: 50%; }
-  h1 { font-size: 20px; margin: 0; color: #0a3d7a; }
-  .meta { color: #555; font-size: 11px; margin-top: 3px; }
-  .summary { background: #f5f7fa; border-left: 4px solid #0a3d7a; padding: 12px 16px; margin-bottom: 18px; border-radius: 4px; }
+  header { display: flex; align-items: center; gap: 14px; border-bottom: 3px solid #1e3a5f; padding-bottom: 14px; margin-bottom: 18px; }
+  h1 { font-size: 20px; margin: 0; color: #1e3a5f; }
+  .meta { color: #555; font-size: 11px; margin-top: 4px; }
+  .summary { background: #f5f7fa; border-left: 4px solid #1e3a5f; padding: 12px 16px; margin-bottom: 18px; border-radius: 4px; }
   .summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px 20px; }
   .summary-item { font-size: 11.5px; color: #444; }
-  .summary-item strong { color: #0a3d7a; display: block; font-size: 15px; margin-bottom: 2px; }
-  h2 { font-size: 14px; margin: 22px 0 8px 0; color: #0a3d7a; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
+  .summary-item strong { color: #1e3a5f; display: block; font-size: 15px; margin-bottom: 2px; }
+  h2 { font-size: 14px; margin: 22px 0 8px 0; color: #1e3a5f; border-bottom: 1px solid #ddd; padding-bottom: 4px; }
   table { width: 100%; border-collapse: collapse; font-size: 10.5px; margin-top: 6px; }
   th, td { border: 1px solid #d1d5db; padding: 6px 8px; text-align: left; }
-  th { background: #eef2f7; color: #0a3d7a; font-weight: 600; }
+  th { background: #eef2f7; color: #1e3a5f; font-weight: 600; }
   tr:nth-child(even) td { background: #fafbfc; }
   .right { text-align: right; }
   .center { text-align: center; }
@@ -950,10 +956,9 @@ export default function Panel({
 </style></head>
 <body>
   <header>
-    <img src="${window.location.origin}${logo}" alt="" />
     <div>
       <h1>Relatório de Atividades — Aponta CD</h1>
-      <div class="meta"><strong>Hidráulica Tropeiro</strong> · Período: ${esc(period)}<br />Gerado em ${esc(fmtDateTime(new Date()))}</div>
+      <div class="meta">Período: ${esc(period)}<br />Gerado em ${esc(fmtDateTime(new Date()))}</div>
     </div>
   </header>
 
@@ -992,7 +997,7 @@ export default function Panel({
     <div class="signature-line">Conferência</div>
   </div>
 
-  <footer>Aponta CD · Hidráulica Tropeiro — relatório gerado automaticamente</footer>
+  <footer>Aponta CD — relatório gerado automaticamente</footer>
 </body></html>`;
 
     const win = window.open("", "_blank");
@@ -1013,7 +1018,7 @@ export default function Panel({
 
     const lines = [];
     lines.push(`RESUMO DO DIA`);
-    lines.push(`Aponta CD — Hidráulica Tropeiro`);
+    lines.push(`Aponta CD`);
     lines.push(`Data: ${fmtDate(new Date())}`);
     lines.push("");
     lines.push(`Total de registros: ${todayEntries.length}`);
@@ -1035,7 +1040,7 @@ export default function Panel({
     const text = lines.join("\n");
     try {
       await navigator.clipboard.writeText(text);
-      setCopyLabel("Copiado! ✓");
+      setCopyLabel("Copiado!");
     } catch {
       setCopyLabel("Não foi possível copiar");
     }
@@ -1069,10 +1074,6 @@ export default function Panel({
 
   const hasFilters = filterOperator || filterActivity || filterShift || filterStation || filterEncaixe || filterShortage || filterProductCode || filterCustomer || filterOrderNumber || filterErrorOperator || dateFrom || dateTo;
 
-  // ============================================================
-  // RETORNO CONDICIONAL
-  // ============================================================
-
   if (viewOperator) {
     return (
       <OperatorProfile
@@ -1086,12 +1087,11 @@ export default function Panel({
     );
   }
 
-  // ============ MODO PAINEL ============
   return (
     <div>
       <div className="page-header-row" style={{ marginBottom: 22 }}>
         <div>
-          <h1 className="page-title">Painel de métricas</h1>
+          <h1 className="page-title">Indicadores</h1>
           <p className="page-sub" style={{ marginBottom: 0 }}>
             {filteredEntries.length} de {entries.length} registros · {activeSessions.length} em andamento agora
           </p>
@@ -1099,10 +1099,14 @@ export default function Panel({
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button className="btn-small" onClick={copyDailySummary}>{copyLabel}</button>
           <button className="btn-small" onClick={openPrintableReport}>Gerar relatório (PDF)</button>
-          <button className="btn-small" onClick={exportHistoricoCSV}>Exportar CSV</button>
-          <button className="btn-small btn-excel" onClick={exportHistoricoXLSX}>Exportar Excel</button>
+          <button className="btn-small" onClick={exportHistoricoCSV}>
+            <IconDownload size={14} /> Exportar CSV
+          </button>
+          <button className="btn-small btn-excel" onClick={exportHistoricoXLSX}>
+            <IconDownload size={14} /> Exportar Excel
+          </button>
           <button className="btn-danger-outline" onClick={() => setConfirmingReset((v) => !v)}>
-            Zerar resultados
+            <IconTrash size={14} /> Zerar resultados
           </button>
         </div>
       </div>
@@ -1110,10 +1114,10 @@ export default function Panel({
       {confirmingReset && (
         <div className="confirm-box" style={{ marginBottom: 22 }}>
           <strong style={{ color: "var(--danger)", fontSize: 14 }}>Isso apaga todo o histórico de registros, permanentemente.</strong>
-          <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "6px 0 12px 0" }}>
+          <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "8px 0 14px 0" }}>
             Não afeta a lista de operadores nem de atividades. Para confirmar, digite <strong>ZERAR</strong> abaixo.
           </p>
-          <div style={{ display: "flex", gap: 8 }}>
+          <div style={{ display: "flex", gap: 10 }}>
             <input
               className="field"
               style={{ flex: 1 }}
@@ -1133,14 +1137,14 @@ export default function Panel({
       {activityAlerts.length > 0 && (
         <div className="confirm-box alert-box-pulsing" style={{ marginBottom: 22 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <strong style={{ color: "var(--danger)", fontSize: 15 }}>
-              ⚠ {activityAlerts.length} atividade(s) em andamento há mais tempo que o esperado
+            <strong style={{ color: "var(--danger)", fontSize: 15, display: "inline-flex", alignItems: "center", gap: 8 }}>
+              <IconAlertTriangle size={18} /> {activityAlerts.length} atividade(s) em andamento há mais tempo que o esperado
             </strong>
             <button className="btn-small" onClick={toggleSound}>
-              {soundEnabled ? "🔔 Alerta sonoro ativado" : "🔕 Ativar alerta sonoro"}
+              {soundEnabled ? "Alerta sonoro ativado" : "Ativar alerta sonoro"}
             </button>
           </div>
-          <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
             {activityAlerts.map((a) => (
               <div key={a.operator_code} style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
                 <span>{a.operator_name} — {a.activity}</span>
@@ -1152,9 +1156,9 @@ export default function Panel({
       )}
 
       {activityAlerts.length === 0 && (
-        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
           <button className="btn-small" onClick={toggleSound}>
-            {soundEnabled ? "🔔 Alerta sonoro ativado" : "🔕 Ativar alerta sonoro"}
+            {soundEnabled ? "Alerta sonoro ativado" : "Ativar alerta sonoro"}
           </button>
         </div>
       )}
@@ -1187,11 +1191,13 @@ export default function Panel({
           <button className={`quick-filter-btn ${activeQuickFilter === "7dias" ? "active" : ""}`} onClick={() => applyQuickFilter("7dias")}>Últimos 7 dias</button>
           <button className={`quick-filter-btn ${activeQuickFilter === "mes" ? "active" : ""}`} onClick={() => applyQuickFilter("mes")}>Este mês</button>
           {(dateFrom || dateTo) && (
-            <button className="quick-filter-clear" onClick={() => applyQuickFilter("")}>✕ Limpar período</button>
+            <button className="quick-filter-clear" onClick={() => applyQuickFilter("")}>
+              <IconX size={12} /> Limpar período
+            </button>
           )}
         </div>
 
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <select className="field" style={{ width: "auto" }} value={filterOperator} onChange={(e) => setFilterOperator(e.target.value)}>
             <option value="">Todos operadores (apontaram)</option>
             {operators.map((o) => <option key={o.code} value={o.code}>{o.name}</option>)}
@@ -1227,12 +1233,12 @@ export default function Panel({
               {errorOperatorsList.map((o) => <option key={o.code} value={o.code}>{o.name}</option>)}
             </select>
           )}
-          <input className="field" style={{ width: 160, fontFamily: "var(--font-mono)" }} placeholder="Código produto..." value={filterProductCode} onChange={(e) => setFilterProductCode(e.target.value)} />
-          <input className="field" style={{ width: 180 }} placeholder="Cliente..." value={filterCustomer} onChange={(e) => setFilterCustomer(e.target.value)} />
+          <input className="field" style={{ width: 180, fontFamily: "var(--font-mono)" }} placeholder="Código produto" value={filterProductCode} onChange={(e) => setFilterProductCode(e.target.value)} />
+          <input className="field" style={{ width: 200 }} placeholder="Cliente" value={filterCustomer} onChange={(e) => setFilterCustomer(e.target.value)} />
           <input
             className="field"
-            style={{ width: 140, fontFamily: "var(--font-mono)" }}
-            placeholder="Nº pedido..."
+            style={{ width: 160, fontFamily: "var(--font-mono)" }}
+            placeholder="Nº pedido"
             value={filterOrderNumber}
             onChange={(e) => setFilterOrderNumber(e.target.value.replace(/\D/g, ""))}
           />
@@ -1246,7 +1252,9 @@ export default function Panel({
 
       {conferenceStats.total > 0 && (
         <div className="card" style={{ marginBottom: 20 }}>
-          <div className="card-title">✅ Mesa de conferência</div>
+          <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <IconCheckCircle size={16} /> Mesa de conferência
+          </div>
 
           <div className="stat-strip" style={{ marginBottom: 16 }}>
             <div className="stat-cell">
@@ -1269,8 +1277,8 @@ export default function Panel({
 
           {conferenceRanking.length > 0 && (
             <div style={{ marginBottom: 20 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 10 }}>
-                🏆 Ranking de conferentes
+              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>
+                Ranking de conferentes
               </div>
               <table className="data-table">
                 <thead>
@@ -1279,7 +1287,7 @@ export default function Panel({
                 <tbody>
                   {conferenceRanking.map((r, i) => (
                     <tr key={r.code}>
-                      <td><span style={{ fontSize: 16 }}>{i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}º`}</span></td>
+                      <td style={{ fontWeight: 700, color: i < 3 ? "var(--accent)" : "var(--text-muted)" }}>{i + 1}º</td>
                       <td style={{ fontFamily: "var(--font-display)", fontWeight: 600 }}>{r.name}</td>
                       <td>{r.count}</td>
                       <td>{fmtDuration(r.avg)}</td>
@@ -1292,16 +1300,16 @@ export default function Panel({
 
           {conferenceProblems.length > 0 && (
             <div style={{ marginBottom: 20 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 10 }}>
-                ⚠ Problemas por motivo
+              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>
+                Problemas por motivo
               </div>
               <ResponsiveContainer width="100%" height={Math.max(140, conferenceProblems.length * 34)}>
                 <BarChart data={conferenceProblems} layout="vertical">
                   <CartesianGrid stroke="var(--border)" horizontal={false} />
                   <XAxis type="number" tick={{ fill: "var(--text-muted)", fontSize: 11 }} allowDecimals={false} />
-                  <YAxis type="category" dataKey="name" tick={{ fill: "var(--text-muted)", fontSize: 11 }} width={140} />
-                  <Tooltip contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", fontSize: 12, borderRadius: 8 }} labelStyle={{ color: "var(--text)" }} />
-                  <Bar dataKey="total" fill="var(--danger)" radius={[0, 3, 3, 0]} />
+                  <YAxis type="category" dataKey="name" tick={{ fill: "var(--text-muted)", fontSize: 11 }} width={150} />
+                  <Tooltip contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", fontSize: 12, borderRadius: 10 }} labelStyle={{ color: "var(--text)" }} />
+                  <Bar dataKey="total" fill="var(--danger)" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -1309,8 +1317,8 @@ export default function Panel({
 
           {conferenceSeparatorsRanking.length > 0 && (
             <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 10 }}>
-                🎯 Separadores com mais problemas
+              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>
+                Separadores com mais problemas
               </div>
               <table className="data-table">
                 <thead>
@@ -1336,13 +1344,13 @@ export default function Panel({
 
       <div className="card" style={{ marginBottom: 20 }}>
         <div className="card-title">Tempo médio por atividade (segundos)</div>
-        <ResponsiveContainer width="100%" height={230}>
+        <ResponsiveContainer width="100%" height={240}>
           <BarChart data={metrics.avgByActivity}>
             <CartesianGrid stroke="var(--border)" vertical={false} />
             <XAxis dataKey="name" tick={{ fill: "var(--text-muted)", fontSize: 11 }} />
             <YAxis tick={{ fill: "var(--text-muted)", fontSize: 11 }} />
-            <Tooltip contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", fontSize: 12, borderRadius: 8 }} labelStyle={{ color: "var(--text)" }} />
-            <Bar dataKey="media" radius={[3, 3, 0, 0]}>
+            <Tooltip contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", fontSize: 12, borderRadius: 10 }} labelStyle={{ color: "var(--text)" }} />
+            <Bar dataKey="media" radius={[4, 4, 0, 0]}>
               {metrics.avgByActivity.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
             </Bar>
           </BarChart>
@@ -1350,14 +1358,16 @@ export default function Panel({
       </div>
 
       <div className="card" style={{ marginBottom: 20 }}>
-        <div className="card-title">Tendência semanal por atividade (segundos, média)</div>
+        <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <IconTrendingUp size={16} /> Tendência semanal por atividade (segundos, média)
+        </div>
         {weeklyTrend.length > 1 ? (
-          <ResponsiveContainer width="100%" height={230}>
+          <ResponsiveContainer width="100%" height={240}>
             <LineChart data={weeklyTrend}>
               <CartesianGrid stroke="var(--border)" vertical={false} />
               <XAxis dataKey="label" tick={{ fill: "var(--text-muted)", fontSize: 11 }} />
               <YAxis tick={{ fill: "var(--text-muted)", fontSize: 11 }} />
-              <Tooltip contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", fontSize: 12, borderRadius: 8 }} labelStyle={{ color: "var(--text)" }} />
+              <Tooltip contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", fontSize: 12, borderRadius: 10 }} labelStyle={{ color: "var(--text)" }} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               {activities.map((a, i) => (
                 <Line key={a.name} type="monotone" dataKey={a.name} stroke={COLORS[i % COLORS.length]} strokeWidth={2} dot={{ r: 3 }} connectNulls />
@@ -1370,10 +1380,10 @@ export default function Panel({
       </div>
 
       <div className="card" style={{ marginBottom: 20 }}>
-        <div className="page-header-row" style={{ marginBottom: 14 }}>
+        <div className="page-header-row" style={{ marginBottom: 16 }}>
           <div className="card-title" style={{ marginBottom: 0 }}>Comparação mês a mês</div>
           {availableMonths.length > 1 && (
-            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
               <select className="field" style={{ width: "auto" }} value={monthA} onChange={(e) => setMonthA(e.target.value)}>
                 {availableMonths.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}
               </select>
@@ -1407,7 +1417,9 @@ export default function Panel({
 
       {targetComparison.length > 0 && (
         <div className="card" style={{ marginBottom: 20 }}>
-          <div className="card-title">Meta vs. real por atividade</div>
+          <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <IconTarget size={16} /> Meta vs. real por atividade
+          </div>
           <table className="data-table">
             <thead><tr><th>Atividade</th><th>Meta</th><th>Real (média)</th><th>Diferença</th></tr></thead>
             <tbody>
@@ -1428,8 +1440,8 @@ export default function Panel({
 
       <div className="card" style={{ marginBottom: 20 }}>
         <div className="card-title">Produtividade por operador</div>
-        <p style={{ fontSize: 12, color: "var(--text-faint)", marginTop: -8, marginBottom: 12 }}>
-          💡 Clique no nome de um operador para ver o perfil completo.
+        <p style={{ fontSize: 12, color: "var(--text-faint)", marginTop: -6, marginBottom: 14 }}>
+          Clique no nome de um operador para ver o perfil completo.
         </p>
         <table className="data-table">
           <thead><tr><th>Operador</th><th>Registros</th><th>Tempo médio</th><th>Tempo total</th></tr></thead>
@@ -1451,27 +1463,33 @@ export default function Panel({
                 </tr>
               );
             })}
-            {metrics.opStats.length === 0 && <tr><td colSpan={4}>Nenhum registro no período.</td></tr>}
+            {metrics.opStats.length === 0 && <tr><td colSpan={4} style={{ color: "var(--text-muted)" }}>Nenhum registro no período.</td></tr>}
           </tbody>
         </table>
       </div>
 
       <div className="card" style={{ marginBottom: 20 }}>
-        <div className="page-header-row" style={{ marginBottom: 14 }}>
-          <div className="card-title" style={{ marginBottom: 0 }}>🚨 Erros de separação no período</div>
+        <div className="page-header-row" style={{ marginBottom: 16 }}>
+          <div className="card-title" style={{ marginBottom: 0, display: "flex", alignItems: "center", gap: 8 }}>
+            <IconAlertTriangle size={16} /> Erros de separação no período
+          </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button className="btn-small" onClick={exportErrorsCSV}>Exportar CSV</button>
-            <button className="btn-small btn-excel" onClick={exportErrorsXLSX}>Exportar Excel</button>
+            <button className="btn-small" onClick={exportErrorsCSV}>
+              <IconDownload size={14} /> CSV
+            </button>
+            <button className="btn-small btn-excel" onClick={exportErrorsXLSX}>
+              <IconDownload size={14} /> Excel
+            </button>
             <button className="btn-danger-outline" onClick={() => setConfirmingResetErrors((v) => !v)}>
-              Zerar erros
+              <IconTrash size={14} /> Zerar erros
             </button>
           </div>
         </div>
 
         {confirmingResetErrors && (
-          <div className="confirm-box" style={{ marginBottom: 14 }}>
+          <div className="confirm-box" style={{ marginBottom: 16 }}>
             <strong style={{ color: "var(--danger)", fontSize: 14 }}>Isso apaga todo o histórico de erros de separação, permanentemente.</strong>
-            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+            <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
               <input
                 className="field"
                 style={{ flex: 1 }}
@@ -1490,10 +1508,10 @@ export default function Panel({
 
         {errorRanking.length > 0 && (
           <div style={{ marginBottom: 20 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 10 }}>
-              🏆 Operadores que mais erraram
+            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>
+              Operadores que mais erraram
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {errorRanking.map((r, i) => {
                 const pct = (r.count / maxErrorCount) * 100;
                 const op = operators.find((x) => x.code === r.code);
@@ -1501,7 +1519,7 @@ export default function Panel({
                   <div key={r.code} style={{ display: "flex", alignItems: "center", gap: 12 }}>
                     <div
                       style={{
-                        width: 26, height: 26, borderRadius: "50%",
+                        width: 28, height: 28, borderRadius: "50%",
                         background: i === 0 ? "#ef4444" : i === 1 ? "#f97316" : i === 2 ? "#f59e0b" : "var(--surface-raised)",
                         color: i < 3 ? "#fff" : "var(--text-muted)",
                         display: "flex", alignItems: "center", justifyContent: "center",
@@ -1511,7 +1529,7 @@ export default function Panel({
                       {i + 1}
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 4 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 }}>
                         <span
                           className={op ? "clickable-name" : ""}
                           onClick={op ? () => setViewOperator(op) : undefined}
@@ -1534,16 +1552,16 @@ export default function Panel({
 
         {errorsByType.length > 0 && (
           <>
-            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 6 }}>
-              📊 Erros por tipo
+            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>
+              Erros por tipo
             </div>
-            <ResponsiveContainer width="100%" height={160}>
+            <ResponsiveContainer width="100%" height={180}>
               <BarChart data={errorsByType}>
                 <CartesianGrid stroke="var(--border)" vertical={false} />
                 <XAxis dataKey="name" tick={{ fill: "var(--text-muted)", fontSize: 10.5 }} />
                 <YAxis tick={{ fill: "var(--text-muted)", fontSize: 11 }} allowDecimals={false} />
-                <Tooltip contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", fontSize: 12, borderRadius: 8 }} labelStyle={{ color: "var(--text)" }} />
-                <Bar dataKey="total" fill="var(--danger)" radius={[3, 3, 0, 0]} />
+                <Tooltip contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", fontSize: 12, borderRadius: 10 }} labelStyle={{ color: "var(--text)" }} />
+                <Bar dataKey="total" fill="var(--danger)" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </>
@@ -1551,7 +1569,7 @@ export default function Panel({
 
         {dateFilteredErrors.length > 0 ? (
           <div style={{ overflowX: "auto", marginTop: 20 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>📋 Detalhes</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 10 }}>Detalhes</div>
             <table className="data-table">
               <thead>
                 <tr>
@@ -1570,7 +1588,7 @@ export default function Panel({
                         {e.order_number ? (
                           <>
                             <span style={{ color: "var(--text-faint)", fontSize: 10.5 }}>
-                              {e.order_type === "pedido" ? "📦" : e.order_type === "transferencia" ? "🔄" : ""}
+                              {e.order_type === "pedido" ? "P" : e.order_type === "transferencia" ? "T" : ""}
                             </span>{" "}
                             <span style={{ fontFamily: "var(--font-mono)" }}>{e.order_number}</span>
                           </>
@@ -1610,26 +1628,32 @@ export default function Panel({
       </div>
 
       <div className="card" style={{ marginBottom: 20 }}>
-        <div className="page-header-row" style={{ marginBottom: 14 }}>
-          <div className="card-title" style={{ marginBottom: 0 }}>📦 Produtos que mais faltam</div>
+        <div className="page-header-row" style={{ marginBottom: 16 }}>
+          <div className="card-title" style={{ marginBottom: 0, display: "flex", alignItems: "center", gap: 8 }}>
+            <IconPackage size={16} /> Produtos que mais faltam
+          </div>
           <div style={{ display: "flex", gap: 8 }}>
-            <button className="btn-small" onClick={exportShortagesCSV}>Exportar CSV</button>
-            <button className="btn-small btn-excel" onClick={exportShortagesXLSX}>Exportar Excel</button>
+            <button className="btn-small" onClick={exportShortagesCSV}>
+              <IconDownload size={14} /> CSV
+            </button>
+            <button className="btn-small btn-excel" onClick={exportShortagesXLSX}>
+              <IconDownload size={14} /> Excel
+            </button>
           </div>
         </div>
 
         {topShortageProducts.length > 0 ? (
           <>
-            <ResponsiveContainer width="100%" height={Math.max(180, topShortageProducts.length * 32)}>
+            <ResponsiveContainer width="100%" height={Math.max(200, topShortageProducts.length * 34)}>
               <BarChart data={topShortageProducts} layout="vertical">
                 <CartesianGrid stroke="var(--border)" horizontal={false} />
                 <XAxis type="number" tick={{ fill: "var(--text-muted)", fontSize: 11 }} allowDecimals={false} />
-                <YAxis type="category" dataKey="code" tick={{ fill: "var(--text-muted)", fontSize: 11 }} width={90} />
-                <Tooltip contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", fontSize: 12, borderRadius: 8 }} labelStyle={{ color: "var(--text)" }} />
-                <Bar dataKey="totalQty" fill="var(--danger)" radius={[0, 3, 3, 0]} />
+                <YAxis type="category" dataKey="code" tick={{ fill: "var(--text-muted)", fontSize: 11 }} width={100} />
+                <Tooltip contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", fontSize: 12, borderRadius: 10 }} labelStyle={{ color: "var(--text)" }} />
+                <Bar dataKey="totalQty" fill="var(--danger)" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
-            <table className="data-table" style={{ marginTop: 14 }}>
+            <table className="data-table" style={{ marginTop: 16 }}>
               <thead><tr><th>Código</th><th>Ocorrências</th><th>Quantidade total</th></tr></thead>
               <tbody>
                 {topShortageProducts.map((p) => (
@@ -1649,13 +1673,13 @@ export default function Panel({
 
       {shortagesByDay.length > 1 && (
         <div className="card" style={{ marginBottom: 20 }}>
-          <div className="card-title">📈 Faltas ao longo do tempo</div>
-          <ResponsiveContainer width="100%" height={220}>
+          <div className="card-title">Faltas ao longo do tempo</div>
+          <ResponsiveContainer width="100%" height={240}>
             <LineChart data={shortagesByDay}>
               <CartesianGrid stroke="var(--border)" vertical={false} />
               <XAxis dataKey="label" tick={{ fill: "var(--text-muted)", fontSize: 11 }} />
               <YAxis tick={{ fill: "var(--text-muted)", fontSize: 11 }} allowDecimals={false} />
-              <Tooltip contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", fontSize: 12, borderRadius: 8 }} labelStyle={{ color: "var(--text)" }} />
+              <Tooltip contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", fontSize: 12, borderRadius: 10 }} labelStyle={{ color: "var(--text)" }} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               <Line type="monotone" dataKey="totalFaltas" name="Faltas" stroke="#ef4444" strokeWidth={2} dot={{ r: 3 }} />
               <Line type="monotone" dataKey="totalQty" name="Quantidade total" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} />
@@ -1666,7 +1690,9 @@ export default function Panel({
 
       {topShortageCustomers.length > 0 && (
         <div className="card" style={{ marginBottom: 20 }}>
-          <div className="card-title">🏢 Clientes mais afetados por falta</div>
+          <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <IconBuilding size={16} /> Clientes mais afetados por falta
+          </div>
           <table className="data-table">
             <thead><tr><th>Cliente</th><th>Pedidos afetados</th><th>Faltas</th><th>Qtd. total</th></tr></thead>
             <tbody>
@@ -1684,24 +1710,28 @@ export default function Panel({
       )}
 
       <div className="card" style={{ marginBottom: 20 }}>
-        <div className="page-header-row" style={{ marginBottom: 14 }}>
+        <div className="page-header-row" style={{ marginBottom: 16 }}>
           <div className="card-title" style={{ marginBottom: 0 }}>Pedidos com falta ({shortageEntries.length})</div>
           <div style={{ display: "flex", gap: 8 }}>
-            <button className="btn-small" onClick={exportShortagesCSV}>Exportar CSV</button>
-            <button className="btn-small btn-excel" onClick={exportShortagesXLSX}>Exportar Excel</button>
+            <button className="btn-small" onClick={exportShortagesCSV}>
+              <IconDownload size={14} /> CSV
+            </button>
+            <button className="btn-small btn-excel" onClick={exportShortagesXLSX}>
+              <IconDownload size={14} /> Excel
+            </button>
             <button className="btn-danger-outline" onClick={() => setConfirmingResetShortages((v) => !v)}>
-              Zerar faltas
+              <IconTrash size={14} /> Zerar faltas
             </button>
           </div>
         </div>
 
         {confirmingResetShortages && (
-          <div className="confirm-box" style={{ marginBottom: 14 }}>
+          <div className="confirm-box" style={{ marginBottom: 16 }}>
             <strong style={{ color: "var(--danger)", fontSize: 14 }}>Isso apaga todas as faltas registradas, permanentemente.</strong>
-            <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "6px 0 12px 0" }}>
-              Os registros de atividades (histórico) <strong>não</strong> são apagados. Digite <strong>ZERAR</strong> abaixo pra confirmar.
+            <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "8px 0 14px 0" }}>
+              Os registros de atividades (histórico) <strong>não</strong> são apagados. Digite <strong>ZERAR</strong> abaixo para confirmar.
             </p>
-            <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ display: "flex", gap: 10 }}>
               <input
                 className="field"
                 style={{ flex: 1 }}
@@ -1743,7 +1773,7 @@ export default function Panel({
                       <td style={{ color: "var(--text-muted)" }}>{e.customer_name || "—"}</td>
                       <td>
                         {e.is_encaixe ? (
-                          <span style={{ background: "var(--accent-2-soft)", color: "var(--accent-2)", padding: "2px 7px", borderRadius: 4, fontSize: 10.5, fontWeight: 600 }}>ENC.</span>
+                          <span style={{ background: "var(--accent-2-soft)", color: "var(--accent-2)", padding: "3px 8px", borderRadius: 5, fontSize: 10.5, fontWeight: 700 }}>ENC.</span>
                         ) : "—"}
                       </td>
                       <td style={{ color: "var(--danger)" }}>
@@ -1761,11 +1791,11 @@ export default function Panel({
       </div>
 
       <div className="card">
-        <div className="page-header-row" style={{ marginBottom: 14 }}>
+        <div className="page-header-row" style={{ marginBottom: 16 }}>
           <div className="card-title" style={{ marginBottom: 0 }}>Histórico detalhado</div>
           {onOpenAdminMaster && (
             <button className="btn-small" onClick={() => onOpenAdminMaster({ tab: "entries" })}>
-              ✏️ Abrir no Admin Master
+              <IconEdit3 size={14} /> Abrir na Central de controle
             </button>
           )}
         </div>
@@ -1800,7 +1830,7 @@ export default function Panel({
                           {e.transfer_type || e.customer_name}
                           {e.order_number ? ` · #${e.order_number}` : ""}
                           {e.transfer_number ? ` · #${e.transfer_number}` : ""}
-                          {e.transfer_urgent ? " · 🔴 urgente" : ""}
+                          {e.transfer_urgent ? " · urgente" : ""}
                         </div>
                       )}
                       {e.vehicle && (
@@ -1817,41 +1847,42 @@ export default function Panel({
                       {fmtDuration(e.duration_seconds)}
                       {isOutlier && <span className="outlier-tag">fora do padrão</span>}
                       {e.manual_entry && <span className="outlier-tag" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>manual</span>}
-                      {e.note && <span title={e.note} style={{ marginLeft: 6, cursor: "help" }}>📝</span>}
+                      {e.note && <span title={e.note} style={{ marginLeft: 6, cursor: "help" }}>nota</span>}
                     </td>
                     <td>
                       {e.is_encaixe && (
-                        <span style={{ background: "var(--accent-2-soft)", color: "var(--accent-2)", padding: "2px 7px", borderRadius: 4, fontSize: 10, fontWeight: 600, marginRight: 4 }}>
+                        <span style={{ background: "var(--accent-2-soft)", color: "var(--accent-2)", padding: "3px 8px", borderRadius: 5, fontSize: 10, fontWeight: 700, marginRight: 4 }}>
                           ENCAIXE
                         </span>
                       )}
                       {faltas.length > 0 && (
-                        <span title={faltas.map((f) => `${f.product_code} x${f.quantity}`).join(", ")} style={{ background: "var(--danger-soft)", color: "var(--danger)", padding: "2px 7px", borderRadius: 4, fontSize: 10, fontWeight: 600, cursor: "help" }}>
-                          ⚠ {faltas.length} FALTA{faltas.length > 1 ? "S" : ""}
+                        <span title={faltas.map((f) => `${f.product_code} x${f.quantity}`).join(", ")} style={{ background: "var(--danger-soft)", color: "var(--danger)", padding: "3px 8px", borderRadius: 5, fontSize: 10, fontWeight: 700, cursor: "help" }}>
+                          {faltas.length} falta{faltas.length > 1 ? "s" : ""}
                         </span>
                       )}
                     </td>
                     <td style={{ whiteSpace: "nowrap" }}>
                       {onOpenAdminMaster && (
-                        <button className="btn-small" style={{ padding: "4px 8px", marginRight: 4 }} onClick={() => onOpenAdminMaster({ tab: "entries", id: e.id })}>
-                          ✏️
+                        <button className="btn-small" style={{ padding: "5px 9px", marginRight: 4 }} onClick={() => onOpenAdminMaster({ tab: "entries", id: e.id })} title="Editar">
+                          <IconEdit size={12} />
                         </button>
                       )}
                       <button
                         className="btn-small"
-                        style={{ padding: "4px 8px", color: "var(--danger)", borderColor: "var(--danger)" }}
+                        style={{ padding: "5px 9px", color: "var(--danger)", borderColor: "var(--danger)" }}
                         onClick={async () => {
                           await quickDeleteEntry(e);
                           onOpenAdminMaster?.({ tab: "entries", refresh: true });
                         }}
+                        title="Excluir"
                       >
-                        🗑
+                        <IconTrash size={12} />
                       </button>
                     </td>
                   </tr>
                 );
               })}
-              {filteredEntries.length === 0 && <tr><td colSpan={10}>Nenhum registro encontrado.</td></tr>}
+              {filteredEntries.length === 0 && <tr><td colSpan={10} style={{ color: "var(--text-muted)" }}>Nenhum registro encontrado.</td></tr>}
             </tbody>
           </table>
         </div>

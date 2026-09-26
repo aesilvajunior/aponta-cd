@@ -1,18 +1,41 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  IconActivity,
+  IconUser,
+  IconPackage,
+  IconSettings,
+  IconBuilding,
+  IconSearch,
+  IconTv,
+  IconCalendar,
+  IconClipboardCheck,
+  IconBox,
+  IconLayoutDashboard,
+  IconEdit3,
+  IconStar,
+  IconUsers,
+  IconClock,
+  IconTrendingUp,
+  IconDot,
+} from "./Icons";
 
-// Ícone pra cada tipo
-const ICONS = {
-  action: "⚡",
-  operator: "👤",
-  order: "📦",
-  product: "🔧",
-  customer: "🏢",
-};
-
-// ============================================================
-// Command Palette — aberto com Ctrl+K
-// Busca operadores, pedidos, produtos, clientes e ações rápidas
-// ============================================================
+// Ícone por tipo de item
+function ItemIcon({ type }) {
+  switch (type) {
+    case "action":
+      return <IconActivity size={15} />;
+    case "operator":
+      return <IconUser size={15} />;
+    case "order":
+      return <IconPackage size={15} />;
+    case "product":
+      return <IconSettings size={15} />;
+    case "customer":
+      return <IconBuilding size={15} />;
+    default:
+      return <IconDot size={15} />;
+  }
+}
 
 export default function CommandPalette({
   open,
@@ -20,16 +43,15 @@ export default function CommandPalette({
   operators = [],
   entries = [],
   activities = [],
-  onNavigate,           // (tab) => void
-  onViewOperator,       // (operator) => void
-  onApplyFilter,        // ({type, value}) => void
+  onNavigate,
+  onViewOperator,
+  onApplyFilter,
 }) {
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef(null);
   const listRef = useRef(null);
 
-  // Reseta ao abrir
   useEffect(() => {
     if (open) {
       setQuery("");
@@ -38,27 +60,28 @@ export default function CommandPalette({
     }
   }, [open]);
 
-  // ------------------------------------------------------------
-  // Constrói os itens disponíveis (ações + dados)
-  // ------------------------------------------------------------
   const allItems = useMemo(() => {
     const items = [];
 
-    // ---- AÇÕES RÁPIDAS ----
+    // Ações rápidas
     items.push(
-      { id: "nav-kiosk", type: "action", title: "Ir para Registrar atividade", subtitle: "Tela do quiosque", onSelect: () => onNavigate?.("kiosk") },
-      { id: "nav-errors", type: "action", title: "Ir para Registrar erro", subtitle: "Quiosque de erros", onSelect: () => onNavigate?.("errors-kiosk") },
-      { id: "nav-panel", type: "action", title: "Ir para Painel de métricas", subtitle: "Dashboard do admin", onSelect: () => onNavigate?.("panel") },
-      { id: "nav-manual", type: "action", title: "Ir para Lançamento retroativo", subtitle: "Digitar dados antigos", onSelect: () => onNavigate?.("manual") },
-      { id: "nav-team", type: "action", title: "Ir para Gestão e cadastros", subtitle: "Operadores, atividades, veículos", onSelect: () => onNavigate?.("team") },
-      { id: "nav-audit", type: "action", title: "Ir para Histórico de alterações", subtitle: "Auditoria do sistema", onSelect: () => onNavigate?.("audit") },
-      { id: "action-tv", type: "action", title: "Abrir Modo TV", subtitle: "Painel de exibição em nova aba", onSelect: () => window.open("/tv", "_blank") },
-      { id: "action-today", type: "action", title: "Filtrar Painel por Hoje", subtitle: "Aplica filtro rápido de período", onSelect: () => { onNavigate?.("panel"); onApplyFilter?.({ type: "hoje" }); } },
-      { id: "action-week", type: "action", title: "Filtrar Painel por Últimos 7 dias", subtitle: "Aplica filtro rápido de período", onSelect: () => { onNavigate?.("panel"); onApplyFilter?.({ type: "7dias" }); } },
-      { id: "action-month", type: "action", title: "Filtrar Painel por Este mês", subtitle: "Aplica filtro rápido de período", onSelect: () => { onNavigate?.("panel"); onApplyFilter?.({ type: "mes" }); } },
+      { id: "nav-kiosk", type: "action", title: "Ir para Apontar atividade", subtitle: "Registro de atividade no chão de fábrica", onSelect: () => onNavigate?.("kiosk") },
+      { id: "nav-errors", type: "action", title: "Ir para Apontar erro", subtitle: "Registro de erro de separação", onSelect: () => onNavigate?.("errors-kiosk") },
+      { id: "nav-schedules", type: "action", title: "Ir para Agenda", subtitle: "Agendamentos de recebimento", onSelect: () => onNavigate?.("schedules") },
+      { id: "nav-conference", type: "action", title: "Ir para Conferência", subtitle: "Mesa de conferência de pedidos", onSelect: () => onNavigate?.("conference") },
+      { id: "nav-shortages", type: "action", title: "Ir para Faltas", subtitle: "Consulta de faltas de material", onSelect: () => onNavigate?.("shortages") },
+      { id: "nav-panel", type: "action", title: "Ir para Indicadores", subtitle: "Painel de métricas do admin", onSelect: () => onNavigate?.("panel") },
+      { id: "nav-manual", type: "action", title: "Ir para Lançamento manual", subtitle: "Digitar dados antigos", onSelect: () => onNavigate?.("manual") },
+      { id: "nav-team", type: "action", title: "Ir para Cadastros", subtitle: "Operadores, atividades, veículos", onSelect: () => onNavigate?.("team") },
+      { id: "nav-admin-master", type: "action", title: "Ir para Central de controle", subtitle: "Poderes totais do admin", onSelect: () => onNavigate?.("admin-master") },
+      { id: "nav-audit", type: "action", title: "Ir para Auditoria", subtitle: "Histórico de alterações", onSelect: () => onNavigate?.("audit") },
+      { id: "action-tv", type: "action", title: "Abrir Painel TV", subtitle: "Painel de exibição em nova aba", onSelect: () => window.open("/tv", "_blank") },
+      { id: "action-today", type: "action", title: "Filtrar Indicadores por Hoje", subtitle: "Aplica filtro de período rápido", onSelect: () => { onNavigate?.("panel"); onApplyFilter?.({ type: "hoje" }); } },
+      { id: "action-week", type: "action", title: "Filtrar Indicadores por Últimos 7 dias", subtitle: "Aplica filtro de período rápido", onSelect: () => { onNavigate?.("panel"); onApplyFilter?.({ type: "7dias" }); } },
+      { id: "action-month", type: "action", title: "Filtrar Indicadores por Este mês", subtitle: "Aplica filtro de período rápido", onSelect: () => { onNavigate?.("panel"); onApplyFilter?.({ type: "mes" }); } },
     );
 
-    // ---- OPERADORES ----
+    // Operadores
     operators.forEach((op) => {
       items.push({
         id: `op-${op.code}`,
@@ -70,7 +93,7 @@ export default function CommandPalette({
       });
     });
 
-    // ---- PEDIDOS (últimos 200 únicos) ----
+    // Pedidos
     const seenOrders = new Set();
     entries.forEach((e) => {
       if (!e.order_number) return;
@@ -94,9 +117,6 @@ export default function CommandPalette({
     return items;
   }, [operators, entries, onNavigate, onViewOperator, onApplyFilter]);
 
-  // ------------------------------------------------------------
-  // Filtro por busca
-  // ------------------------------------------------------------
   const filteredItems = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return allItems.slice(0, 30);
@@ -116,14 +136,10 @@ export default function CommandPalette({
       .map((x) => x.item);
   }, [allItems, query]);
 
-  // Garante índice válido quando a lista muda
   useEffect(() => {
     if (selectedIndex >= filteredItems.length) setSelectedIndex(0);
   }, [filteredItems, selectedIndex]);
 
-  // ------------------------------------------------------------
-  // Teclado
-  // ------------------------------------------------------------
   useEffect(() => {
     if (!open) return;
     function onKeyDown(e) {
@@ -149,14 +165,12 @@ export default function CommandPalette({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [open, filteredItems, selectedIndex, onClose]);
 
-  // Scroll do item selecionado pra dentro da view
   useEffect(() => {
     if (!listRef.current) return;
     const el = listRef.current.querySelector(`[data-index="${selectedIndex}"]`);
     if (el) el.scrollIntoView({ block: "nearest" });
   }, [selectedIndex]);
 
-  // Agrupa itens por tipo pra exibir títulos de seção
   const grouped = useMemo(() => {
     const groups = { action: [], operator: [], order: [], product: [], customer: [] };
     filteredItems.forEach((item) => {
@@ -174,7 +188,6 @@ export default function CommandPalette({
     customer: "Clientes",
   };
 
-  // ⬇️ RETORNO CONDICIONAL — SÓ DEPOIS DE TODOS OS HOOKS
   if (!open) return null;
 
   return (
@@ -182,15 +195,12 @@ export default function CommandPalette({
       <div className="cmd-palette" onClick={(e) => e.stopPropagation()}>
         <div className="cmd-input-wrap">
           <span className="cmd-input-icon">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="11" cy="11" r="8" />
-              <line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
+            <IconSearch size={18} />
           </span>
           <input
             ref={inputRef}
             className="cmd-input"
-            placeholder="Buscar operador, pedido, ação…"
+            placeholder="Buscar operador, pedido, ação..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
@@ -200,9 +210,9 @@ export default function CommandPalette({
         <div className="cmd-results" ref={listRef}>
           {filteredItems.length === 0 ? (
             <div className="cmd-empty">
-              Nada encontrado pra <strong>"{query}"</strong>
+              Nada encontrado para <strong>"{query}"</strong>
               <br />
-              <span style={{ fontSize: 12 }}>Tenta buscar por nome, código ou número de pedido.</span>
+              <span style={{ fontSize: 12 }}>Tente buscar por nome, código ou número de pedido.</span>
             </div>
           ) : (
             <>
@@ -225,7 +235,7 @@ export default function CommandPalette({
                           }}
                           onMouseEnter={() => setSelectedIndex(globalIdx)}
                         >
-                          <div className="cmd-item-icon">{ICONS[item.type] || "•"}</div>
+                          <div className="cmd-item-icon"><ItemIcon type={item.type} /></div>
                           <div className="cmd-item-content">
                             <div className="cmd-item-title">{item.title}</div>
                             {item.subtitle && <div className="cmd-item-subtitle">{item.subtitle}</div>}

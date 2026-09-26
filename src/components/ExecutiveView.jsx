@@ -3,8 +3,18 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend, LineChart, Line,
 } from "recharts";
 import { fmtDate, fmtDuration } from "../lib/format";
+import {
+  IconTrendingUp,
+  IconAlertTriangle,
+  IconTarget,
+  IconPackage,
+  IconAlertCircle,
+  IconClock,
+  IconUsers,
+  IconBuilding,
+} from "./Icons";
 
-const COLORS = ["#0a3d7a", "#00a0e4", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444"];
+const COLORS = ["#1e3a5f", "#4a7ba7", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444"];
 
 function fmtDateShort(iso) {
   const d = new Date(iso + "T12:00:00");
@@ -65,10 +75,8 @@ export default function ExecutiveView({
   shortages = [],
   onViewOperator,
 }) {
-  // Período selecionado: "hoje" | "semana" | "mes"
   const [period, setPeriod] = useState("mes");
 
-  // Range atual
   const range = useMemo(() => {
     if (period === "hoje") {
       const t = todayISO();
@@ -78,7 +86,6 @@ export default function ExecutiveView({
     return getMonthRange();
   }, [period]);
 
-  // Range anterior (pra comparação)
   const prevRange = useMemo(() => {
     if (period === "hoje") {
       const y = new Date();
@@ -102,7 +109,6 @@ export default function ExecutiveView({
     return getPrevMonthRange();
   }, [period]);
 
-  // Filtra registros por range
   const filterByRange = (list, r) => {
     return list.filter((e) => {
       const d = e.start_time.slice(0, 10);
@@ -139,9 +145,6 @@ export default function ExecutiveView({
   const currentEntriesWithShortage = currentEntries.filter((e) => (shortagesByEntry[e.id]?.length || 0) > 0);
   const prevEntriesWithShortage = prevEntries.filter((e) => (shortagesByEntry[e.id]?.length || 0) > 0);
 
-  // ============================================================
-  // KPIs
-  // ============================================================
   const kpis = useMemo(() => {
     const calc = (list) => {
       const total = list.length;
@@ -178,9 +181,6 @@ export default function ExecutiveView({
     return { achieved, total: withData.length, list };
   }, [activities, currentEntries]);
 
-  // ============================================================
-  // Ranking operadores no período
-  // ============================================================
   const opRanking = useMemo(() => {
     const byOp = {};
     currentEntries.forEach((e) => {
@@ -208,9 +208,6 @@ export default function ExecutiveView({
       .slice(0, 5);
   }, [currentEntries]);
 
-  // ============================================================
-  // Top problemas
-  // ============================================================
   const topShortages = useMemo(() => {
     const byCode = {};
     currentEntries.forEach((e) => {
@@ -257,9 +254,6 @@ export default function ExecutiveView({
     return Object.values(byCustomer).sort((a, b) => b.totalFaltas - a.totalFaltas).slice(0, 5);
   }, [currentEntries, shortagesByEntry]);
 
-  // ============================================================
-  // Evolução diária (linha)
-  // ============================================================
   const dailyEvolution = useMemo(() => {
     const byDay = {};
     currentEntries.forEach((e) => {
@@ -277,13 +271,9 @@ export default function ExecutiveView({
       }));
   }, [currentEntries]);
 
-  // ============================================================
-  // Alertas executivos
-  // ============================================================
   const executiveAlerts = useMemo(() => {
     const alerts = [];
 
-    // 1. Sessões em andamento
     const lateSessions = activeSessions.filter((s) => {
       const elapsed = (Date.now() - new Date(s.start_time).getTime()) / 1000;
       const config = activities.find((a) => a.name === s.activity);
@@ -293,51 +283,47 @@ export default function ExecutiveView({
     if (lateSessions.length > 0) {
       alerts.push({
         level: "danger",
-        icon: "⚠",
+        icon: <IconAlertTriangle size={20} />,
         title: `${lateSessions.length} atividade(s) em andamento há mais tempo que o esperado`,
         desc: "Verifique se operadores esqueceram de finalizar.",
       });
     }
 
-    // 2. Metas não atingidas
     if (goalStats.total > 0 && goalStats.achieved < goalStats.total) {
       const missing = goalStats.total - goalStats.achieved;
       alerts.push({
         level: "warning",
-        icon: "🎯",
+        icon: <IconTarget size={20} />,
         title: `${missing} meta(s) não atingida(s) no período`,
         desc: `Apenas ${goalStats.achieved} de ${goalStats.total} atividades ficaram dentro do tempo esperado.`,
       });
     }
 
-    // 3. Aumento de faltas em relação ao período anterior
     if (currentEntriesWithShortage.length > prevEntriesWithShortage.length && prevEntriesWithShortage.length > 0) {
       const delta = currentEntriesWithShortage.length - prevEntriesWithShortage.length;
       alerts.push({
         level: "warning",
-        icon: "📦",
+        icon: <IconPackage size={20} />,
         title: `Faltas aumentaram ${delta > 0 ? "+" : ""}${delta} em relação ao período anterior`,
         desc: `Eram ${prevEntriesWithShortage.length} antes, agora são ${currentEntriesWithShortage.length}.`,
       });
     }
 
-    // 4. Aumento de erros
     if (currentErrors.length > prevErrors.length && prevErrors.length > 0) {
       const delta = currentErrors.length - prevErrors.length;
       alerts.push({
         level: "warning",
-        icon: "🚨",
+        icon: <IconAlertCircle size={20} />,
         title: `Erros de separação aumentaram ${delta > 0 ? "+" : ""}${delta}`,
         desc: `Eram ${prevErrors.length} antes, agora são ${currentErrors.length}.`,
       });
     }
 
-    // 5. Tempo médio piorando
     if (kpis.previous.avgSec > 0 && kpis.current.avgSec > kpis.previous.avgSec * 1.1) {
       const deltaPct = Math.round(((kpis.current.avgSec - kpis.previous.avgSec) / kpis.previous.avgSec) * 100);
       alerts.push({
         level: "warning",
-        icon: "⏱",
+        icon: <IconClock size={20} />,
         title: `Tempo médio aumentou ${deltaPct}%`,
         desc: `Antes ${fmtDuration(kpis.previous.avgSec)}, agora ${fmtDuration(kpis.current.avgSec)}.`,
       });
@@ -346,7 +332,6 @@ export default function ExecutiveView({
     return alerts;
   }, [activeSessions, activities, goalStats, currentEntriesWithShortage, prevEntriesWithShortage, currentErrors, prevErrors, kpis]);
 
-  // Helper de comparação
   function deltaPct(current, previous) {
     if (previous === 0) return null;
     return Math.round(((current - previous) / previous) * 100);
@@ -367,17 +352,15 @@ export default function ExecutiveView({
 
   return (
     <div>
-      {/* Header */}
       <div className="page-header-row" style={{ marginBottom: 22 }}>
         <div>
-          <h1 className="page-title">Visão executiva</h1>
+          <h1 className="page-title">Visão geral</h1>
           <p className="page-sub" style={{ marginBottom: 0 }}>
             Resumo do desempenho — sem detalhes, só o que importa.
           </p>
         </div>
       </div>
 
-      {/* Período */}
       <div className="quick-filters" style={{ marginBottom: 20 }}>
         <span className="quick-filters-label">Período:</span>
         <button className={`quick-filter-btn ${period === "hoje" ? "active" : ""}`} onClick={() => setPeriod("hoje")}>Hoje</button>
@@ -385,26 +368,24 @@ export default function ExecutiveView({
         <button className={`quick-filter-btn ${period === "mes" ? "active" : ""}`} onClick={() => setPeriod("mes")}>Este mês</button>
       </div>
 
-      {/* Alertas executivos */}
       {executiveAlerts.length > 0 && (
         <div style={{ marginBottom: 24 }}>
           {executiveAlerts.map((a, i) => (
             <div
               key={i}
               className={`alert-card ${a.level === "danger" ? "alert-danger" : "alert-warning"}`}
-              style={{ marginBottom: 10, display: "flex", gap: 14, alignItems: "flex-start" }}
+              style={{ marginBottom: 12, display: "flex", gap: 14, alignItems: "flex-start" }}
             >
-              <span style={{ fontSize: 22, lineHeight: 1 }}>{a.icon}</span>
+              <span style={{ display: "flex", flexShrink: 0, marginTop: 2 }}>{a.icon}</span>
               <div>
                 <strong style={{ fontSize: 14 }}>{a.title}</strong>
-                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "4px 0 0 0" }}>{a.desc}</p>
+                <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "6px 0 0 0" }}>{a.desc}</p>
               </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* KPIs principais */}
       <div className="exec-kpis">
         <div className="exec-kpi">
           <div className="exec-kpi-label">Registros</div>
@@ -485,22 +466,23 @@ export default function ExecutiveView({
         </div>
       </div>
 
-      {/* Evolução diária */}
       <div className="card" style={{ marginBottom: 20 }}>
-        <div className="card-title">📈 Evolução no período</div>
+        <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <IconTrendingUp size={16} /> Evolução no período
+        </div>
         {dailyEvolution.length > 1 ? (
-          <ResponsiveContainer width="100%" height={200}>
+          <ResponsiveContainer width="100%" height={220}>
             <LineChart data={dailyEvolution}>
               <CartesianGrid stroke="var(--border)" vertical={false} />
               <XAxis dataKey="label" tick={{ fill: "var(--text-muted)", fontSize: 11 }} />
               <YAxis tick={{ fill: "var(--text-muted)", fontSize: 11 }} allowDecimals={false} />
               <Tooltip
-                contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", fontSize: 12, borderRadius: 8 }}
+                contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", fontSize: 12, borderRadius: 10 }}
                 labelStyle={{ color: "var(--text)" }}
               />
               <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Line type="monotone" dataKey="registros" name="Registros" stroke="#0a3d7a" strokeWidth={2} dot={{ r: 3 }} />
-              <Line type="monotone" dataKey="minutos" name="Minutos" stroke="#00a0e4" strokeWidth={2} dot={{ r: 3 }} />
+              <Line type="monotone" dataKey="registros" name="Registros" stroke="#1e3a5f" strokeWidth={2} dot={{ r: 3 }} />
+              <Line type="monotone" dataKey="minutos" name="Minutos" stroke="#4a7ba7" strokeWidth={2} dot={{ r: 3 }} />
             </LineChart>
           </ResponsiveContainer>
         ) : (
@@ -508,9 +490,10 @@ export default function ExecutiveView({
         )}
       </div>
 
-      {/* Top operadores */}
       <div className="card" style={{ marginBottom: 20 }}>
-        <div className="card-title">🏆 Top operadores do período</div>
+        <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <IconTrendingUp size={16} /> Top operadores do período
+        </div>
         {opRanking.length > 0 ? (
           <table className="data-table">
             <thead>
@@ -525,11 +508,7 @@ export default function ExecutiveView({
             <tbody>
               {opRanking.map((op, i) => (
                 <tr key={op.code}>
-                  <td>
-                    <span style={{ fontSize: 16 }}>
-                      {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}º`}
-                    </span>
-                  </td>
+                  <td style={{ fontWeight: 700, color: i < 3 ? "var(--accent)" : "var(--text-muted)" }}>{i + 1}º</td>
                   <td
                     className={onViewOperator ? "clickable-name" : ""}
                     onClick={onViewOperator ? () => {
@@ -552,11 +531,11 @@ export default function ExecutiveView({
         )}
       </div>
 
-      {/* Grid de problemas */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 20, marginBottom: 20 }}>
-        {/* Faltas */}
         <div className="card">
-          <div className="card-title">📦 Produtos com mais faltas</div>
+          <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <IconPackage size={16} /> Produtos com mais faltas
+          </div>
           {topShortages.length > 0 ? (
             <table className="data-table">
               <thead><tr><th>Código</th><th>Ocorrências</th><th>Qtd.</th></tr></thead>
@@ -575,9 +554,10 @@ export default function ExecutiveView({
           )}
         </div>
 
-        {/* Clientes afetados */}
         <div className="card">
-          <div className="card-title">🏢 Clientes mais afetados</div>
+          <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <IconBuilding size={16} /> Clientes mais afetados
+          </div>
           {topShortageCustomers.length > 0 ? (
             <table className="data-table">
               <thead><tr><th>Cliente</th><th>Pedidos</th><th>Faltas</th></tr></thead>
@@ -596,9 +576,10 @@ export default function ExecutiveView({
           )}
         </div>
 
-        {/* Erros por tipo */}
         <div className="card">
-          <div className="card-title">🚨 Erros por tipo</div>
+          <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <IconAlertCircle size={16} /> Erros por tipo
+          </div>
           {topErrors.length > 0 ? (
             <table className="data-table">
               <thead><tr><th>Tipo</th><th>Ocorrências</th></tr></thead>
@@ -616,9 +597,10 @@ export default function ExecutiveView({
           )}
         </div>
 
-        {/* Quem mais errou */}
         <div className="card">
-          <div className="card-title">⚠ Operadores que mais erraram</div>
+          <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <IconAlertTriangle size={16} /> Operadores que mais erraram
+          </div>
           {topErrorOperators.length > 0 ? (
             <table className="data-table">
               <thead><tr><th>Operador</th><th>Erros</th></tr></thead>
@@ -637,10 +619,11 @@ export default function ExecutiveView({
         </div>
       </div>
 
-      {/* Metas detalhadas */}
       {goalStats.list.filter((g) => g.achieved !== null).length > 0 && (
         <div className="card">
-          <div className="card-title">🎯 Metas por atividade</div>
+          <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <IconTarget size={16} /> Metas por atividade
+          </div>
           <table className="data-table">
             <thead>
               <tr><th>Atividade</th><th>Meta</th><th>Real (média)</th><th>Status</th></tr>
@@ -661,7 +644,7 @@ export default function ExecutiveView({
                           fontSize: 12.5,
                         }}
                       >
-                        {g.achieved ? "✓ Atingida" : "✗ Fora da meta"}
+                        {g.achieved ? "Atingida" : "Fora da meta"}
                       </span>
                     </td>
                   </tr>
