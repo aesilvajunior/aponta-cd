@@ -16,10 +16,6 @@ import {
   IconX,
   IconDelete,
   IconPlus,
-  IconClock,
-  IconUser,
-  IconPackage,
-  IconTruck,
   IconAlertTriangle,
   IconEdit,
   IconTrash,
@@ -528,7 +524,7 @@ export default function ScheduleManager({ operators, isAdmin }) {
                   {d}
                 </button>
               ))}
-              <button className="kiosk-key kiosk-key-muted" onClick={handleBackspace}>
+              <button className="kiosk-key kiosk-key-muted" onClick={handleBackspace} aria-label="Apagar">
                 <IconDelete size={20} />
               </button>
               <button className="kiosk-key" onClick={() => handleDigit("0")}>
@@ -570,14 +566,12 @@ export default function ScheduleManager({ operators, isAdmin }) {
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {canCreate && (
-            <button className="btn-small btn-excel" onClick={openCreateModal}>
+            <button className="btn-small btn-excel" onClick={openCreateModal} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
               <IconPlus size={14} /> Novo agendamento
             </button>
           )}
           {loggedOperator && (
-            <button className="btn-small" onClick={logout}>
-              Sair
-            </button>
+            <button className="btn-small" onClick={logout}>Sair</button>
           )}
           {isAdmin && (
             <a
@@ -605,13 +599,13 @@ export default function ScheduleManager({ operators, isAdmin }) {
             {MONTHS[viewMonth]} {viewYear}
           </div>
           <div className="schedule-calendar-nav">
-            <button onClick={() => { bump(); if (viewMonth === 0) { setViewMonth(11); setViewYear(viewYear - 1); } else setViewMonth(viewMonth - 1); }}>
+            <button onClick={() => { bump(); if (viewMonth === 0) { setViewMonth(11); setViewYear(viewYear - 1); } else setViewMonth(viewMonth - 1); }} aria-label="Mês anterior">
               <IconChevronLeft size={16} />
             </button>
             <button className="today-btn" onClick={() => { bump(); const t = new Date(); setViewYear(t.getFullYear()); setViewMonth(t.getMonth()); setSelectedDate(todayISO()); }}>
               Hoje
             </button>
-            <button onClick={() => { bump(); if (viewMonth === 11) { setViewMonth(0); setViewYear(viewYear + 1); } else setViewMonth(viewMonth + 1); }}>
+            <button onClick={() => { bump(); if (viewMonth === 11) { setViewMonth(0); setViewYear(viewYear + 1); } else setViewMonth(viewMonth + 1); }} aria-label="Próximo mês">
               <IconChevronRight size={16} />
             </button>
           </div>
@@ -695,7 +689,7 @@ export default function ScheduleManager({ operators, isAdmin }) {
                   <div className="schedule-item-supplier">
                     {s.supplier_name}
                     {s.is_exception && (
-                      <span className="schedule-item-badge exception" style={{ marginLeft: 8 }}>
+                      <span className="schedule-item-badge exception" style={{ marginLeft: 8, display: "inline-flex", alignItems: "center", gap: 4 }}>
                         <IconAlertTriangle size={11} /> Exceção
                       </span>
                     )}
@@ -722,10 +716,10 @@ export default function ScheduleManager({ operators, isAdmin }) {
                 </div>
                 {(isAdmin || s.created_by_code === loggedOperator?.code) && (
                   <div className="schedule-item-actions">
-                    <button className="btn-small" onClick={() => openEditModal(s)}>
+                    <button className="btn-small" onClick={() => openEditModal(s)} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
                       <IconEdit size={13} /> Editar
                     </button>
-                    <button className="btn-danger-outline" onClick={() => removeSchedule(s)}>
+                    <button className="btn-danger-outline" onClick={() => removeSchedule(s)} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
                       <IconTrash size={13} /> Remover
                     </button>
                   </div>
@@ -765,13 +759,13 @@ export default function ScheduleManager({ operators, isAdmin }) {
 
       {showModal && (
         <div className="kiosk-modal-backdrop" onClick={closeModal}>
-          <div className="kiosk-modal" ref={modalRef} onClick={(e) => e.stopPropagation()} style={{ maxWidth: 640 }}>
+          <div className="kiosk-modal" ref={modalRef} onClick={(e) => e.stopPropagation()} style={{ maxWidth: 660 }}>
             <div className="kiosk-modal-header">
               <div>
                 <div className="kiosk-modal-title">{editingId ? "Editar agendamento" : "Novo agendamento"}</div>
                 <div className="kiosk-modal-sub">Preencha os dados da entrega do fornecedor</div>
               </div>
-              <button className="kiosk-modal-close" onClick={closeModal}>
+              <button className="kiosk-modal-close" onClick={closeModal} aria-label="Fechar">
                 <IconX size={18} />
               </button>
             </div>

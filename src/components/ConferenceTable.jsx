@@ -25,7 +25,6 @@ import {
   IconUser,
   IconCheck,
   IconAlertTriangle,
-  IconAlertCircle,
   IconClock,
   IconEdit,
   IconTrash,
@@ -378,7 +377,7 @@ export default function ConferenceTable({ operators, isAdmin = false }) {
               {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((d) => (
                 <button key={d} className="kiosk-key" onClick={() => handleDigit(d)}>{d}</button>
               ))}
-              <button className="kiosk-key kiosk-key-muted" onClick={handleBackspace}>
+              <button className="kiosk-key kiosk-key-muted" onClick={handleBackspace} aria-label="Apagar">
                 <IconDelete size={20} />
               </button>
               <button className="kiosk-key" onClick={() => handleDigit("0")}>0</button>
@@ -412,9 +411,7 @@ export default function ConferenceTable({ operators, isAdmin = false }) {
           <button className="btn-small" onClick={load}>
             <IconRefresh size={14} /> Atualizar
           </button>
-          <button className="btn-small" onClick={logout}>
-            Sair
-          </button>
+          <button className="btn-small" onClick={logout}>Sair</button>
         </div>
       </div>
 
@@ -658,7 +655,7 @@ export default function ConferenceTable({ operators, isAdmin = false }) {
                 {historyToday.map((h) => (
                   <tr key={h.id}>
                     <td style={{ fontFamily: "var(--font-mono)", fontWeight: 600 }}>
-                      {h.is_encaixe && "⚡ "}
+                      {h.is_encaixe && "ENC · "}
                       {h.transfer_type ? `${h.transfer_type} #${h.transfer_number || ""}` : h.order_number ? `#${h.order_number}` : "—"}
                     </td>
                     <td style={{ fontFamily: "var(--font-display)", color: "var(--text-muted)" }}>{h.customer_name || "—"}</td>
@@ -679,10 +676,10 @@ export default function ConferenceTable({ operators, isAdmin = false }) {
                     </td>
                     {isAdmin && (
                       <td style={{ whiteSpace: "nowrap" }}>
-                        <button className="btn-small" style={{ padding: "4px 8px", marginRight: 4 }} onClick={() => openAdminEdit(h)}>
+                        <button className="btn-small" style={{ padding: "5px 9px", marginRight: 4 }} onClick={() => openAdminEdit(h)} title="Editar">
                           <IconEdit size={12} />
                         </button>
-                        <button className="btn-small" style={{ padding: "4px 8px", color: "var(--danger)", borderColor: "var(--danger)" }} onClick={() => adminDelete(h)}>
+                        <button className="btn-small" style={{ padding: "5px 9px", color: "var(--danger)", borderColor: "var(--danger)" }} onClick={() => adminDelete(h)} title="Excluir">
                           <IconTrash size={12} />
                         </button>
                       </td>
@@ -697,7 +694,7 @@ export default function ConferenceTable({ operators, isAdmin = false }) {
 
       {finishModal && (
         <div className="kiosk-modal-backdrop" onClick={() => !busy && setFinishModal(null)}>
-          <div className="kiosk-modal" ref={modalRef} onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520 }}>
+          <div className="kiosk-modal" ref={modalRef} onClick={(e) => e.stopPropagation()} style={{ maxWidth: 540 }}>
             <div className="kiosk-modal-header">
               <div>
                 <div className="kiosk-modal-title">Finalizar conferência</div>
@@ -706,7 +703,7 @@ export default function ConferenceTable({ operators, isAdmin = false }) {
                   {finishModal.customer_name && ` · ${finishModal.customer_name}`}
                 </div>
               </div>
-              <button className="kiosk-modal-close" onClick={() => setFinishModal(null)}>
+              <button className="kiosk-modal-close" onClick={() => setFinishModal(null)} aria-label="Fechar">
                 <IconX size={18} />
               </button>
             </div>
@@ -730,15 +727,17 @@ export default function ConferenceTable({ operators, isAdmin = false }) {
 
       {problemModal && (
         <div className="kiosk-modal-backdrop" onClick={() => !busy && setProblemModal(null)}>
-          <div className="kiosk-modal" ref={modalRef} onClick={(e) => e.stopPropagation()} style={{ maxWidth: 560 }}>
+          <div className="kiosk-modal" ref={modalRef} onClick={(e) => e.stopPropagation()} style={{ maxWidth: 580 }}>
             <div className="kiosk-modal-header">
               <div>
-                <div className="kiosk-modal-title" style={{ color: "var(--danger)" }}>Reportar problema</div>
+                <div className="kiosk-modal-title" style={{ color: "var(--danger)", display: "flex", alignItems: "center", gap: 8 }}>
+                  <IconAlertTriangle size={18} /> Reportar problema
+                </div>
                 <div className="kiosk-modal-sub">
                   {problemModal.order_number ? `Pedido #${problemModal.order_number}` : problemModal.transfer_type ? `${problemModal.transfer_type} #${problemModal.transfer_number}` : "Item"}
                 </div>
               </div>
-              <button className="kiosk-modal-close" onClick={() => setProblemModal(null)}>
+              <button className="kiosk-modal-close" onClick={() => setProblemModal(null)} aria-label="Fechar">
                 <IconX size={18} />
               </button>
             </div>
@@ -751,7 +750,7 @@ export default function ConferenceTable({ operators, isAdmin = false }) {
                     <button key={r} className={`quick-filter-btn ${problemReason === r ? "active" : ""}`} onClick={() => setProblemReason(r)} type="button">{r}</button>
                   ))}
                 </div>
-                <input className="kiosk-field" style={{ marginTop: 8 }} placeholder="Ou digite o motivo" value={problemReason} onChange={(e) => setProblemReason(e.target.value)} autoFocus />
+                <input className="kiosk-field" style={{ marginTop: 10 }} placeholder="Ou digite o motivo" value={problemReason} onChange={(e) => setProblemReason(e.target.value)} autoFocus />
               </div>
 
               <div className="kiosk-modal-section">
@@ -772,13 +771,15 @@ export default function ConferenceTable({ operators, isAdmin = false }) {
 
       {adminEdit && (
         <div className="kiosk-modal-backdrop" onClick={() => !busy && setAdminEdit(null)}>
-          <div className="kiosk-modal" ref={modalRef} onClick={(e) => e.stopPropagation()} style={{ maxWidth: 600 }}>
+          <div className="kiosk-modal" ref={modalRef} onClick={(e) => e.stopPropagation()} style={{ maxWidth: 620 }}>
             <div className="kiosk-modal-header">
               <div>
-                <div className="kiosk-modal-title" style={{ color: "var(--danger)" }}>Editar item (admin)</div>
+                <div className="kiosk-modal-title" style={{ color: "var(--danger)", display: "flex", alignItems: "center", gap: 8 }}>
+                  <IconEdit size={18} /> Editar item (admin)
+                </div>
                 <div className="kiosk-modal-sub">Você está editando como admin</div>
               </div>
-              <button className="kiosk-modal-close" onClick={() => setAdminEdit(null)}>
+              <button className="kiosk-modal-close" onClick={() => setAdminEdit(null)} aria-label="Fechar">
                 <IconX size={18} />
               </button>
             </div>
@@ -819,12 +820,12 @@ export default function ConferenceTable({ operators, isAdmin = false }) {
                   <label className="schedule-modal-label">Observação</label>
                   <textarea className="schedule-modal-field" rows={2} style={{ resize: "none" }} value={adminEdit.note || ""} onChange={(e) => setAdminEdit({ ...adminEdit, note: e.target.value })} disabled={busy} />
                 </div>
-                <div className="schedule-modal-full" style={{ display: "flex", gap: 16 }}>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                <div className="schedule-modal-full" style={{ display: "flex", gap: 20 }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5 }}>
                     <input type="checkbox" checked={!!adminEdit.is_encaixe} onChange={(e) => setAdminEdit({ ...adminEdit, is_encaixe: e.target.checked })} disabled={busy} />
                     Encaixe
                   </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5 }}>
                     <input type="checkbox" checked={!!adminEdit.transfer_urgent} onChange={(e) => setAdminEdit({ ...adminEdit, transfer_urgent: e.target.checked })} disabled={busy} />
                     Transferência urgente
                   </label>
