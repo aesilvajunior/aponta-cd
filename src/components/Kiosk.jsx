@@ -12,12 +12,9 @@ import {
   IconArrowLeftRight,
   IconInbox,
   IconTruck,
-  IconUser,
-  IconHash,
   IconMapPin,
   IconCheck,
   IconX,
-  IconAlertTriangle,
   IconDelete,
   IconTrash,
   IconPlus,
@@ -581,7 +578,7 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
                   {d}
                 </button>
               ))}
-              <button className="kiosk-key kiosk-key-muted" onClick={handleBackspace}>
+              <button className="kiosk-key kiosk-key-muted" onClick={handleBackspace} aria-label="Apagar">
                 <IconDelete size={20} />
               </button>
               <button className="kiosk-key" onClick={() => handleDigit("0")}>
@@ -687,7 +684,7 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
                         ))}
                       </div>
                     ) : (
-                      <p className="kiosk-form-empty">Nenhum veículo cadastrado. Peça ao admin pra adicionar em "Cadastros".</p>
+                      <p className="kiosk-form-empty">Nenhum veículo cadastrado. Peça ao administrador para adicionar em "Cadastros".</p>
                     )}
                   </>
                 ) : orderFieldType === "fornecedor" ? (
