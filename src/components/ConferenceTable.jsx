@@ -7,11 +7,13 @@ import {
   reportConferenceProblem,
   computeConferenceStats,
   waitingSeconds,
+} from "../lib/conference";
+import {
   updateConferenceItem,
   deleteConferenceItem,
   resetConferenceItem,
   logAudit,
-} from "../lib/conference";
+} from "../lib/api";
 import { fmtClock, fmtDate, fmtDuration } from "../lib/format";
 import { supabase } from "../supabaseClient";
 import useKeyboardNav from "../hooks/useKeyboardNav";
@@ -258,7 +260,6 @@ export default function ConferenceTable({ operators, isAdmin = false }) {
     await load();
   }
 
-  // Admin actions
   async function saveAdminEdit() {
     if (!adminEdit || busy) return;
     setBusy(true);
