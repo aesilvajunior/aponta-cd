@@ -14,7 +14,6 @@ import {
   IconZap,
   IconArrowLeftRight,
   IconFlag,
-  IconUser,
   IconCheck,
   IconAlertTriangle,
   IconTrendingUp,
@@ -26,6 +25,13 @@ import {
   IconTv,
   IconMapPin,
   IconClock,
+  IconEye,
+  IconEyeOff,
+  IconVolume2,
+  IconVolumeX,
+  IconMaximize,
+  IconMinimize,
+  IconFilter,
   IconActivity,
 } from "./Icons";
 
@@ -251,10 +257,6 @@ export default function TvBoard() {
   }
   function exitFullscreen() {
     document.exitFullscreen?.().catch(() => {});
-  }
-  function toggleFullscreen() {
-    if (isFullscreen) exitFullscreen();
-    else enterFullscreen();
   }
 
   const filteredSessions = useMemo(() => {
@@ -941,28 +943,53 @@ export default function TvBoard() {
 
       <div style={{ position: "fixed", bottom: 20, right: 20, display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end", maxWidth: "calc(100% - 40px)" }}>
         <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} style={btnStyle(p)} title="Alternar tema claro/escuro">
-          {theme === "dark" ? <><IconSun size={14} /> Claro</> : <><IconMoon size={14} /> Escuro</>}
+          {theme === "dark" ? (
+            <>
+              <IconSun size={14} /> Claro
+            </>
+          ) : (
+            <>
+              <IconMoon size={14} /> Escuro
+            </>
+          )}
         </button>
 
         <button onClick={() => setHideNames((v) => !v)} style={btnStyle(p, hideNames)} title="Esconder/mostrar nomes">
-          {hideNames ? "Mostrar nomes" : "Esconder nomes"}
+          {hideNames ? (
+            <>
+              <IconEye size={14} /> Mostrar nomes
+            </>
+          ) : (
+            <>
+              <IconEyeOff size={14} /> Esconder nomes
+            </>
+          )}
         </button>
 
         <button onClick={() => setHiddenSessions((v) => !v)} style={btnStyle(p, hiddenSessions)} title="Esconder atividades até passarem do tempo limite">
+          <IconFilter size={14} />
           {hiddenSessions ? "Mostrar todas" : "Só atrasadas"}
         </button>
 
         <button onClick={toggleSound} style={btnStyle(p, soundEnabled)} title="Ativar/desativar som de alerta">
-          {soundEnabled ? "Som ativado" : "Som desativado"}
+          {soundEnabled ? (
+            <>
+              <IconVolume2 size={14} /> Som ativado
+            </>
+          ) : (
+            <>
+              <IconVolumeX size={14} /> Som desativado
+            </>
+          )}
         </button>
 
         {isFullscreen ? (
           <button onClick={exitFullscreen} style={btnStyle(p, true)} title="Sair da tela cheia (Esc também sai)">
-            Sair da tela cheia
+            <IconMinimize size={14} /> Sair da tela cheia
           </button>
         ) : (
           <button onClick={enterFullscreen} style={btnStyle(p)} title="Entrar em tela cheia">
-            <IconTv size={14} /> Tela cheia
+            <IconMaximize size={14} /> Tela cheia
           </button>
         )}
       </div>
