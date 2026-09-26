@@ -4,6 +4,25 @@ import { fmtDuration, fmtClock, fmtDate, shiftFor } from "../lib/format";
 import { getStationName, promptForStationName } from "../lib/station";
 import { playSuccess, playError, playKey } from "../utils/sound";
 import useKeyboardNav from "../hooks/useKeyboardNav";
+import {
+  IconActivity,
+  IconClipboardCheck,
+  IconPackage,
+  IconZap,
+  IconArrowLeftRight,
+  IconInbox,
+  IconTruck,
+  IconUser,
+  IconHash,
+  IconMapPin,
+  IconCheck,
+  IconX,
+  IconAlertTriangle,
+  IconDelete,
+  IconTrash,
+  IconPlus,
+  IconFlag,
+} from "./Icons";
 
 const CODE_LENGTH = 3;
 const AUTO_RETURN_MS = 2200;
@@ -21,6 +40,19 @@ function shouldAskShortage(session, activities) {
 
 function isSeparationEntry(entry) {
   return !!(entry.order_number || entry.transfer_type);
+}
+
+function activityIcon(name) {
+  const n = (name || "").toLowerCase();
+  if (n.includes("receb")) return <IconInbox size={26} />;
+  if (n.includes("confer")) return <IconClipboardCheck size={26} />;
+  if (n.includes("separ")) return <IconPackage size={26} />;
+  if (n.includes("embal")) return <IconPackage size={26} />;
+  if (n.includes("exped")) return <IconTruck size={26} />;
+  if (n.includes("reposi")) return <IconArrowLeftRight size={26} />;
+  if (n.includes("invent")) return <IconClipboardCheck size={26} />;
+  if (n.includes("carreg")) return <IconTruck size={26} />;
+  return <IconActivity size={26} />;
 }
 
 export default function Kiosk({ operators, activities, vehicles = [], refreshEntries }) {
@@ -219,9 +251,9 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
     if (!error) {
       playSuccess();
       const detailParts = [];
-      if (extra.isEncaixe) detailParts.push("⚡ ENCAIXE");
+      if (extra.isEncaixe) detailParts.push("ENCAIXE");
       if (extra.transferType) {
-        detailParts.push(`${extra.transferType} #${extra.transferNumber}${extra.transferUrgent ? " · 🔴 Urgente" : ""}`);
+        detailParts.push(`${extra.transferType} #${extra.transferNumber}${extra.transferUrgent ? " · URGENTE" : ""}`);
       } else if (extra.customerName) {
         detailParts.push(extra.customerName);
       } else if (extra.vehicle) {
@@ -511,9 +543,7 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
     <div className="kiosk-page" ref={mainContainerRef}>
       <header className="kiosk-header">
         <div className="kiosk-header-left">
-          <div>
-            <div className="kiosk-header-title">Aponta CD</div>
-          </div>
+          <div className="kiosk-header-title">Aponta CD</div>
         </div>
 
         <div className="kiosk-header-right">
@@ -530,7 +560,8 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
             onClick={editStation}
             title="Clique para nomear esta estação/terminal"
           >
-            📍 {stationName || "Nomear estação"}
+            <IconMapPin size={14} />
+            {stationName || "Nomear estação"}
           </button>
         </div>
       </header>
@@ -551,7 +582,7 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
                 </button>
               ))}
               <button className="kiosk-key kiosk-key-muted" onClick={handleBackspace}>
-                ⌫
+                <IconDelete size={20} />
               </button>
               <button className="kiosk-key" onClick={() => handleDigit("0")}>
                 0
@@ -577,7 +608,7 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
                 color: confirmation.kind === "started" ? "var(--accent)" : "var(--ok)",
               }}
             >
-              {confirmation.kind === "started" ? "▶" : "✓"}
+              {confirmation.kind === "started" ? <IconActivity size={30} /> : <IconCheck size={30} />}
             </div>
             <div className="kiosk-confirm-title">
               {confirmation.activity} {confirmation.kind === "started" ? "iniciada" : "finalizada"}
@@ -620,19 +651,7 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
                       onClick={() => handleActivityClick(a)}
                       disabled={busy}
                     >
-                      <span className="kiosk-activity-icon">
-                        {a.name.toLowerCase().includes("receb") ? "📥"
-                          : a.name.toLowerCase().includes("confer") ? "✅"
-                          : a.name.toLowerCase().includes("separ") ? "📦"
-                          : a.name.toLowerCase().includes("embal") ? "🎁"
-                          : a.name.toLowerCase().includes("exped") ? "🚚"
-                          : a.name.toLowerCase().includes("reposi") ? "🔄"
-                          : a.name.toLowerCase().includes("invent") ? "📋"
-                          : a.name.toLowerCase().includes("limp") ? "🧹"
-                          : a.name.toLowerCase().includes("organiz") ? "📊"
-                          : a.name.toLowerCase().includes("carreg") ? "🚛"
-                          : "🔧"}
-                      </span>
+                      <span className="kiosk-activity-icon">{activityIcon(a.name)}</span>
                       <span className="kiosk-activity-name">{a.name}</span>
                     </button>
                   ))}
@@ -645,7 +664,7 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
                 <div className="kiosk-form-header">
                   <div className="kiosk-section-title">{orderFormActivity}</div>
                   <button className="kiosk-form-cancel" onClick={cancelOrderForm} disabled={busy}>
-                    ✕ Cancelar
+                    Cancelar
                   </button>
                 </div>
 
@@ -661,14 +680,14 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
                             onClick={() => chooseVehicleAndStart(v)}
                             disabled={busy}
                           >
-                            <span className="kiosk-activity-icon">🚛</span>
+                            <span className="kiosk-activity-icon"><IconTruck size={24} /></span>
                             <span className="kiosk-activity-name">{v.plate}</span>
                             <span className="kiosk-vehicle-model">{v.model}</span>
                           </button>
                         ))}
                       </div>
                     ) : (
-                      <p className="kiosk-form-empty">Nenhum veículo cadastrado. Peça ao admin pra adicionar em "Equipe".</p>
+                      <p className="kiosk-form-empty">Nenhum veículo cadastrado. Peça ao admin pra adicionar em "Cadastros".</p>
                     )}
                   </>
                 ) : orderFieldType === "fornecedor" ? (
@@ -695,7 +714,7 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
                         onClick={cancelOrderForm}
                         disabled={busy}
                       >
-                        ← Cancelar
+                        Cancelar
                       </button>
                       <button
                         className="kiosk-btn kiosk-btn-primary"
@@ -711,16 +730,16 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
                     <div className="kiosk-form-hint">Escolha o tipo:</div>
                     <div className="kiosk-branch-grid">
                       <button className="kiosk-branch-card" onClick={() => selectBranch("pedido")}>
-                        <span className="kiosk-branch-icon">📦</span>
+                        <span className="kiosk-branch-icon"><IconPackage size={26} /></span>
                         <span className="kiosk-branch-name">Pedido</span>
                       </button>
                       <button className="kiosk-branch-card kiosk-branch-encaixe" onClick={() => selectBranch("encaixe")}>
-                        <span className="kiosk-branch-icon">⚡</span>
+                        <span className="kiosk-branch-icon"><IconZap size={26} /></span>
                         <span className="kiosk-branch-name">Encaixe</span>
                         <span className="kiosk-branch-desc">pedido urgente do comercial</span>
                       </button>
                       <button className="kiosk-branch-card" onClick={() => selectBranch("transferencia")}>
-                        <span className="kiosk-branch-icon">🔄</span>
+                        <span className="kiosk-branch-icon"><IconArrowLeftRight size={26} /></span>
                         <span className="kiosk-branch-name">Transferência</span>
                       </button>
                     </div>
@@ -729,7 +748,7 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
                   <div className="kiosk-form-fields">
                     {orderBranch === "encaixe" && (
                       <div className="kiosk-encaixe-banner">
-                        ⚡ ENCAIXE — pedido urgente do comercial
+                        Pedido urgente do comercial
                       </div>
                     )}
 
@@ -750,7 +769,8 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
                           className={`kiosk-toggle-btn kiosk-toggle-full ${transferUrgent ? "kiosk-toggle-danger active" : ""}`}
                           onClick={() => { bump(); setTransferUrgent((v) => !v); }}
                         >
-                          {transferUrgent ? "🔴 URGENTE (clique para desmarcar)" : "🔴 Marcar como urgente"}
+                          <IconFlag size={16} />
+                          {transferUrgent ? "Urgente (clique para desmarcar)" : "Marcar como urgente"}
                         </button>
                         <input
                           className="kiosk-field"
@@ -798,7 +818,7 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
                         onClick={() => { bump(); setOrderBranch(null); resetOrderFields(); }}
                         disabled={busy}
                       >
-                        ← Voltar
+                        Voltar
                       </button>
                       <button className="kiosk-btn kiosk-btn-primary" onClick={confirmOrderStart} disabled={busy}>
                         {busy ? "Iniciando..." : "Iniciar atividade"}
@@ -812,7 +832,7 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
             {session && (
               <div className="kiosk-session">
                 {session.is_encaixe && (
-                  <div className="kiosk-session-encaixe">⚡ ENCAIXE</div>
+                  <div className="kiosk-session-encaixe">ENCAIXE</div>
                 )}
                 <div className="kiosk-session-activity">{session.activity}</div>
 
@@ -822,14 +842,14 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
                       <span className="kiosk-session-tag">
                         {session.transfer_type}
                         {session.transfer_number ? ` #${session.transfer_number}` : ""}
-                        {session.transfer_urgent ? " · 🔴" : ""}
+                        {session.transfer_urgent ? " · urgente" : ""}
                       </span>
                     )}
-                    {session.customer_name && <span className="kiosk-session-tag">👤 {session.customer_name}</span>}
+                    {session.customer_name && <span className="kiosk-session-tag">{session.customer_name}</span>}
                     {session.order_number && <span className="kiosk-session-tag">#{session.order_number}</span>}
-                    {session.vehicle && <span className="kiosk-session-tag">🚛 {session.vehicle}</span>}
+                    {session.vehicle && <span className="kiosk-session-tag">{session.vehicle}</span>}
                     {session.plate && <span className="kiosk-session-tag">{session.plate}</span>}
-                    {session.supplier_name && <span className="kiosk-session-tag">📥 {session.supplier_name}</span>}
+                    {session.supplier_name && <span className="kiosk-session-tag">{session.supplier_name}</span>}
                     {session.invoice_number && <span className="kiosk-session-tag">NF {session.invoice_number}</span>}
                   </div>
                 )}
@@ -876,7 +896,9 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
                   {loggedOperator?.name} · em andamento desde {session && fmtClock(session.start_time)}
                 </div>
               </div>
-              <button className="kiosk-modal-close" onClick={closeFinishModal} aria-label="Fechar">✕</button>
+              <button className="kiosk-modal-close" onClick={closeFinishModal} aria-label="Fechar">
+                <IconX size={18} />
+              </button>
             </div>
 
             <div className="kiosk-modal-body">
@@ -941,12 +963,12 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
                           onClick={() => removeShortageRow(i)}
                           title="Remover"
                         >
-                          🗑
+                          <IconTrash size={16} />
                         </button>
                       </div>
                     ))}
                     <button className="kiosk-btn kiosk-btn-secondary" onClick={addShortageRow}>
-                      + Adicionar outra falta
+                      <IconPlus size={16} /> Adicionar outra falta
                     </button>
                   </div>
                 </div>

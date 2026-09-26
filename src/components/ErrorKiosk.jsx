@@ -4,6 +4,18 @@ import { fmtClock, fmtDate, shiftFor } from "../lib/format";
 import { getStationName, promptForStationName } from "../lib/station";
 import { playSuccess, playError, playKey } from "../utils/sound";
 import useKeyboardNav from "../hooks/useKeyboardNav";
+import {
+  IconPackage,
+  IconAlertTriangle,
+  IconAlertCircle,
+  IconArrowLeftRight,
+  IconXCircle,
+  IconCheck,
+  IconMapPin,
+  IconDelete,
+  IconX,
+  IconSearch,
+} from "./Icons";
 
 const CODE_LENGTH = 3;
 const AUTO_RETURN_MS = 2200;
@@ -12,12 +24,12 @@ const TRANSFER_ZONES = ["AP", "ZN"];
 
 function errorIcon(name) {
   const n = (name || "").toLowerCase();
-  if (n.includes("sobra")) return "📦";
-  if (n.includes("não tem") || n.includes("nao tem") || n.includes("pedido")) return "❓";
-  if (n.includes("falta")) return "⚠️";
-  if (n.includes("avaria") || n.includes("quebr")) return "💥";
-  if (n.includes("troca") || n.includes("errad")) return "🔀";
-  return "🚨";
+  if (n.includes("sobra")) return <IconPackage size={26} />;
+  if (n.includes("não tem") || n.includes("nao tem") || n.includes("pedido")) return <IconAlertCircle size={26} />;
+  if (n.includes("falta")) return <IconAlertTriangle size={26} />;
+  if (n.includes("avaria") || n.includes("quebr")) return <IconAlertCircle size={26} />;
+  if (n.includes("troca") || n.includes("errad")) return <IconArrowLeftRight size={26} />;
+  return <IconXCircle size={26} />;
 }
 
 export default function ErrorKiosk({ operators, errorTypes }) {
@@ -241,9 +253,7 @@ export default function ErrorKiosk({ operators, errorTypes }) {
     <div className="kiosk-page" ref={mainContainerRef}>
       <header className="kiosk-header">
         <div className="kiosk-header-left">
-          <div>
-            <div className="kiosk-header-title">Aponta CD</div>
-          </div>
+          <div className="kiosk-header-title">Aponta CD</div>
         </div>
 
         <div className="kiosk-header-right">
@@ -260,18 +270,19 @@ export default function ErrorKiosk({ operators, errorTypes }) {
             onClick={editStation}
             title="Clique para nomear esta estação/terminal"
           >
-            📍 {stationName || "Nomear estação"}
+            <IconMapPin size={14} />
+            {stationName || "Nomear estação"}
           </button>
         </div>
       </header>
 
       <main className="kiosk-main">
         {!confirmation && (
-          <div style={{ textAlign: "center", marginBottom: 24, width: "100%", maxWidth: 900 }}>
-            <h1 style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-0.02em", color: "var(--text)", margin: 0 }}>
+          <div style={{ textAlign: "center", marginBottom: 28, width: "100%", maxWidth: 900 }}>
+            <h1 style={{ fontSize: 26, fontWeight: 700, letterSpacing: "-0.025em", color: "var(--text)", margin: 0 }}>
               Registrar erro de separação
             </h1>
-            <p style={{ color: "var(--text-muted)", fontSize: 14, marginTop: 6 }}>
+            <p style={{ color: "var(--text-muted)", fontSize: 14, marginTop: 8 }}>
               {!loggedOperator ? "Digite seu código para começar." : "Preencha as informações abaixo."}
             </p>
           </div>
@@ -289,7 +300,9 @@ export default function ErrorKiosk({ operators, errorTypes }) {
               {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((d) => (
                 <button key={d} className="kiosk-key" onClick={() => handleDigit(d)}>{d}</button>
               ))}
-              <button className="kiosk-key kiosk-key-muted" onClick={handleBackspace}>⌫</button>
+              <button className="kiosk-key kiosk-key-muted" onClick={handleBackspace}>
+                <IconDelete size={20} />
+              </button>
               <button className="kiosk-key" onClick={() => handleDigit("0")}>0</button>
               <button className="kiosk-key kiosk-key-primary" onClick={handleLogin}>OK</button>
             </div>
@@ -303,7 +316,9 @@ export default function ErrorKiosk({ operators, errorTypes }) {
 
         {loggedOperator && confirmation && (
           <div className="kiosk-confirm">
-            <div className="kiosk-confirm-icon" style={{ background: "var(--ok-soft)", color: "var(--ok)" }}>✓</div>
+            <div className="kiosk-confirm-icon" style={{ background: "var(--ok-soft)", color: "var(--ok)" }}>
+              <IconCheck size={30} />
+            </div>
             <div className="kiosk-confirm-title">Erro registrado</div>
             <div className="kiosk-confirm-sub">{confirmation.errorType}</div>
           </div>
@@ -313,7 +328,7 @@ export default function ErrorKiosk({ operators, errorTypes }) {
           <div className="kiosk-logged">
             <div className="kiosk-operator-bar">
               <div className="kiosk-operator-info">
-                <div className="kiosk-operator-avatar" style={{ background: "var(--danger)", color: "#fff" }}>
+                <div className="kiosk-operator-avatar" style={{ background: "var(--danger)" }}>
                   {loggedOperator.name.charAt(0).toUpperCase()}
                 </div>
                 <div>
@@ -339,7 +354,8 @@ export default function ErrorKiosk({ operators, errorTypes }) {
                       setTransferZone("");
                     }}
                   >
-                    📦 Pedido
+                    <IconPackage size={16} />
+                    Pedido
                   </button>
                   <button
                     className={`kiosk-toggle-btn ${orderType === "transferencia" ? "active" : ""}`}
@@ -348,18 +364,19 @@ export default function ErrorKiosk({ operators, errorTypes }) {
                       setOrderType("transferencia");
                     }}
                   >
-                    🔄 Transferência
+                    <IconArrowLeftRight size={16} />
+                    Transferência
                   </button>
                 </div>
 
                 {orderType === "transferencia" && (
-                  <div style={{ marginTop: 12 }}>
+                  <div style={{ marginTop: 14 }}>
                     <div
                       style={{
                         fontSize: 12.5,
                         fontWeight: 600,
                         color: "var(--text-muted)",
-                        marginBottom: 8,
+                        marginBottom: 10,
                         textTransform: "uppercase",
                         letterSpacing: "0.05em",
                       }}
@@ -387,7 +404,7 @@ export default function ErrorKiosk({ operators, errorTypes }) {
                   <input
                     className="kiosk-field"
                     style={{
-                      marginTop: 10,
+                      marginTop: 12,
                       fontFamily: "var(--font-mono)",
                       letterSpacing: 3,
                       textAlign: "center",
@@ -489,7 +506,7 @@ export default function ErrorKiosk({ operators, errorTypes }) {
                   </div>
                 ) : (
                   <p className="kiosk-form-empty">
-                    Nenhum tipo de erro cadastrado. Peça ao admin pra adicionar em "Equipe".
+                    Nenhum tipo de erro cadastrado. Peça ao admin pra adicionar em "Cadastros".
                   </p>
                 )}
               </div>
@@ -511,7 +528,7 @@ export default function ErrorKiosk({ operators, errorTypes }) {
                 />
               </div>
 
-              {msg && <p className="kiosk-form-error" style={{ marginTop: 14 }}>{msg}</p>}
+              {msg && <p className="kiosk-form-error" style={{ marginTop: 16 }}>{msg}</p>}
             </div>
           </div>
         )}
@@ -530,18 +547,24 @@ export default function ErrorKiosk({ operators, errorTypes }) {
                 onClick={() => setShowOperatorPicker(false)}
                 aria-label="Fechar"
               >
-                ✕
+                <IconX size={18} />
               </button>
             </div>
 
             <div className="kiosk-modal-body">
-              <input
-                className="kiosk-field"
-                placeholder="🔍 Buscar por nome ou código..."
-                value={operatorSearch}
-                onChange={(e) => setOperatorSearch(e.target.value)}
-                autoFocus
-              />
+              <div style={{ position: "relative" }}>
+                <span style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "var(--text-faint)", display: "flex" }}>
+                  <IconSearch size={16} />
+                </span>
+                <input
+                  className="kiosk-field"
+                  style={{ paddingLeft: 42 }}
+                  placeholder="Buscar por nome ou código..."
+                  value={operatorSearch}
+                  onChange={(e) => setOperatorSearch(e.target.value)}
+                  autoFocus
+                />
+              </div>
               <div className="kiosk-operator-picker-list">
                 {filteredOperators.length === 0 ? (
                   <p className="kiosk-form-empty">Nenhum operador encontrado.</p>
