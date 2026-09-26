@@ -9,13 +9,12 @@ import {
 } from "../lib/api";
 import { fmtClock, fmtDate, fmtDuration } from "../lib/format";
 import { useTheme } from "../context/ThemeContext";
-import logo from "../assets/logo.png";
 
 const ACCENT_LIGHT = "#00a0e4";
 const ACCENT_DARK = "#00a0e4";
 const DEFAULT_ALERT_SECONDS = 1800;
-const STALE_OPERATOR_SECONDS = 2 * 60 * 60; // 2h
-const REFRESH_INTERVAL_MS = 60 * 60 * 1000; // 1h
+const STALE_OPERATOR_SECONDS = 2 * 60 * 60;
+const REFRESH_INTERVAL_MS = 60 * 60 * 1000;
 
 // ============================================================
 // Helpers
@@ -58,7 +57,6 @@ function stdDev(arr) {
   return Math.sqrt(variance);
 }
 
-// Paleta de cores para os dois temas
 const PALETTES = {
   dark: {
     bg: "#0a0e14",
@@ -104,11 +102,9 @@ export default function TvBoard() {
   const [now, setNow] = useState(Date.now());
   const [soundEnabled, setSoundEnabled] = useState(false);
 
-  // Mesa de conferência
   const [conferenceQueue, setConferenceQueue] = useState([]);
   const [conferenceHistory, setConferenceHistory] = useState([]);
 
-  // Preferências locais
   const [theme, setTheme] = useState(() => {
     try { return localStorage.getItem("tv_theme") || "dark"; } catch { return "dark"; }
   });
@@ -117,7 +113,6 @@ export default function TvBoard() {
   });
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // Sessões escondidas até passar do tempo limite
   const [hiddenSessions, setHiddenSessions] = useState(() => {
     try { return localStorage.getItem("tv_hide_timer") === "1"; } catch { return false; }
   });
@@ -129,13 +124,11 @@ export default function TvBoard() {
   const alertedRef = useRef(new Set());
   const palette = PALETTES[theme] || PALETTES.dark;
 
-  // Relógio
   useEffect(() => {
     const iv = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(iv);
   }, []);
 
-  // Auto-refresh (evita travar em TV 24/7)
   useEffect(() => {
     const iv = setInterval(() => {
       console.log("[TV] Auto-refresh para evitar travamento");
@@ -144,7 +137,6 @@ export default function TvBoard() {
     return () => clearInterval(iv);
   }, []);
 
-  // Detecta fullscreen
   useEffect(() => {
     function onChange() {
       setIsFullscreen(!!document.fullscreenElement);
@@ -154,7 +146,6 @@ export default function TvBoard() {
     return () => document.removeEventListener("fullscreenchange", onChange);
   }, []);
 
-  // Salva preferências
   useEffect(() => {
     try { localStorage.setItem("tv_theme", theme); } catch {}
   }, [theme]);
@@ -165,7 +156,6 @@ export default function TvBoard() {
     try { localStorage.setItem("tv_hide_timer", hiddenSessions ? "1" : "0"); } catch {}
   }, [hiddenSessions]);
 
-  // Carrega config + atividades
   useEffect(() => {
     (async () => {
       const [{ data: cfg }, { data: acts }] = await Promise.all([
@@ -194,7 +184,6 @@ export default function TvBoard() {
     return () => supabase.removeChannel(ch);
   }, []);
 
-  // Carrega tudo
   async function loadAll() {
     const [
       { data: s },
@@ -242,9 +231,6 @@ export default function TvBoard() {
     return () => supabase.removeChannel(channel);
   }, []);
 
-  // ============================================================
-  // Fullscreen
-  // ============================================================
   function enterFullscreen() {
     document.documentElement.requestFullscreen?.().catch(() => {});
   }
@@ -256,9 +242,6 @@ export default function TvBoard() {
     else enterFullscreen();
   }
 
-  // ============================================================
-  // Derivados
-  // ============================================================
   const filteredSessions = useMemo(() => {
     if (!stationFilter) return sessions;
     return sessions.filter((s) => (s.station || "").toLowerCase() === stationFilter.toLowerCase());
@@ -276,7 +259,6 @@ export default function TvBoard() {
       .filter((s) => s.isLate);
   }, [filteredSessions, activities, alertThreshold, now]);
 
-  // "Operador sumiu" — sessão com mais de 2h sem finalizar
   const staleSessions = useMemo(() => {
     return filteredSessions.filter((s) => {
       const elapsed = Math.round((now - new Date(s.start_time).getTime()) / 1000);
@@ -284,7 +266,6 @@ export default function TvBoard() {
     });
   }, [filteredSessions, now]);
 
-  // Sessões visíveis (esconde se flag ativada e ainda não passou do threshold)
   const visibleSessions = useMemo(() => {
     if (!hiddenSessions) return filteredSessions;
     return filteredSessions.filter((s) => {
@@ -346,7 +327,6 @@ export default function TvBoard() {
     [todayShortages]
   );
 
-  // ---------- Ranking do dia ----------
   const ranking = useMemo(() => {
     const byOp = {};
     todayEntries.forEach((e) => {
@@ -368,7 +348,6 @@ export default function TvBoard() {
       .slice(0, 5);
   }, [todayEntries]);
 
-  // ---------- Ranking de conferentes ----------
   const conferenceRanking = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
     const todayConf = conferenceHistory.filter(
@@ -388,7 +367,6 @@ export default function TvBoard() {
     [todayEntries]
   );
 
-  // ---------- Mesa ----------
   const waiting = useMemo(
     () => conferenceQueue.filter((q) => q.status === "aguardando"),
     [conferenceQueue]
@@ -398,7 +376,6 @@ export default function TvBoard() {
     [conferenceQueue]
   );
 
-  // Alerta de mesa acumulando (mais de 3 aguardando há mais de 10min)
   const mesaAcumulando = useMemo(() => {
     const oldWaiting = waiting.filter((w) => {
       const secs = Math.round((now - new Date(w.separated_at).getTime()) / 1000);
@@ -407,7 +384,6 @@ export default function TvBoard() {
     return oldWaiting.length >= 3;
   }, [waiting, now]);
 
-  // ---------- Rankings semanais ----------
   const weekByOperator = useMemo(() => {
     const byOp = {};
     weekEntries.forEach((e) => {
@@ -459,9 +435,6 @@ export default function TvBoard() {
   const alertIds = new Set(activityAlerts.map((a) => a.operator_code));
   const staleIds = new Set(staleSessions.map((a) => a.operator_code));
 
-  // ============================================================
-  // Helpers de renderização
-  // ============================================================
   function displayName(name) {
     if (!hideNames) return name;
     const parts = (name || "").split(" ");
@@ -469,9 +442,6 @@ export default function TvBoard() {
     return `${parts[0].charAt(0).toUpperCase()}••• ${parts[parts.length - 1].charAt(0).toUpperCase()}•••`;
   }
 
-  // ============================================================
-  // Render
-  // ============================================================
   const p = palette;
 
   return (
@@ -520,7 +490,6 @@ export default function TvBoard() {
         .tv-mesa-alert { animation: pulseMesa 2s ease-in-out infinite; }
       `}</style>
 
-      {/* Header */}
       <div
         style={{
           display: "flex",
@@ -532,13 +501,12 @@ export default function TvBoard() {
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-          <img src={logo} alt="" style={{ width: 56, height: 56, borderRadius: "50%" }} />
           <div>
             <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: "-0.02em" }}>
               Atividades em andamento
             </div>
             <div style={{ color: p.textMuted, fontSize: 13, marginTop: 2, fontWeight: 500 }}>
-              Hidráulica Tropeiro · Aponta CD
+              Aponta CD
               {stationFilter && (
                 <span
                   style={{
@@ -585,7 +553,6 @@ export default function TvBoard() {
         </div>
       </div>
 
-      {/* Alerta de mesa acumulando */}
       {mesaAcumulando && (
         <div
           className="tv-mesa-alert"
@@ -605,9 +572,7 @@ export default function TvBoard() {
         </div>
       )}
 
-      {/* Corpo: sessões + coluna direita */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 380px", gap: 20, flex: 1, minHeight: 0 }}>
-        {/* Sessões ativas */}
         <div style={{ overflow: "auto", paddingRight: 4 }}>
           {sorted.length === 0 ? (
             <div style={{ textAlign: "center", padding: "80px 20px", color: p.textMuted, fontSize: 18, fontWeight: 500 }}>
@@ -708,9 +673,7 @@ export default function TvBoard() {
           )}
         </div>
 
-        {/* Coluna direita */}
         <div style={{ display: "flex", flexDirection: "column", gap: 14, overflowY: "auto", paddingRight: 4 }}>
-          {/* Mesa de conferência */}
           <div
             style={{
               background: p.surface,
@@ -771,7 +734,6 @@ export default function TvBoard() {
             )}
           </div>
 
-          {/* Ranking do dia */}
           <div style={{ background: p.surface, border: `1px solid ${p.border}`, borderRadius: 14, padding: "16px 18px" }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: p.accent, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>
               Ranking do dia
@@ -824,7 +786,6 @@ export default function TvBoard() {
             )}
           </div>
 
-          {/* Ranking de conferentes */}
           {conferenceRanking.length > 0 && (
             <div style={{ background: p.surface, border: `1px solid ${p.border}`, borderRadius: 14, padding: "16px 18px" }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: p.ok, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>
@@ -846,7 +807,6 @@ export default function TvBoard() {
             </div>
           )}
 
-          {/* Destaques da semana */}
           <div style={{ background: p.surface, border: `1px solid ${p.border}`, borderRadius: 14, padding: "16px 18px" }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: p.warning, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>
               🏆 Destaques da semana
@@ -917,7 +877,6 @@ export default function TvBoard() {
         </div>
       </div>
 
-      {/* Ticker */}
       {latestEntries.length > 0 && (
         <div
           style={{
@@ -948,29 +907,16 @@ export default function TvBoard() {
         </div>
       )}
 
-      {/* Botões flutuantes */}
       <div style={{ position: "fixed", bottom: 18, right: 18, display: "flex", gap: 8 }}>
-        <button
-          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-          style={btnStyle(p)}
-          title="Alternar tema claro/escuro"
-        >
+        <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} style={btnStyle(p)} title="Alternar tema claro/escuro">
           {theme === "dark" ? "☀️ Claro" : "🌙 Escuro"}
         </button>
 
-        <button
-          onClick={() => setHideNames((v) => !v)}
-          style={btnStyle(p, hideNames)}
-          title="Esconder/mostrar nomes (privacidade)"
-        >
+        <button onClick={() => setHideNames((v) => !v)} style={btnStyle(p, hideNames)} title="Esconder/mostrar nomes (privacidade)">
           {hideNames ? "👁 Mostrar nomes" : "🙈 Esconder nomes"}
         </button>
 
-        <button
-          onClick={() => setHiddenSessions((v) => !v)}
-          style={btnStyle(p, hiddenSessions)}
-          title="Esconder atividades até passarem do tempo limite"
-        >
+        <button onClick={() => setHiddenSessions((v) => !v)} style={btnStyle(p, hiddenSessions)} title="Esconder atividades até passarem do tempo limite">
           {hiddenSessions ? "⏱ Mostrar todas" : "⏱ Só atrasadas"}
         </button>
 
@@ -992,7 +938,6 @@ export default function TvBoard() {
   );
 }
 
-// Estilo dos botões flutuantes
 function btnStyle(p, active = false) {
   return {
     background: active ? p.accent : p.surface,
