@@ -9,16 +9,31 @@ import {
 } from "../lib/api";
 import { fmtClock, fmtDate, fmtDuration } from "../lib/format";
 import { useTheme } from "../context/ThemeContext";
+import {
+  IconPackage,
+  IconZap,
+  IconArrowLeftRight,
+  IconFlag,
+  IconUser,
+  IconCheck,
+  IconAlertTriangle,
+  IconTrendingUp,
+  IconTarget,
+  IconTrophy,
+  IconAward,
+  IconSun,
+  IconMoon,
+  IconTv,
+  IconMapPin,
+  IconClock,
+  IconActivity,
+} from "./Icons";
 
-const ACCENT_LIGHT = "#00a0e4";
-const ACCENT_DARK = "#00a0e4";
+const ACCENT_LIGHT = "#4a7ba7";
+const ACCENT_DARK = "#4a7ba7";
 const DEFAULT_ALERT_SECONDS = 1800;
 const STALE_OPERATOR_SECONDS = 2 * 60 * 60;
 const REFRESH_INTERVAL_MS = 60 * 60 * 1000;
-
-// ============================================================
-// Helpers
-// ============================================================
 
 function timeAgo(iso, now) {
   const diff = Math.max(0, Math.floor((now - new Date(iso).getTime()) / 1000));
@@ -86,7 +101,7 @@ const PALETTES = {
     ok: "#10b981",
     purple: "#8b5cf6",
     blue: "#3b82f6",
-    gradient: "radial-gradient(ellipse at top, #e0f4fd 0%, #f5f6f8 60%)",
+    gradient: "radial-gradient(ellipse at top, #e0eaf3 0%, #f5f6f8 60%)",
     medalColors: ["#fbbf24", "#cbd5e1", "#b45309"],
     medalText: "#0a0e14",
   },
@@ -513,23 +528,26 @@ export default function TvBoard() {
                     marginLeft: 12,
                     background: p.accent,
                     color: "#0a0e14",
-                    padding: "2px 10px",
+                    padding: "3px 10px",
                     borderRadius: 6,
                     fontWeight: 700,
                     fontSize: 12,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 5,
                   }}
                 >
-                  📍 {stationFilter}
+                  <IconMapPin size={11} /> {stationFilter}
                 </span>
               )}
               {activityAlerts.length > 0 && (
-                <span style={{ marginLeft: 14, color: p.danger, fontWeight: 700 }}>
-                  ⚠ {activityAlerts.length} alerta{activityAlerts.length > 1 ? "s" : ""}
+                <span style={{ marginLeft: 14, color: p.danger, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 5 }}>
+                  <IconAlertTriangle size={13} /> {activityAlerts.length} alerta{activityAlerts.length > 1 ? "s" : ""}
                 </span>
               )}
               {staleIds.size > 0 && (
-                <span style={{ marginLeft: 14, color: p.warning, fontWeight: 700 }}>
-                  🕐 {staleIds.size} sumiu{staleIds.size > 1 ? "ram" : ""}
+                <span style={{ marginLeft: 14, color: p.warning, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 5 }}>
+                  <IconClock size={13} /> {staleIds.size} sumiu{staleIds.size > 1 ? "ram" : ""}
                 </span>
               )}
             </div>
@@ -559,16 +577,20 @@ export default function TvBoard() {
           style={{
             background: p.danger,
             color: "#fff",
-            padding: "12px 20px",
+            padding: "14px 22px",
             borderRadius: 12,
             marginBottom: 16,
             fontWeight: 700,
             fontSize: 15,
             textAlign: "center",
             boxShadow: `0 4px 20px ${p.danger}50`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 10,
           }}
         >
-          ⚠️ MESA DE CONFERÊNCIA ACUMULANDO — {waiting.length} pedido{waiting.length > 1 ? "s" : ""} aguardando
+          <IconAlertTriangle size={18} /> Mesa de conferência acumulando — {waiting.length} pedido{waiting.length > 1 ? "s" : ""} aguardando
         </div>
       )}
 
@@ -597,7 +619,7 @@ export default function TvBoard() {
                       background: p.surface,
                       border: `1px solid ${isAlert ? "#7f1d1d" : isStale ? p.warning : p.border}`,
                       borderRadius: 12,
-                      padding: "14px 20px",
+                      padding: "16px 22px",
                       display: "flex",
                       alignItems: "center",
                       gap: 18,
@@ -619,21 +641,25 @@ export default function TvBoard() {
                       <div style={{ fontSize: 19, fontWeight: 700, letterSpacing: "-0.01em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {displayName(s.operator_name)}
                       </div>
-                      <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 2, flexWrap: "wrap" }}>
-                        {s.station && <span style={{ fontSize: 11, color: p.textMuted }}>📍 {s.station}</span>}
+                      <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 3, flexWrap: "wrap" }}>
+                        {s.station && (
+                          <span style={{ fontSize: 11, color: p.textMuted, display: "inline-flex", alignItems: "center", gap: 3 }}>
+                            <IconMapPin size={10} /> {s.station}
+                          </span>
+                        )}
                         {s.is_encaixe && (
-                          <span style={{ background: `${p.warning}26`, color: p.warning, padding: "1px 7px", borderRadius: 4, fontSize: 10, fontWeight: 700, letterSpacing: "0.04em" }}>
-                            ⚡ ENCAIXE
+                          <span style={{ background: `${p.warning}26`, color: p.warning, padding: "2px 8px", borderRadius: 4, fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", display: "inline-flex", alignItems: "center", gap: 3 }}>
+                            <IconZap size={10} /> ENCAIXE
                           </span>
                         )}
                         {isAlert && (
-                          <span style={{ background: `${p.danger}33`, color: p.danger, padding: "1px 7px", borderRadius: 4, fontSize: 10, fontWeight: 700, letterSpacing: "0.04em" }}>
-                            ⚠ DEMORADA
+                          <span style={{ background: `${p.danger}33`, color: p.danger, padding: "2px 8px", borderRadius: 4, fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", display: "inline-flex", alignItems: "center", gap: 3 }}>
+                            <IconAlertTriangle size={10} /> DEMORADA
                           </span>
                         )}
                         {isStale && (
-                          <span style={{ background: `${p.warning}33`, color: p.warning, padding: "1px 7px", borderRadius: 4, fontSize: 10, fontWeight: 700, letterSpacing: "0.04em" }}>
-                            🕐 SUMIU
+                          <span style={{ background: `${p.warning}33`, color: p.warning, padding: "2px 8px", borderRadius: 4, fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", display: "inline-flex", alignItems: "center", gap: 3 }}>
+                            <IconClock size={10} /> SUMIU
                           </span>
                         )}
                       </div>
@@ -643,8 +669,8 @@ export default function TvBoard() {
                         {s.activity}
                       </div>
                       {(s.transfer_type || s.customer_name || s.order_number || s.vehicle) && (
-                        <div style={{ fontSize: 12, color: p.textMuted, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                          {s.transfer_type && (<>{s.transfer_type}{s.transfer_number ? ` #${s.transfer_number}` : ""}{s.transfer_urgent ? " · 🔴 Urgente" : ""}</>)}
+                        <div style={{ fontSize: 12, color: p.textMuted, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {s.transfer_type && (<>{s.transfer_type}{s.transfer_number ? ` #${s.transfer_number}` : ""}{s.transfer_urgent ? " · urgente" : ""}</>)}
                           {s.customer_name && (s.transfer_type ? " · " : "") + s.customer_name}
                           {s.order_number && ` · Pedido ${s.order_number}`}
                           {s.vehicle && ` · ${s.vehicle}`}
@@ -662,7 +688,7 @@ export default function TvBoard() {
                       >
                         {timeAgo(s.start_time, now)}
                       </div>
-                      <div style={{ fontSize: 11, color: p.textMuted, marginTop: 2 }}>
+                      <div style={{ fontSize: 11, color: p.textMuted, marginTop: 3 }}>
                         início {fmtClock(s.start_time)}
                       </div>
                     </div>
@@ -679,14 +705,14 @@ export default function TvBoard() {
               background: p.surface,
               border: `1px solid ${mesaAcumulando ? p.danger : p.border}`,
               borderRadius: 14,
-              padding: "16px 18px",
+              padding: "18px 20px",
             }}
           >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: p.accent, letterSpacing: "0.08em", textTransform: "uppercase" }}>
                 Mesa de conferência
               </div>
-              <div style={{ display: "flex", gap: 10, fontSize: 12, fontWeight: 600 }}>
+              <div style={{ display: "flex", gap: 12, fontSize: 12, fontWeight: 600 }}>
                 <span style={{ color: waiting.length > 0 ? p.warning : p.textMuted }}>
                   {waiting.length} aguard.
                 </span>
@@ -697,8 +723,8 @@ export default function TvBoard() {
             </div>
 
             {waiting.length === 0 && inProgress.length === 0 ? (
-              <div style={{ color: p.textMuted, fontSize: 13, textAlign: "center", padding: "10px 0" }}>
-                Mesa limpa ✅
+              <div style={{ color: p.textMuted, fontSize: 13, textAlign: "center", padding: "12px 0" }}>
+                Mesa limpa
               </div>
             ) : (
               <>
@@ -707,10 +733,10 @@ export default function TvBoard() {
                   const mins = Math.floor(secs / 60);
                   const color = mins < 5 ? p.ok : mins < 15 ? p.warning : p.danger;
                   return (
-                    <div key={w.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: `1px solid ${p.border}` }}>
+                    <div key={w.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: `1px solid ${p.border}` }}>
                       <div style={{ minWidth: 0, flex: 1 }}>
                         <div style={{ fontSize: 13, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                          {w.is_encaixe && "⚡ "}
+                          {w.is_encaixe && "ENC · "}
                           {w.transfer_type ? `${w.transfer_type} #${w.transfer_number || ""}` : w.order_number ? `#${w.order_number}` : "—"}
                         </div>
                         {w.customer_name && (
@@ -726,7 +752,7 @@ export default function TvBoard() {
                   );
                 })}
                 {waiting.length > 4 && (
-                  <div style={{ fontSize: 11, color: p.textMuted, textAlign: "center", marginTop: 6 }}>
+                  <div style={{ fontSize: 11, color: p.textMuted, textAlign: "center", marginTop: 8 }}>
                     +{waiting.length - 4} aguardando
                   </div>
                 )}
@@ -734,32 +760,32 @@ export default function TvBoard() {
             )}
           </div>
 
-          <div style={{ background: p.surface, border: `1px solid ${p.border}`, borderRadius: 14, padding: "16px 18px" }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: p.accent, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 4 }}>
+          <div style={{ background: p.surface, border: `1px solid ${p.border}`, borderRadius: 14, padding: "18px 20px" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: p.accent, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6 }}>
               Ranking do dia
             </div>
-            <div style={{ fontSize: 11, color: p.textMuted, marginBottom: 12 }}>
+            <div style={{ fontSize: 11, color: p.textMuted, marginBottom: 14 }}>
               {todayEntries.length} registros hoje
               {todayShortages.length > 0 && (
                 <span style={{ color: p.danger, fontWeight: 600 }}>
-                  {" · "}⚠ {todayShortages.length} falta{todayShortages.length > 1 ? "s" : ""}
+                  {" · "} {todayShortages.length} falta{todayShortages.length > 1 ? "s" : ""}
                 </span>
               )}
             </div>
 
             {ranking.length === 0 ? (
-              <div style={{ color: p.textMuted, fontSize: 12.5, padding: "8px 0", textAlign: "center" }}>
+              <div style={{ color: p.textMuted, fontSize: 12.5, padding: "10px 0", textAlign: "center" }}>
                 Sem registros ainda
               </div>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {ranking.map((r, i) => {
                   const isTop3 = i < 3;
                   return (
-                    <div key={r.name} className="tv-rank-enter" style={{ display: "flex", gap: 10, padding: "6px 0", borderBottom: i < ranking.length - 1 ? `1px solid ${p.border}` : "none", animationDelay: `${i * 0.06}s` }}>
+                    <div key={r.name} className="tv-rank-enter" style={{ display: "flex", gap: 10, padding: "7px 0", borderBottom: i < ranking.length - 1 ? `1px solid ${p.border}` : "none", animationDelay: `${i * 0.06}s` }}>
                       <div
                         style={{
-                          width: 24, height: 24, borderRadius: "50%",
+                          width: 26, height: 26, borderRadius: "50%",
                           background: isTop3 ? p.medalColors[i] : p.border,
                           color: isTop3 ? p.medalText : p.textMuted,
                           display: "flex", alignItems: "center", justifyContent: "center",
@@ -772,10 +798,10 @@ export default function TvBoard() {
                         <div style={{ fontSize: 12.5, fontWeight: 700, color: p.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                           {displayName(r.name)}
                         </div>
-                        <div style={{ fontSize: 11, color: p.accent, fontWeight: 600, marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        <div style={{ fontSize: 11, color: p.accent, fontWeight: 600, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                           {r.mainActivity}
                         </div>
-                        <div style={{ fontSize: 10, color: p.textMuted, marginTop: 1 }}>
+                        <div style={{ fontSize: 10, color: p.textMuted, marginTop: 2 }}>
                           {fmtDuration(r.totalSeconds)} · {r.count} {r.count === 1 ? "registro" : "registros"}
                         </div>
                       </div>
@@ -787,13 +813,13 @@ export default function TvBoard() {
           </div>
 
           {conferenceRanking.length > 0 && (
-            <div style={{ background: p.surface, border: `1px solid ${p.border}`, borderRadius: 14, padding: "16px 18px" }}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: p.ok, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>
-                ✅ Conferentes do dia
+            <div style={{ background: p.surface, border: `1px solid ${p.border}`, borderRadius: 14, padding: "18px 20px" }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: p.ok, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 12, display: "flex", alignItems: "center", gap: 6 }}>
+                <IconCheck size={13} /> Conferentes do dia
               </div>
               {conferenceRanking.map((c, i) => (
-                <div key={c.code} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 0" }}>
-                  <span style={{ fontSize: 14, width: 20 }}>{["🥇","🥈","🥉"][i]}</span>
+                <div key={c.code} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0" }}>
+                  <span style={{ fontSize: 13, width: 20, color: p.accent, fontWeight: 700 }}>{i + 1}º</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 12.5, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                       {displayName(c.name)}
@@ -807,17 +833,19 @@ export default function TvBoard() {
             </div>
           )}
 
-          <div style={{ background: p.surface, border: `1px solid ${p.border}`, borderRadius: 14, padding: "16px 18px" }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: p.warning, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 10 }}>
-              🏆 Destaques da semana
+          <div style={{ background: p.surface, border: `1px solid ${p.border}`, borderRadius: 14, padding: "18px 20px" }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: p.warning, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 12, display: "flex", alignItems: "center", gap: 6 }}>
+              <IconTrophy size={13} /> Destaques da semana
             </div>
 
             {fastestRanking.length > 0 && (
-              <div style={{ marginBottom: 12 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: p.ok, marginBottom: 6 }}>⚡ Mais rápido</div>
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: p.ok, marginBottom: 8, display: "flex", alignItems: "center", gap: 5 }}>
+                  <IconZap size={11} /> Mais rápido
+                </div>
                 {fastestRanking.map((op, i) => (
-                  <div key={op.code} style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0" }}>
-                    <span style={{ fontSize: 13, width: 18 }}>{["🥇","🥈","🥉"][i]}</span>
+                  <div key={op.code} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0" }}>
+                    <span style={{ fontSize: 12, width: 18, color: p.accent, fontWeight: 700 }}>{i + 1}º</span>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{displayName(op.name)}</div>
                       <div style={{ fontSize: 10, color: p.textMuted }}>{op.count} reg · média {fmtDuration(Math.round(op.avg))}</div>
@@ -828,11 +856,13 @@ export default function TvBoard() {
             )}
 
             {volumeRanking.length > 0 && (
-              <div style={{ marginBottom: 12 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: p.blue, marginBottom: 6 }}>📊 Maior volume</div>
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: p.blue, marginBottom: 8, display: "flex", alignItems: "center", gap: 5 }}>
+                  <IconTrendingUp size={11} /> Maior volume
+                </div>
                 {volumeRanking.map((op, i) => (
-                  <div key={op.code} style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0" }}>
-                    <span style={{ fontSize: 13, width: 18 }}>{["🥇","🥈","🥉"][i]}</span>
+                  <div key={op.code} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0" }}>
+                    <span style={{ fontSize: 12, width: 18, color: p.accent, fontWeight: 700 }}>{i + 1}º</span>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{displayName(op.name)}</div>
                       <div style={{ fontSize: 10, color: p.textMuted }}>{op.count} registros no total</div>
@@ -844,10 +874,12 @@ export default function TvBoard() {
 
             {consistentRanking.length > 0 && (
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: p.purple, marginBottom: 6 }}>🎯 Mais consistente</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: p.purple, marginBottom: 8, display: "flex", alignItems: "center", gap: 5 }}>
+                  <IconTarget size={11} /> Mais consistente
+                </div>
                 {consistentRanking.map((op, i) => (
-                  <div key={op.code} style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0" }}>
-                    <span style={{ fontSize: 13, width: 18 }}>{["🥇","🥈","🥉"][i]}</span>
+                  <div key={op.code} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0" }}>
+                    <span style={{ fontSize: 12, width: 18, color: p.accent, fontWeight: 700 }}>{i + 1}º</span>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{displayName(op.name)}</div>
                       <div style={{ fontSize: 10, color: p.textMuted }}>variação {fmtDuration(Math.round(op.consistency))}</div>
@@ -858,15 +890,15 @@ export default function TvBoard() {
             )}
 
             {fastestRanking.length === 0 && volumeRanking.length === 0 && consistentRanking.length === 0 && (
-              <div style={{ color: p.textMuted, fontSize: 11.5, textAlign: "center", padding: "10px 0" }}>
+              <div style={{ color: p.textMuted, fontSize: 11.5, textAlign: "center", padding: "12px 0" }}>
                 Ninguém bateu o mínimo de {MIN_REGISTROS} registros ainda
               </div>
             )}
 
             {goalsAchieved.total > 0 && (
-              <div style={{ borderTop: `1px solid ${p.border}`, paddingTop: 10, marginTop: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: p.textMuted, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                  Metas semana
+              <div style={{ borderTop: `1px solid ${p.border}`, paddingTop: 12, marginTop: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: p.textMuted, textTransform: "uppercase", letterSpacing: "0.05em", display: "inline-flex", alignItems: "center", gap: 5 }}>
+                  <IconAward size={11} /> Metas semana
                 </span>
                 <span style={{ fontSize: 14, fontWeight: 800, color: goalsAchieved.achieved === goalsAchieved.total ? p.ok : p.warning }}>
                   {goalsAchieved.achieved}/{goalsAchieved.total}
@@ -880,7 +912,7 @@ export default function TvBoard() {
       {latestEntries.length > 0 && (
         <div
           style={{
-            marginTop: 16, padding: "10px 18px", background: p.surface,
+            marginTop: 16, padding: "12px 20px", background: p.surface,
             border: `1px solid ${p.border}`, borderRadius: 10,
             display: "flex", alignItems: "center", gap: 18,
             fontSize: 12.5, color: p.textMuted, overflow: "hidden",
@@ -889,7 +921,7 @@ export default function TvBoard() {
           <div style={{ fontWeight: 700, color: p.accent, fontSize: 10.5, letterSpacing: "0.08em", textTransform: "uppercase", flexShrink: 0 }}>
             Últimos registros
           </div>
-          <div style={{ display: "flex", gap: 22, overflow: "hidden", flex: 1 }}>
+          <div style={{ display: "flex", gap: 24, overflow: "hidden", flex: 1 }}>
             {latestEntries.map((e) => {
               const hasShortage = entriesWithShortageIds.has(e.id);
               return (
@@ -897,7 +929,7 @@ export default function TvBoard() {
                   <span style={{ color: p.text, fontWeight: 600 }}>{displayName(e.operator_name)}</span>
                   <span style={{ margin: "0 6px" }}>·</span>
                   <span>{e.activity}</span>
-                  {hasShortage && <span style={{ margin: "0 6px", color: p.danger, fontWeight: 700 }}>⚠</span>}
+                  {hasShortage && <span style={{ margin: "0 6px", color: p.danger, fontWeight: 700 }}>falta</span>}
                   {!hasShortage && <span style={{ margin: "0 6px" }}>·</span>}
                   {!hasShortage && <span style={{ fontFamily: "'JetBrains Mono', monospace" }}>{fmtClock(e.end_time)}</span>}
                 </div>
@@ -907,30 +939,30 @@ export default function TvBoard() {
         </div>
       )}
 
-      <div style={{ position: "fixed", bottom: 18, right: 18, display: "flex", gap: 8 }}>
+      <div style={{ position: "fixed", bottom: 20, right: 20, display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end", maxWidth: "calc(100% - 40px)" }}>
         <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} style={btnStyle(p)} title="Alternar tema claro/escuro">
-          {theme === "dark" ? "☀️ Claro" : "🌙 Escuro"}
+          {theme === "dark" ? <><IconSun size={14} /> Claro</> : <><IconMoon size={14} /> Escuro</>}
         </button>
 
-        <button onClick={() => setHideNames((v) => !v)} style={btnStyle(p, hideNames)} title="Esconder/mostrar nomes (privacidade)">
-          {hideNames ? "👁 Mostrar nomes" : "🙈 Esconder nomes"}
+        <button onClick={() => setHideNames((v) => !v)} style={btnStyle(p, hideNames)} title="Esconder/mostrar nomes">
+          {hideNames ? "Mostrar nomes" : "Esconder nomes"}
         </button>
 
         <button onClick={() => setHiddenSessions((v) => !v)} style={btnStyle(p, hiddenSessions)} title="Esconder atividades até passarem do tempo limite">
-          {hiddenSessions ? "⏱ Mostrar todas" : "⏱ Só atrasadas"}
+          {hiddenSessions ? "Mostrar todas" : "Só atrasadas"}
         </button>
 
         <button onClick={toggleSound} style={btnStyle(p, soundEnabled)} title="Ativar/desativar som de alerta">
-          {soundEnabled ? "🔔 Som on" : "🔕 Som off"}
+          {soundEnabled ? "Som ativado" : "Som desativado"}
         </button>
 
         {isFullscreen ? (
           <button onClick={exitFullscreen} style={btnStyle(p, true)} title="Sair da tela cheia (Esc também sai)">
-            ⤢ Sair da tela cheia
+            Sair da tela cheia
           </button>
         ) : (
           <button onClick={enterFullscreen} style={btnStyle(p)} title="Entrar em tela cheia">
-            ⛶ Tela cheia
+            <IconTv size={14} /> Tela cheia
           </button>
         )}
       </div>
@@ -944,11 +976,14 @@ function btnStyle(p, active = false) {
     color: active ? "#0a0e14" : p.textMuted,
     border: `1px solid ${active ? p.accent : p.border}`,
     borderRadius: 10,
-    padding: "8px 14px",
+    padding: "10px 16px",
     fontSize: 12,
     cursor: "pointer",
     fontWeight: 600,
     fontFamily: "inherit",
     transition: "all 150ms ease",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
   };
 }

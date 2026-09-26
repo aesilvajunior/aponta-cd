@@ -24,24 +24,37 @@ import {
 import { supabase } from "../supabaseClient";
 import { fmtClock, fmtDate, fmtDuration, shiftFor } from "../lib/format";
 import useKeyboardNav from "../hooks/useKeyboardNav";
-
-// ============================================================
-// Admin Master — Central de controle total
-// ============================================================
+import {
+  IconActivity,
+  IconCheckCircle,
+  IconPackage,
+  IconClock,
+  IconAlertTriangle,
+  IconEdit,
+  IconTrash,
+  IconDownload,
+  IconX,
+  IconRefresh,
+  IconRotateCcw,
+  IconLock,
+  IconCheck,
+  IconAlertCircle,
+  IconClipboardCheck,
+} from "./Icons";
 
 const TABS = [
-  { key: "entries", label: "Lançamentos", icon: "📋" },
-  { key: "conference", label: "Mesa de conferência", icon: "✅" },
-  { key: "shortages", label: "Faltas de material", icon: "📦" },
-  { key: "sessions", label: "Sessões em andamento", icon: "⏱" },
-  { key: "errors", label: "Erros de separação", icon: "🚨" },
+  { key: "entries", label: "Lançamentos", Icon: IconActivity },
+  { key: "conference", label: "Mesa de conferência", Icon: IconCheckCircle },
+  { key: "shortages", label: "Faltas de material", Icon: IconPackage },
+  { key: "sessions", label: "Sessões em andamento", Icon: IconClock },
+  { key: "errors", label: "Erros de separação", Icon: IconAlertTriangle },
 ];
 
 const CONFERENCE_STATUS = [
-  { value: "aguardando", label: "⏳ Aguardando" },
-  { value: "em_conferencia", label: "🔍 Em conferência" },
-  { value: "conferido", label: "✓ Conferido" },
-  { value: "com_problema", label: "⚠ Com problema" },
+  { value: "aguardando", label: "Aguardando" },
+  { value: "em_conferencia", label: "Em conferência" },
+  { value: "conferido", label: "Conferido" },
+  { value: "com_problema", label: "Com problema" },
 ];
 
 function fmtDateTime(iso) {
@@ -85,10 +98,6 @@ function csvEscape(v) {
   if (/[";\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
   return s;
 }
-
-// ============================================================
-// Componente principal
-// ============================================================
 
 export default function AdminMaster({ operators, adminPin = "2026" }) {
   const [tab, setTab] = useState("entries");
@@ -309,9 +318,6 @@ export default function AdminMaster({ operators, adminPin = "2026" }) {
     errors: filteredErrors.length,
   };
 
-  // ============================================================
-  // SELEÇÃO EM MASSA
-  // ============================================================
   function toggleSelect(type, id) {
     setSelected((prev) => {
       const next = new Set(prev[type]);
@@ -341,9 +347,6 @@ export default function AdminMaster({ operators, adminPin = "2026" }) {
 
   const currentSelection = selected[tab] || new Set();
 
-  // ============================================================
-  // EXPORTAR SELEÇÃO
-  // ============================================================
   function exportSelection() {
     const type = tab;
     if (type === "entries") {
@@ -418,13 +421,10 @@ export default function AdminMaster({ operators, adminPin = "2026" }) {
       });
       downloadCsv(lines, `admin_selecao_mesa_${items.length}.csv`);
     } else {
-      showToast("error", "Exportação não disponível pra essa seção.");
+      showToast("error", "Exportação não disponível para essa seção.");
     }
   }
 
-  // ============================================================
-  // EXCLUIR SELEÇÃO (PIN)
-  // ============================================================
   function requestBulkDelete() {
     const type = tab;
     const ids = Array.from(currentSelection);
@@ -490,9 +490,6 @@ export default function AdminMaster({ operators, adminPin = "2026" }) {
     }
   }
 
-  // ============================================================
-  // Ações — Entries
-  // ============================================================
   async function saveEntry() {
     if (!editingEntry || busy) return;
     setBusy(true);
@@ -542,9 +539,6 @@ export default function AdminMaster({ operators, adminPin = "2026" }) {
     await loadAll();
   }
 
-  // ============================================================
-  // Ações — Shortages
-  // ============================================================
   async function saveShortage() {
     if (!editingShortage || busy) return;
     setBusy(true);
@@ -571,9 +565,6 @@ export default function AdminMaster({ operators, adminPin = "2026" }) {
     await loadAll();
   }
 
-  // ============================================================
-  // Ações — Conference
-  // ============================================================
   async function saveConference() {
     if (!editingConference || busy) return;
     setBusy(true);
@@ -617,9 +608,6 @@ export default function AdminMaster({ operators, adminPin = "2026" }) {
     await loadAll();
   }
 
-  // ============================================================
-  // Ações — Errors
-  // ============================================================
   async function saveError() {
     if (!editingError || busy) return;
     setBusy(true);
@@ -650,9 +638,6 @@ export default function AdminMaster({ operators, adminPin = "2026" }) {
     await loadAll();
   }
 
-  // ============================================================
-  // Ações — Sessions (NOVO)
-  // ============================================================
   function openEditSession(session) {
     setEditingSession({ ...session });
   }
@@ -714,7 +699,7 @@ export default function AdminMaster({ operators, adminPin = "2026" }) {
   async function cancelSession(session) {
     if (!window.confirm(
       `Cancelar a atividade "${session.activity}" de ${session.operator_name}?\n\n` +
-      `⚠️ Isso apaga a sessão SEM salvar no histórico. Não fica registro de tempo.`
+      `Isso apaga a sessão SEM salvar no histórico. Não fica registro de tempo.`
     )) return;
     const { error: err } = await cancelActiveSession(session.operator_code);
     if (err) return showToast("error", "Erro ao cancelar: " + err.message);
@@ -729,22 +714,21 @@ export default function AdminMaster({ operators, adminPin = "2026" }) {
     await loadAll();
   }
 
-  // ============================================================
-  // RENDER
-  // ============================================================
   const selectableTab = tab === "entries" || tab === "shortages" || tab === "errors" || tab === "conference";
   const selectedCount = currentSelection.size;
 
   return (
-    <div style={{ paddingBottom: selectedCount > 0 && selectableTab ? 100 : 0 }}>
+    <div style={{ paddingBottom: selectedCount > 0 && selectableTab ? 110 : 0 }}>
       <div className="page-header-row" style={{ marginBottom: 22 }}>
         <div>
-          <h1 className="page-title">Admin Master</h1>
+          <h1 className="page-title">Central de controle</h1>
           <p className="page-sub" style={{ marginBottom: 0 }}>
-            Central de controle total — visualize, edite, selecione e apague qualquer dado
+            Visualize, edite, selecione e apague qualquer dado do sistema
           </p>
         </div>
-        <button className="btn-small" onClick={loadAll}>🔄 Atualizar</button>
+        <button className="btn-small" onClick={loadAll}>
+          <IconRefresh size={14} /> Atualizar
+        </button>
       </div>
 
       {error && (
@@ -762,25 +746,37 @@ export default function AdminMaster({ operators, adminPin = "2026" }) {
             background: toast.kind === "success" ? "var(--ok-soft)" : "var(--danger-soft)",
             borderColor: toast.kind === "success" ? "var(--ok)" : "var(--danger)",
             color: toast.kind === "success" ? "var(--ok)" : "var(--danger)",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
           }}
         >
-          {toast.kind === "success" ? "✓ " : "⚠ "}{toast.text}
+          {toast.kind === "success" ? <IconCheck size={16} /> : <IconAlertCircle size={16} />}
+          {toast.text}
         </div>
       )}
 
       <div className="quick-filters" style={{ marginBottom: 20 }}>
         <span className="quick-filters-label">Seção:</span>
-        {TABS.map((t) => (
-          <button key={t.key} className={`quick-filter-btn ${tab === t.key ? "active" : ""}`} onClick={() => setTab(t.key)}>
-            {t.icon} {t.label} ({counts[t.key]})
-          </button>
-        ))}
+        {TABS.map((t) => {
+          const TabIcon = t.Icon;
+          return (
+            <button
+              key={t.key}
+              className={`quick-filter-btn ${tab === t.key ? "active" : ""}`}
+              onClick={() => setTab(t.key)}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+            >
+              <TabIcon size={13} /> {t.label} ({counts[t.key]})
+            </button>
+          );
+        })}
       </div>
 
       <div className="card" style={{ marginBottom: 20 }}>
         <div className="card-title">Filtros</div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <input className="field" style={{ flex: 1, minWidth: 200 }} placeholder="🔍 Buscar..." value={search} onChange={(e) => setSearch(e.target.value)} />
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <input className="field" style={{ flex: 1, minWidth: 200 }} placeholder="Buscar..." value={search} onChange={(e) => setSearch(e.target.value)} />
           <select className="field" style={{ width: "auto" }} value={filterOperator} onChange={(e) => setFilterOperator(e.target.value)}>
             <option value="">Todos operadores</option>
             {operators.map((o) => <option key={o.code} value={o.code}>{o.name}</option>)}
@@ -789,14 +785,18 @@ export default function AdminMaster({ operators, adminPin = "2026" }) {
           <input type="date" className="field" style={{ width: "auto" }} value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
           <span style={{ color: "var(--text-faint)", fontSize: 12 }}>até</span>
           <input type="date" className="field" style={{ width: "auto" }} value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-          {hasFilters && <button className="btn-small" onClick={clearFilters}>Limpar filtros</button>}
+          {hasFilters && (
+            <button className="btn-small" onClick={clearFilters}>
+              <IconX size={13} /> Limpar filtros
+            </button>
+          )}
         </div>
       </div>
 
       {loading ? (
         <div className="schedule-empty">
-          <div className="loading-spinner" style={{ margin: "0 auto 12px auto" }} />
-          <div>Carregando…</div>
+          <div className="loading-spinner" style={{ margin: "0 auto 14px auto" }} />
+          <div>Carregando...</div>
         </div>
       ) : (
         <>
@@ -861,32 +861,37 @@ export default function AdminMaster({ operators, adminPin = "2026" }) {
         <div
           style={{
             position: "fixed",
-            bottom: 20,
+            bottom: 24,
             left: "50%",
             transform: "translateX(-50%)",
             background: "var(--bg-elevated)",
-            border: "2px solid var(--accent)",
+            border: "1px solid var(--glass-border)",
             borderRadius: 16,
-            padding: "14px 20px",
-            boxShadow: "0 12px 32px rgba(0,0,0,0.25)",
+            padding: "14px 22px",
+            boxShadow: "var(--shadow-xl)",
             display: "flex",
-            gap: 12,
+            gap: 14,
             alignItems: "center",
             zIndex: 90,
-            minWidth: 400,
+            minWidth: 440,
           }}
         >
           <span style={{ fontWeight: 700, fontSize: 14 }}>
             {selectedCount} selecionado{selectedCount > 1 ? "s" : ""}
           </span>
           <div style={{ flex: 1 }} />
-          <button className="btn-small" onClick={() => clearSelection(tab)}>✕ Limpar</button>
-          <button className="btn-small btn-excel" onClick={exportSelection}>📥 Exportar</button>
-          <button className="btn-danger-outline" onClick={requestBulkDelete}>🗑 Excluir ({selectedCount})</button>
+          <button className="btn-small" onClick={() => clearSelection(tab)}>
+            <IconX size={13} /> Limpar
+          </button>
+          <button className="btn-small btn-excel" onClick={exportSelection} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <IconDownload size={13} /> Exportar
+          </button>
+          <button className="btn-danger-outline" onClick={requestBulkDelete} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <IconTrash size={13} /> Excluir ({selectedCount})
+          </button>
         </div>
       )}
 
-      {/* MODAL: Editar Entry */}
       {editingEntry && (
         <ModalShell title="Editar lançamento" onClose={() => !busy && setEditingEntry(null)} modalRef={modalRef}>
           <div className="schedule-modal-grid">
@@ -944,12 +949,12 @@ export default function AdminMaster({ operators, adminPin = "2026" }) {
               <label className="schedule-modal-label">Observação</label>
               <textarea className="schedule-modal-field" rows={2} style={{ resize: "none" }} value={editingEntry.note || ""} onChange={(e) => setEditingEntry({ ...editingEntry, note: e.target.value })} disabled={busy} />
             </div>
-            <div className="schedule-modal-full" style={{ display: "flex", gap: 16 }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+            <div className="schedule-modal-full" style={{ display: "flex", gap: 20 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5 }}>
                 <input type="checkbox" checked={!!editingEntry.is_encaixe} onChange={(e) => setEditingEntry({ ...editingEntry, is_encaixe: e.target.checked })} disabled={busy} />
                 Encaixe
               </label>
-              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5 }}>
                 <input type="checkbox" checked={!!editingEntry.transfer_urgent} onChange={(e) => setEditingEntry({ ...editingEntry, transfer_urgent: e.target.checked })} disabled={busy} />
                 Transferência urgente
               </label>
@@ -959,14 +964,13 @@ export default function AdminMaster({ operators, adminPin = "2026" }) {
         </ModalShell>
       )}
 
-      {/* MODAL: Editar Shortage */}
       {editingShortage && (
-        <ModalShell title="Editar falta de material" onClose={() => !busy && setEditingShortage(null)} modalRef={modalRef} maxWidth={460}>
+        <ModalShell title="Editar falta de material" onClose={() => !busy && setEditingShortage(null)} modalRef={modalRef} maxWidth={500}>
           <div>
             <label className="schedule-modal-label">Código do produto</label>
             <input className="schedule-modal-field" value={editingShortage.product_code} onChange={(e) => setEditingShortage({ ...editingShortage, product_code: e.target.value })} disabled={busy} autoFocus />
           </div>
-          <div style={{ marginTop: 12 }}>
+          <div style={{ marginTop: 14 }}>
             <label className="schedule-modal-label">Quantidade</label>
             <input type="number" min="1" className="schedule-modal-field" value={editingShortage.quantity} onChange={(e) => setEditingShortage({ ...editingShortage, quantity: e.target.value })} disabled={busy} />
           </div>
@@ -974,9 +978,8 @@ export default function AdminMaster({ operators, adminPin = "2026" }) {
         </ModalShell>
       )}
 
-      {/* MODAL: Editar Conference */}
       {editingConference && (
-        <ModalShell title="Editar item da mesa" onClose={() => !busy && setEditingConference(null)} modalRef={modalRef} maxWidth={600}>
+        <ModalShell title="Editar item da mesa" onClose={() => !busy && setEditingConference(null)} modalRef={modalRef} maxWidth={620}>
           <div className="schedule-modal-grid">
             <div>
               <label className="schedule-modal-label">Status</label>
@@ -1012,12 +1015,12 @@ export default function AdminMaster({ operators, adminPin = "2026" }) {
               <label className="schedule-modal-label">Observação</label>
               <textarea className="schedule-modal-field" rows={2} style={{ resize: "none" }} value={editingConference.note || ""} onChange={(e) => setEditingConference({ ...editingConference, note: e.target.value })} disabled={busy} />
             </div>
-            <div className="schedule-modal-full" style={{ display: "flex", gap: 16 }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+            <div className="schedule-modal-full" style={{ display: "flex", gap: 20 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5 }}>
                 <input type="checkbox" checked={!!editingConference.is_encaixe} onChange={(e) => setEditingConference({ ...editingConference, is_encaixe: e.target.checked })} disabled={busy} />
                 Encaixe
               </label>
-              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5 }}>
                 <input type="checkbox" checked={!!editingConference.transfer_urgent} onChange={(e) => setEditingConference({ ...editingConference, transfer_urgent: e.target.checked })} disabled={busy} />
                 Transferência urgente
               </label>
@@ -1027,9 +1030,8 @@ export default function AdminMaster({ operators, adminPin = "2026" }) {
         </ModalShell>
       )}
 
-      {/* MODAL: Editar Error */}
       {editingError && (
-        <ModalShell title="Editar erro de separação" onClose={() => !busy && setEditingError(null)} modalRef={modalRef} maxWidth={560}>
+        <ModalShell title="Editar erro de separação" onClose={() => !busy && setEditingError(null)} modalRef={modalRef} maxWidth={580}>
           <div className="schedule-modal-grid">
             <div className="schedule-modal-full">
               <label className="schedule-modal-label">Tipo de erro</label>
@@ -1063,9 +1065,8 @@ export default function AdminMaster({ operators, adminPin = "2026" }) {
         </ModalShell>
       )}
 
-      {/* MODAL: Editar Session */}
       {editingSession && (
-        <ModalShell title={`Editar sessão de ${editingSession.operator_name}`} onClose={() => !busy && setEditingSession(null)} modalRef={modalRef} maxWidth={640}>
+        <ModalShell title={`Editar sessão de ${editingSession.operator_name}`} onClose={() => !busy && setEditingSession(null)} modalRef={modalRef} maxWidth={660}>
           <div className="schedule-modal-grid">
             <div className="schedule-modal-full">
               <label className="schedule-modal-label">Atividade</label>
@@ -1115,12 +1116,12 @@ export default function AdminMaster({ operators, adminPin = "2026" }) {
               <label className="schedule-modal-label">Estação</label>
               <input className="schedule-modal-field" value={editingSession.station || ""} onChange={(e) => setEditingSession({ ...editingSession, station: e.target.value })} disabled={busy} />
             </div>
-            <div className="schedule-modal-full" style={{ display: "flex", gap: 16 }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+            <div className="schedule-modal-full" style={{ display: "flex", gap: 20 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5 }}>
                 <input type="checkbox" checked={!!editingSession.is_encaixe} onChange={(e) => setEditingSession({ ...editingSession, is_encaixe: e.target.checked })} disabled={busy} />
                 Encaixe
               </label>
-              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5 }}>
                 <input type="checkbox" checked={!!editingSession.transfer_urgent} onChange={(e) => setEditingSession({ ...editingSession, transfer_urgent: e.target.checked })} disabled={busy} />
                 Transferência urgente
               </label>
@@ -1130,33 +1131,39 @@ export default function AdminMaster({ operators, adminPin = "2026" }) {
         </ModalShell>
       )}
 
-      {/* MODAL: Confirmação dupla (PIN) */}
       {confirmDelete && (
         <div className="kiosk-modal-backdrop" onClick={() => !busy && setConfirmDelete(null)}>
-          <div className="kiosk-modal" ref={confirmRef} onClick={(e) => e.stopPropagation()} style={{ maxWidth: 460 }}>
+          <div className="kiosk-modal" ref={confirmRef} onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
             <div className="kiosk-modal-header">
               <div>
-                <div className="kiosk-modal-title" style={{ color: "var(--danger)" }}>⚠ Exclusão em massa</div>
+                <div className="kiosk-modal-title" style={{ color: "var(--danger)", display: "flex", alignItems: "center", gap: 8 }}>
+                  <IconAlertTriangle size={18} /> Exclusão em massa
+                </div>
                 <div className="kiosk-modal-sub">
                   Você vai apagar <strong>{confirmDelete.count}</strong> item(ns). Isso é permanente.
                 </div>
               </div>
-              <button className="kiosk-modal-close" onClick={() => !busy && setConfirmDelete(null)}>✕</button>
+              <button className="kiosk-modal-close" onClick={() => !busy && setConfirmDelete(null)}>
+                <IconX size={18} />
+              </button>
             </div>
             <div className="kiosk-modal-body">
               <div>
-                <label className="schedule-modal-label">Digite o PIN do admin para confirmar</label>
+                <label className="schedule-modal-label" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <IconLock size={12} /> Digite o PIN do admin para confirmar
+                </label>
                 <input
                   type="password"
                   className="schedule-modal-field"
-                  style={{ textAlign: "center", fontFamily: "var(--font-mono)", fontSize: 20, letterSpacing: 4 }}
+                  style={{ textAlign: "center", fontFamily: "var(--font-mono)", fontSize: 22, letterSpacing: 6, fontWeight: 600 }}
                   value={pinInput}
                   onChange={(e) => { setPinInput(e.target.value.replace(/\D/g, "")); setPinError(""); }}
-                  placeholder="••••"
+                  placeholder="PIN"
                   autoFocus
                   disabled={busy}
+                  maxLength={8}
                 />
-                {pinError && <p style={{ color: "var(--danger)", fontSize: 12.5, marginTop: 8 }}>{pinError}</p>}
+                {pinError && <p style={{ color: "var(--danger)", fontSize: 12.5, marginTop: 10, marginBottom: 0 }}>{pinError}</p>}
               </div>
             </div>
             <div className="kiosk-modal-footer">
@@ -1172,16 +1179,15 @@ export default function AdminMaster({ operators, adminPin = "2026" }) {
   );
 }
 
-// ============================================================
-// Componentes auxiliares
-// ============================================================
-function ModalShell({ title, onClose, children, modalRef, maxWidth = 700 }) {
+function ModalShell({ title, onClose, children, modalRef, maxWidth = 720 }) {
   return (
     <div className="kiosk-modal-backdrop" onClick={onClose}>
       <div className="kiosk-modal" ref={modalRef} onClick={(e) => e.stopPropagation()} style={{ maxWidth }}>
         <div className="kiosk-modal-header">
           <div className="kiosk-modal-title">{title}</div>
-          <button className="kiosk-modal-close" onClick={onClose}>✕</button>
+          <button className="kiosk-modal-close" onClick={onClose}>
+            <IconX size={18} />
+          </button>
         </div>
         <div className="kiosk-modal-body" style={{ maxHeight: "70vh" }}>
           {children}
@@ -1193,7 +1199,7 @@ function ModalShell({ title, onClose, children, modalRef, maxWidth = 700 }) {
 
 function ModalFooter({ onCancel, onConfirm, busy, confirmLabel = "Salvar" }) {
   return (
-    <div style={{ display: "flex", gap: 8, padding: "16px 22px", borderTop: "1px solid var(--border)", background: "var(--surface-raised)" }}>
+    <div style={{ display: "flex", gap: 10, padding: "18px 26px", borderTop: "1px solid var(--border)", background: "var(--surface-raised)" }}>
       <button className="kiosk-btn kiosk-btn-secondary" onClick={onCancel} disabled={busy}>Cancelar</button>
       <button className="kiosk-btn kiosk-btn-primary" onClick={onConfirm} disabled={busy}>
         {busy ? "Salvando..." : confirmLabel}
@@ -1206,7 +1212,7 @@ function SelectionHeader({ selected, allItems, onToggleAll }) {
   const allSelected = allItems.length > 0 && allItems.every((item) => selected.has(item.id));
   const someSelected = allItems.some((item) => selected.has(item.id));
   return (
-    <th style={{ width: 36, textAlign: "center" }}>
+    <th style={{ width: 40, textAlign: "center" }}>
       <input
         type="checkbox"
         checked={allSelected}
@@ -1226,15 +1232,12 @@ function SelectionCell({ id, selected, onToggle }) {
   );
 }
 
-// ============================================================
-// Views
-// ============================================================
 function EntriesView({ entries, shortagesByEntry, operators, onEdit, onDelete, selected, onToggle, onToggleAll }) {
   if (entries.length === 0) {
     return (
       <div className="card">
         <div className="schedule-empty">
-          <div className="schedule-empty-icon">📭</div>
+          <div className="schedule-empty-icon"><IconActivity size={36} /></div>
           <div>Nenhum lançamento encontrado com esses filtros.</div>
         </div>
       </div>
@@ -1242,7 +1245,7 @@ function EntriesView({ entries, shortagesByEntry, operators, onEdit, onDelete, s
   }
   return (
     <div className="card">
-      <div className="card-title">📋 Lançamentos ({entries.length})</div>
+      <div className="card-title">Lançamentos ({entries.length})</div>
       <div style={{ overflowX: "auto" }}>
         <table className="data-table">
           <thead>
@@ -1250,14 +1253,14 @@ function EntriesView({ entries, shortagesByEntry, operators, onEdit, onDelete, s
               <SelectionHeader selected={selected} allItems={entries} onToggleAll={onToggleAll} />
               <th>Data</th><th>Hora</th><th>Operador</th><th>Atividade</th><th>Tipo</th>
               <th>Pedido/Transf.</th><th>Cliente</th><th>Duração</th><th>Faltas</th>
-              <th style={{ width: 100 }}>Ações</th>
+              <th style={{ width: 110 }}>Ações</th>
             </tr>
           </thead>
           <tbody>
             {entries.slice(0, 300).map((e) => {
               const faltas = shortagesByEntry[e.id] || [];
               const op = operators.find((x) => x.code === e.operator_code);
-              const tipo = e.is_encaixe ? "⚡ Encaixe" : e.transfer_type ? `🔄 ${e.transfer_type}` : e.order_number ? "📦 Pedido" : "—";
+              const tipo = e.is_encaixe ? "Encaixe" : e.transfer_type ? `Transferência ${e.transfer_type}` : e.order_number ? "Pedido" : "—";
               const ordem = e.transfer_number || e.order_number || "—";
               return (
                 <tr key={e.id} style={{ background: selected.has(e.id) ? "var(--accent-soft)" : undefined }}>
@@ -1274,8 +1277,12 @@ function EntriesView({ entries, shortagesByEntry, operators, onEdit, onDelete, s
                     {faltas.length > 0 ? faltas.length : "—"}
                   </td>
                   <td style={{ whiteSpace: "nowrap" }}>
-                    <button className="btn-small" style={{ padding: "4px 8px", marginRight: 4 }} onClick={() => onEdit(e)}>✏️</button>
-                    <button className="btn-small" style={{ padding: "4px 8px", color: "var(--danger)", borderColor: "var(--danger)" }} onClick={() => onDelete(e)}>🗑</button>
+                    <button className="btn-small" style={{ padding: "5px 9px", marginRight: 4 }} onClick={() => onEdit(e)} title="Editar">
+                      <IconEdit size={12} />
+                    </button>
+                    <button className="btn-small" style={{ padding: "5px 9px", color: "var(--danger)", borderColor: "var(--danger)" }} onClick={() => onDelete(e)} title="Excluir">
+                      <IconTrash size={12} />
+                    </button>
                   </td>
                 </tr>
               );
@@ -1292,9 +1299,11 @@ function ConferenceView({ queue, history, onEdit, onDelete, onReset, selected, o
   return (
     <>
       <div className="card" style={{ marginBottom: 20 }}>
-        <div className="card-title">⏳ Aguardando / Em conferência ({queue.length})</div>
+        <div className="card-title">Aguardando / Em conferência ({queue.length})</div>
         {queue.length === 0 ? (
-          <div className="schedule-empty" style={{ padding: "20px 0" }}><div style={{ fontSize: 13 }}>Mesa vazia.</div></div>
+          <div className="schedule-empty" style={{ padding: "20px 0" }}>
+            <div style={{ fontSize: 13 }}>Mesa vazia.</div>
+          </div>
         ) : (
           <div style={{ overflowX: "auto" }}>
             <table className="data-table">
@@ -1302,7 +1311,7 @@ function ConferenceView({ queue, history, onEdit, onDelete, onReset, selected, o
                 <tr>
                   <SelectionHeader selected={selected} allItems={all} onToggleAll={onToggleAll} />
                   <th>Status</th><th>Pedido/Transf.</th><th>Cliente</th><th>Separado por</th><th>Separado em</th><th>Conferindo</th>
-                  <th style={{ width: 160 }}>Ações</th>
+                  <th style={{ width: 170 }}>Ações</th>
                 </tr>
               </thead>
               <tbody>
@@ -1311,9 +1320,9 @@ function ConferenceView({ queue, history, onEdit, onDelete, onReset, selected, o
                     <SelectionCell id={c.id} selected={selected} onToggle={onToggle} />
                     <td>
                       {c.status === "aguardando" ? (
-                        <span style={{ color: "var(--warning)", fontWeight: 600 }}>⏳ Aguardando</span>
+                        <span style={{ color: "var(--warning)", fontWeight: 600 }}>Aguardando</span>
                       ) : (
-                        <span style={{ color: "var(--accent)", fontWeight: 600 }}>🔍 Em conferência</span>
+                        <span style={{ color: "var(--accent)", fontWeight: 600 }}>Em conferência</span>
                       )}
                     </td>
                     <td style={{ fontFamily: "var(--font-mono)" }}>
@@ -1324,11 +1333,17 @@ function ConferenceView({ queue, history, onEdit, onDelete, onReset, selected, o
                     <td>{fmtDateTime(c.separated_at)}</td>
                     <td>{c.conference_started_by_name || "—"}</td>
                     <td style={{ whiteSpace: "nowrap" }}>
-                      <button className="btn-small" style={{ padding: "4px 8px", marginRight: 4 }} onClick={() => onEdit(c)}>✏️</button>
+                      <button className="btn-small" style={{ padding: "5px 9px", marginRight: 4 }} onClick={() => onEdit(c)} title="Editar">
+                        <IconEdit size={12} />
+                      </button>
                       {c.status === "em_conferencia" && (
-                        <button className="btn-small" style={{ padding: "4px 8px", marginRight: 4 }} onClick={() => onReset(c)} title="Volta pra Aguardando">🔄</button>
+                        <button className="btn-small" style={{ padding: "5px 9px", marginRight: 4 }} onClick={() => onReset(c)} title="Volta para Aguardando">
+                          <IconRotateCcw size={12} />
+                        </button>
                       )}
-                      <button className="btn-small" style={{ padding: "4px 8px", color: "var(--danger)", borderColor: "var(--danger)" }} onClick={() => onDelete(c)}>🗑</button>
+                      <button className="btn-small" style={{ padding: "5px 9px", color: "var(--danger)", borderColor: "var(--danger)" }} onClick={() => onDelete(c)} title="Excluir">
+                        <IconTrash size={12} />
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -1339,9 +1354,11 @@ function ConferenceView({ queue, history, onEdit, onDelete, onReset, selected, o
       </div>
 
       <div className="card">
-        <div className="card-title">✅ Histórico de conferências ({history.length})</div>
+        <div className="card-title">Histórico de conferências ({history.length})</div>
         {history.length === 0 ? (
-          <div className="schedule-empty" style={{ padding: "20px 0" }}><div style={{ fontSize: 13 }}>Nenhuma conferência registrada.</div></div>
+          <div className="schedule-empty" style={{ padding: "20px 0" }}>
+            <div style={{ fontSize: 13 }}>Nenhuma conferência registrada.</div>
+          </div>
         ) : (
           <div style={{ overflowX: "auto" }}>
             <table className="data-table">
@@ -1349,7 +1366,7 @@ function ConferenceView({ queue, history, onEdit, onDelete, onReset, selected, o
                 <tr>
                   <SelectionHeader selected={selected} allItems={all} onToggleAll={onToggleAll} />
                   <th>Status</th><th>Pedido/Transf.</th><th>Cliente</th><th>Separado por</th><th>Conferido por</th><th>Finalizado em</th><th>Duração</th>
-                  <th style={{ width: 130 }}>Ações</th>
+                  <th style={{ width: 110 }}>Ações</th>
                 </tr>
               </thead>
               <tbody>
@@ -1358,9 +1375,13 @@ function ConferenceView({ queue, history, onEdit, onDelete, onReset, selected, o
                     <SelectionCell id={c.id} selected={selected} onToggle={onToggle} />
                     <td>
                       {c.status === "conferido" ? (
-                        <span style={{ color: "var(--ok)", fontWeight: 600 }}>✓ OK</span>
+                        <span style={{ color: "var(--ok)", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                          <IconCheck size={12} /> OK
+                        </span>
                       ) : (
-                        <span style={{ color: "var(--danger)", fontWeight: 600 }}>⚠ {c.problem_reason || "Problema"}</span>
+                        <span style={{ color: "var(--danger)", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                          <IconAlertTriangle size={12} /> {c.problem_reason || "Problema"}
+                        </span>
                       )}
                     </td>
                     <td style={{ fontFamily: "var(--font-mono)" }}>
@@ -1372,8 +1393,12 @@ function ConferenceView({ queue, history, onEdit, onDelete, onReset, selected, o
                     <td>{c.conference_finished_at ? fmtDateTime(c.conference_finished_at) : "—"}</td>
                     <td>{c.duration_seconds ? fmtDuration(c.duration_seconds) : "—"}</td>
                     <td style={{ whiteSpace: "nowrap" }}>
-                      <button className="btn-small" style={{ padding: "4px 8px", marginRight: 4 }} onClick={() => onEdit(c)}>✏️</button>
-                      <button className="btn-small" style={{ padding: "4px 8px", color: "var(--danger)", borderColor: "var(--danger)" }} onClick={() => onDelete(c)}>🗑</button>
+                      <button className="btn-small" style={{ padding: "5px 9px", marginRight: 4 }} onClick={() => onEdit(c)} title="Editar">
+                        <IconEdit size={12} />
+                      </button>
+                      <button className="btn-small" style={{ padding: "5px 9px", color: "var(--danger)", borderColor: "var(--danger)" }} onClick={() => onDelete(c)} title="Excluir">
+                        <IconTrash size={12} />
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -1397,7 +1422,7 @@ function ShortagesView({ shortages, entries, onEdit, onDelete, selected, onToggl
     return (
       <div className="card">
         <div className="schedule-empty">
-          <div className="schedule-empty-icon">📭</div>
+          <div className="schedule-empty-icon"><IconPackage size={36} /></div>
           <div>Nenhuma falta encontrada com esses filtros.</div>
         </div>
       </div>
@@ -1405,14 +1430,14 @@ function ShortagesView({ shortages, entries, onEdit, onDelete, selected, onToggl
   }
   return (
     <div className="card">
-      <div className="card-title">📦 Faltas de material ({shortages.length})</div>
+      <div className="card-title">Faltas de material ({shortages.length})</div>
       <div style={{ overflowX: "auto" }}>
         <table className="data-table">
           <thead>
             <tr>
               <SelectionHeader selected={selected} allItems={shortages} onToggleAll={onToggleAll} />
               <th>Data</th><th>Produto</th><th>Qtd.</th><th>Pedido</th><th>Cliente</th><th>Operador</th><th>Atividade</th>
-              <th style={{ width: 130 }}>Ações</th>
+              <th style={{ width: 110 }}>Ações</th>
             </tr>
           </thead>
           <tbody>
@@ -1429,8 +1454,12 @@ function ShortagesView({ shortages, entries, onEdit, onDelete, selected, onToggl
                   <td>{e?.operator_name || "—"}</td>
                   <td>{e?.activity || "—"}</td>
                   <td style={{ whiteSpace: "nowrap" }}>
-                    <button className="btn-small" style={{ padding: "4px 8px", marginRight: 4 }} onClick={() => onEdit(s)}>✏️</button>
-                    <button className="btn-small" style={{ padding: "4px 8px", color: "var(--danger)", borderColor: "var(--danger)" }} onClick={() => onDelete(s)}>🗑</button>
+                    <button className="btn-small" style={{ padding: "5px 9px", marginRight: 4 }} onClick={() => onEdit(s)} title="Editar">
+                      <IconEdit size={12} />
+                    </button>
+                    <button className="btn-small" style={{ padding: "5px 9px", color: "var(--danger)", borderColor: "var(--danger)" }} onClick={() => onDelete(s)} title="Excluir">
+                      <IconTrash size={12} />
+                    </button>
                   </td>
                 </tr>
               );
@@ -1447,7 +1476,7 @@ function SessionsView({ sessions, onEdit, onForceFinish, onCancel }) {
     return (
       <div className="card">
         <div className="schedule-empty">
-          <div className="schedule-empty-icon">📭</div>
+          <div className="schedule-empty-icon"><IconClock size={36} /></div>
           <div>Nenhuma sessão em andamento agora.</div>
         </div>
       </div>
@@ -1455,9 +1484,9 @@ function SessionsView({ sessions, onEdit, onForceFinish, onCancel }) {
   }
   return (
     <div className="card">
-      <div className="card-title">⏱ Sessões em andamento ({sessions.length})</div>
-      <p style={{ fontSize: 12, color: "var(--text-faint)", marginTop: -8, marginBottom: 12 }}>
-        ✏️ Editar · ✅ Forçar finalização (salva no histórico) · 🗑 Cancelar (não salva)
+      <div className="card-title">Sessões em andamento ({sessions.length})</div>
+      <p style={{ fontSize: 12, color: "var(--text-faint)", marginTop: -6, marginBottom: 14 }}>
+        Editar dados da sessão · Forçar finalização (salva no histórico) · Cancelar (não salva)
       </p>
       <div style={{ overflowX: "auto" }}>
         <table className="data-table">
@@ -1483,22 +1512,24 @@ function SessionsView({ sessions, onEdit, onForceFinish, onCancel }) {
                   </td>
                   <td style={{ color: "var(--text-muted)" }}>{s.customer_name || "—"}</td>
                   <td style={{ whiteSpace: "nowrap" }}>
-                    <button className="btn-small" style={{ padding: "4px 8px", marginRight: 4 }} onClick={() => onEdit(s)} title="Editar sessão">✏️</button>
-                    <button
-                      className="btn-small"
-                      style={{ padding: "4px 8px", marginRight: 4, background: "var(--ok-soft)", borderColor: "var(--ok)", color: "var(--ok)" }}
-                      onClick={() => onForceFinish(s)}
-                      title="Forçar finalização (salva no histórico)"
-                    >
-                      ✅
+                    <button className="btn-small" style={{ padding: "5px 9px", marginRight: 4 }} onClick={() => onEdit(s)} title="Editar sessão">
+                      <IconEdit size={12} />
                     </button>
                     <button
                       className="btn-small"
-                      style={{ padding: "4px 8px", color: "var(--danger)", borderColor: "var(--danger)" }}
+                      style={{ padding: "5px 9px", marginRight: 4, background: "var(--ok-soft)", borderColor: "var(--ok)", color: "var(--ok)" }}
+                      onClick={() => onForceFinish(s)}
+                      title="Forçar finalização (salva no histórico)"
+                    >
+                      <IconCheck size={12} />
+                    </button>
+                    <button
+                      className="btn-small"
+                      style={{ padding: "5px 9px", color: "var(--danger)", borderColor: "var(--danger)" }}
                       onClick={() => onCancel(s)}
                       title="Cancelar (não salva)"
                     >
-                      🗑
+                      <IconTrash size={12} />
                     </button>
                   </td>
                 </tr>
@@ -1516,7 +1547,7 @@ function ErrorsView({ errors, operators, onEdit, onDelete, selected, onToggle, o
     return (
       <div className="card">
         <div className="schedule-empty">
-          <div className="schedule-empty-icon">📭</div>
+          <div className="schedule-empty-icon"><IconAlertTriangle size={36} /></div>
           <div>Nenhum erro encontrado com esses filtros.</div>
         </div>
       </div>
@@ -1524,14 +1555,14 @@ function ErrorsView({ errors, operators, onEdit, onDelete, selected, onToggle, o
   }
   return (
     <div className="card">
-      <div className="card-title">🚨 Erros de separação ({errors.length})</div>
+      <div className="card-title">Erros de separação ({errors.length})</div>
       <div style={{ overflowX: "auto" }}>
         <table className="data-table">
           <thead>
             <tr>
               <SelectionHeader selected={selected} allItems={errors} onToggleAll={onToggleAll} />
               <th>Data</th><th>Pedido/Transf.</th><th>Tipo de erro</th><th>Quem errou</th><th>Quem apontou</th><th>Observação</th>
-              <th style={{ width: 130 }}>Ações</th>
+              <th style={{ width: 110 }}>Ações</th>
             </tr>
           </thead>
           <tbody>
@@ -1548,8 +1579,12 @@ function ErrorsView({ errors, operators, onEdit, onDelete, selected, onToggle, o
                   <td style={{ color: "var(--text-muted)" }}>{opApo?.name || e.operator_name}</td>
                   <td style={{ color: "var(--text-muted)" }}>{e.note || "—"}</td>
                   <td style={{ whiteSpace: "nowrap" }}>
-                    <button className="btn-small" style={{ padding: "4px 8px", marginRight: 4 }} onClick={() => onEdit(e)}>✏️</button>
-                    <button className="btn-small" style={{ padding: "4px 8px", color: "var(--danger)", borderColor: "var(--danger)" }} onClick={() => onDelete(e)}>🗑</button>
+                    <button className="btn-small" style={{ padding: "5px 9px", marginRight: 4 }} onClick={() => onEdit(e)} title="Editar">
+                      <IconEdit size={12} />
+                    </button>
+                    <button className="btn-small" style={{ padding: "5px 9px", color: "var(--danger)", borderColor: "var(--danger)" }} onClick={() => onDelete(e)} title="Excluir">
+                      <IconTrash size={12} />
+                    </button>
                   </td>
                 </tr>
               );
