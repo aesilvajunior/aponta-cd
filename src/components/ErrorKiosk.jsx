@@ -4,7 +4,6 @@ import { fmtClock, fmtDate, shiftFor } from "../lib/format";
 import { getStationName, promptForStationName } from "../lib/station";
 import { playSuccess, playError, playKey } from "../utils/sound";
 import useKeyboardNav from "../hooks/useKeyboardNav";
-import logo from "../assets/logo.png";
 
 const CODE_LENGTH = 3;
 const AUTO_RETURN_MS = 2200;
@@ -55,13 +54,11 @@ export default function ErrorKiosk({ operators, errorTypes }) {
     setStationNameState(promptForStationName());
   }
 
-  // Navegação por setas + Esc no container principal
   useKeyboardNav({
     containerRef: mainContainerRef,
     enabled: !showOperatorPicker,
     onEscape: () => {
       if (loggedOperator) {
-        // Volta ao estado inicial (não desloga, só reseta campos)
         setOrderType(null);
         setOrderNumber("");
         setTransferZone("");
@@ -72,7 +69,6 @@ export default function ErrorKiosk({ operators, errorTypes }) {
     },
   });
 
-  // Navegação no modal
   useKeyboardNav({
     containerRef: modalRef,
     enabled: showOperatorPicker,
@@ -245,10 +241,8 @@ export default function ErrorKiosk({ operators, errorTypes }) {
     <div className="kiosk-page" ref={mainContainerRef}>
       <header className="kiosk-header">
         <div className="kiosk-header-left">
-          <img src={logo} alt="" className="kiosk-header-logo" />
           <div>
             <div className="kiosk-header-title">Aponta CD</div>
-            <div className="kiosk-header-sub">Hidráulica Tropeiro</div>
           </div>
         </div>
 

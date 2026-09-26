@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import ThemeToggle from "./ThemeToggle";
 import { useAuth } from "../context/AuthContext";
-import logo from "../assets/logo.png";
 
 const STORAGE_KEY = "aponta_sidebar_collapsed";
 
@@ -224,11 +223,9 @@ export default function Sidebar({ tab, setTab, isAdmin, onLock }) {
     <nav className={`sidebar ${collapsed ? "sidebar-collapsed" : ""}`}>
       <div className="sidebar-brand-row">
         <div className="sidebar-brand">
-          <img src={logo} alt="Hidráulica Tropeiro" />
           {!collapsed && (
             <div className="sidebar-brand-text">
               Aponta CD
-              <span>Hidráulica Tropeiro</span>
             </div>
           )}
         </div>

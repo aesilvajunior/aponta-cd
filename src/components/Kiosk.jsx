@@ -4,7 +4,6 @@ import { fmtDuration, fmtClock, fmtDate, shiftFor } from "../lib/format";
 import { getStationName, promptForStationName } from "../lib/station";
 import { playSuccess, playError, playKey } from "../utils/sound";
 import useKeyboardNav from "../hooks/useKeyboardNav";
-import logo from "../assets/logo.png";
 
 const CODE_LENGTH = 3;
 const AUTO_RETURN_MS = 2200;
@@ -68,7 +67,6 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
     lastInteractionRef.current = Date.now();
   }
 
-  // Navegação por setas + Esc no container principal
   useKeyboardNav({
     containerRef: mainContainerRef,
     enabled: !showFinishModal,
@@ -82,7 +80,6 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
     },
   });
 
-  // Navegação por setas + Esc no modal
   useKeyboardNav({
     containerRef: modalRef,
     enabled: showFinishModal,
@@ -376,7 +373,6 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
     setBusy(false);
     if (!error) {
       playSuccess();
-      // Se for separação (tem pedido ou transferência), joga na mesa de conferência
       if (newEntry && isSeparationEntry(newEntry)) {
         await addToConferenceQueue(newEntry);
       }
@@ -487,7 +483,6 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
       }
     }
 
-    // Se for separação, joga na mesa de conferência
     if (newEntry && isSeparationEntry(newEntry)) {
       await addToConferenceQueue(newEntry);
     }
@@ -516,10 +511,8 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
     <div className="kiosk-page" ref={mainContainerRef}>
       <header className="kiosk-header">
         <div className="kiosk-header-left">
-          <img src={logo} alt="" className="kiosk-header-logo" />
           <div>
             <div className="kiosk-header-title">Aponta CD</div>
-            <div className="kiosk-header-sub">Hidráulica Tropeiro</div>
           </div>
         </div>
 

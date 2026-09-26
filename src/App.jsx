@@ -32,7 +32,6 @@ import ShortagePanel from "./components/ShortagePanel";
 import ConferenceTable from "./components/ConferenceTable";
 import AdminMaster from "./components/AdminMaster";
 import LoginScreen from "./components/LoginScreen";
-import logo from "./assets/logo.png";
 import {
   DEFAULT_OPERATORS,
   DEFAULT_ACTIVITIES,
@@ -219,8 +218,6 @@ export default function App() {
   function handleOpenAdminMaster(payload) {
     setIsAdmin(true);
     setTab("admin-master");
-    // O AdminMaster pode receber `initialTab` e `initialId` no futuro
-    // Nesta versão simplificada, só abre o Admin Master.
     void payload;
   }
 
@@ -338,8 +335,7 @@ export default function App() {
         </div>
 
         <div className="footer-note">
-          <img src={logo} alt="" width={14} height={14} style={{ verticalAlign: "middle", marginRight: 6, borderRadius: "50%" }} />
-          Hidráulica Tropeiro · Aponta CD
+          Aponta CD
         </div>
       </main>
 

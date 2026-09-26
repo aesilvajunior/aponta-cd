@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { supabase } from "../supabaseClient";
-import logo from "../assets/logo.png";
 
 // ============================================================
 // Tela de login do Aponta CD
@@ -30,7 +29,6 @@ export default function LoginScreen() {
     setLoading(false);
 
     if (err) {
-      // Mensagens em português
       if (err.message.includes("Invalid login credentials")) {
         setError("E-mail ou senha incorretos.");
       } else if (err.message.includes("Email not confirmed")) {
@@ -40,19 +38,13 @@ export default function LoginScreen() {
       }
       return;
     }
-
-    // Login OK → o AuthContext detecta e o App mostra o site
   }
 
   return (
     <div className="login-page">
       <div className="login-card">
         <div className="login-brand">
-          <img src={logo} alt="Hidráulica Tropeiro" />
-          <div>
-            <div className="login-brand-title">Aponta CD</div>
-            <div className="login-brand-sub">Hidráulica Tropeiro</div>
-          </div>
+          <div className="login-brand-title" style={{ fontSize: 22 }}>Aponta CD</div>
         </div>
 
         <h1 className="login-title">Entrar</h1>
@@ -129,7 +121,7 @@ export default function LoginScreen() {
       </div>
 
       <div className="login-footer">
-        Hidráulica Tropeiro · Aponta CD
+        Aponta CD
       </div>
     </div>
   );
