@@ -36,7 +36,6 @@ import { supabase } from "../supabaseClient";
 import StockMapControls from "./StockMapControls";
 import StockMapItemPicker from "./StockMapItemPicker";
 import {
-  IconMapPin,
   IconSearch,
   IconEdit,
   IconTrash,
@@ -84,11 +83,8 @@ export default function StockMap({ isAdmin }) {
     occupancy: true,
   });
 
-  // Área sendo editada (drag ou resize)
   const [dragState, setDragState] = useState(null);
-  // { areaId, mode: "move" | "resize", startX, startY, startW, startH, startMouseX, startMouseY }
 
-  // Modal criar nova área
   const [newAreaModal, setNewAreaModal] = useState(false);
   const [newAreaForm, setNewAreaForm] = useState({
     code: "", label: "", areaType: "prateleira",
@@ -106,6 +102,8 @@ export default function StockMap({ isAdmin }) {
   const panStartRef = useRef({ x: 0, y: 0 });
   const panMovedRef = useRef(false);
   const touchStateRef = useRef(createTouchState());
+  const dragStateRef = useRef(null);
+  dragStateRef.current = dragState;
 
   async function loadAll() {
     setLoading(true);
@@ -190,7 +188,7 @@ export default function StockMap({ isAdmin }) {
       });
   }, [areas, itemsByArea, items, search, filterType, maxSkus]);
 
-  // -------- Hit test --------
+  // -------- Coordenadas --------
   function getWorldPoint(clientX, clientY) {
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return null;
@@ -199,32 +197,13 @@ export default function StockMap({ isAdmin }) {
     return screenToWorld(viewRef.current, sx, sy);
   }
 
+  // -------- Hover --------
   function handleMouseMove(e) {
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return;
     setMousePos({ x: e.clientX, y: e.clientY, show: true });
 
-    // Drag de área em modo edição
-    if (dragState) {
-      const dxPct = ((e.clientX - dragState.startMouseX) / rect.width) / view.zoom;
-      const dyPct = ((e.clientY - dragState.startMouseY) / rect.height) / view.zoom;
-
-      const updated = {
-        x: dragState.mode === "move" ? dragState.startX + dxPct : dragState.startX,
-        y: dragState.mode === "move" ? dragState.startY + dyPct : dragState.startY,
-        width: dragState.mode === "resize" ? Math.max(2, dragState.startW + dxPct) : dragState.startW,
-        height: dragState.mode === "resize" ? Math.max(2, dragState.startH + dyPct) : dragState.startH,
-      };
-
-      // Atualiza visualmente (local)
-      setAreas((prev) =>
-        prev.map((a) =>
-          a.id === dragState.areaId ? { ...a, ...updated } : a
-        )
-      );
-      return;
-    }
-
+    if (dragStateRef.current) return;
     if (isPanningRef.current) return;
 
     const world = getWorldPoint(e.clientX, e.clientY);
@@ -237,25 +216,27 @@ export default function StockMap({ isAdmin }) {
     setMousePos((p) => ({ ...p, show: false }));
   }
 
-  function handleMouseDown(e) {
+  // -------- Pan (só quando não tá editando área) --------
+  function handleContainerMouseDown(e) {
     if (e.button !== 0) return;
-    // Em modo edição não permite pan ao clicar em handle
-    if (dragState) return;
+    if (dragStateRef.current) return; // não inicia pan se já tem drag
+    // Se tá em modo edição e o clique veio de uma área, o handler da área já parou o evento.
+    // Aqui só chega clique no "fundo".
     isPanningRef.current = true;
     panMovedRef.current = false;
     panStartRef.current = { x: e.clientX, y: e.clientY, view: { ...viewRef.current } };
   }
 
-  async function handleMouseUp(e) {
-    // Se estava arrastando área em edição → salva
-    if (dragState) {
-      const area = areas.find((a) => a.id === dragState.areaId);
+  async function handleContainerMouseUp(e) {
+    if (dragStateRef.current) {
+      // salva drag
+      const area = areas.find((a) => a.id === dragStateRef.current.areaId);
       if (area) {
         await updateMapArea(area.id, {
-          x: area.x,
-          y: area.y,
-          width: area.width,
-          height: area.height,
+          x: Number(area.x),
+          y: Number(area.y),
+          width: Number(area.width),
+          height: Number(area.height),
         });
         flashSuccess("Área atualizada");
       }
@@ -268,19 +249,9 @@ export default function StockMap({ isAdmin }) {
 
     if (panMovedRef.current) return;
 
+    // Foi click simples — hit test
     const world = getWorldPoint(e.clientX, e.clientY);
     if (!world) return;
-
-    if (editMode) {
-      const hit = hitTest(decoratedAreas.filter((a) => a.matches), world);
-      if (hit) {
-        setSelectedArea(hit);
-        setPanelView("lista");
-      } else {
-        setSelectedArea(null);
-      }
-      return;
-    }
 
     const hit = hitTest(decoratedAreas.filter((a) => a.matches), world);
     if (hit) {
@@ -291,17 +262,33 @@ export default function StockMap({ isAdmin }) {
     }
   }
 
-  // Window listeners para drag
+  // Window listeners — sempre ativos
   useEffect(() => {
     function onMouseMove(e) {
-      if (dragState) {
-        handleMouseMove(e);
-        return;
-      }
-      if (!isPanningRef.current) return;
       const rect = containerRef.current?.getBoundingClientRect();
       if (!rect) return;
 
+      // 1) Drag de área em modo edição
+      if (dragStateRef.current) {
+        const ds = dragStateRef.current;
+        const dxPct = ((e.clientX - ds.startMouseX) / rect.width) / viewRef.current.zoom;
+        const dyPct = ((e.clientY - ds.startMouseY) / rect.height) / viewRef.current.zoom;
+
+        const updated = {
+          x: ds.mode === "move" ? ds.startX + dxPct : ds.startX,
+          y: ds.mode === "move" ? ds.startY + dyPct : ds.startY,
+          width: ds.mode === "resize" ? Math.max(2, ds.startW + dxPct) : ds.startW,
+          height: ds.mode === "resize" ? Math.max(2, ds.startH + dyPct) : ds.startH,
+        };
+
+        setAreas((prev) =>
+          prev.map((a) => (a.id === ds.areaId ? { ...a, ...updated } : a))
+        );
+        return;
+      }
+
+      // 2) Pan
+      if (!isPanningRef.current) return;
       const dx = e.clientX - panStartRef.current.x;
       const dy = e.clientY - panStartRef.current.y;
 
@@ -318,7 +305,7 @@ export default function StockMap({ isAdmin }) {
     }
 
     function onMouseUp(e) {
-      handleMouseUp(e);
+      handleContainerMouseUp(e);
     }
 
     window.addEventListener("mousemove", onMouseMove);
@@ -328,7 +315,7 @@ export default function StockMap({ isAdmin }) {
       window.removeEventListener("mouseup", onMouseUp);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [decoratedAreas, dragState]);
+  }, [decoratedAreas, areas]);
 
   function handleWheel(e) {
     e.preventDefault();
@@ -419,7 +406,6 @@ export default function StockMap({ isAdmin }) {
   }, [view.zoom]);
 
   // -------- Ações --------
-
   async function handleDeleteArea(a) {
     if (!window.confirm(`Remover a área "${a.label}"?`)) return;
     await deleteMapArea(a.id);
@@ -433,12 +419,10 @@ export default function StockMap({ isAdmin }) {
     await loadAll();
   }
 
-  // Iniciar arrastar área
+  // Iniciar drag da área
   function startDragArea(e, a, mode) {
     e.stopPropagation();
     e.preventDefault();
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect) return;
     setDragState({
       areaId: a.id,
       mode,
@@ -451,7 +435,7 @@ export default function StockMap({ isAdmin }) {
     });
   }
 
-  // Salvar nova área
+  // Criar nova área
   async function handleCreateArea() {
     const code = newAreaForm.code.trim().toUpperCase();
     const label = newAreaForm.label.trim();
@@ -532,7 +516,7 @@ export default function StockMap({ isAdmin }) {
         <div className="alert-card alert-warning" style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
           <IconAlertTriangle size={16} />
           <div style={{ flex: 1 }}>
-            <strong>Modo edição ativo.</strong> Arraste as áreas pra mover · Arraste o canto inferior direito pra redimensionar · Clique em qualquer área pra editar pelo painel lateral.
+            <strong>Modo edição ativo.</strong> Arraste uma prateleira pra mover · Arraste o handle azul no canto pra redimensionar · Clique em qualquer área pra ver o painel e adicionar itens.
           </div>
         </div>
       )}
@@ -583,7 +567,7 @@ export default function StockMap({ isAdmin }) {
               userSelect: "none",
               touchAction: "none",
             }}
-            onMouseDown={handleMouseDown}
+            onMouseDown={handleContainerMouseDown}
             onMouseMove={handleMouseMove}
             onMouseLeave={handleMouseLeave}
             onWheel={handleWheel}
@@ -604,7 +588,7 @@ export default function StockMap({ isAdmin }) {
                   backgroundSize: "5% 5%",
                   transform,
                   transformOrigin: "center",
-                  transition: isPanningRef.current ? "none" : "transform 180ms cubic-bezier(0.22, 1, 0.36, 1)",
+                  transition: isPanningRef.current || dragState ? "none" : "transform 180ms cubic-bezier(0.22, 1, 0.36, 1)",
                   pointerEvents: "none",
                 }}
               />
@@ -642,9 +626,9 @@ export default function StockMap({ isAdmin }) {
                   <div
                     key={a.id}
                     onMouseDown={(e) => {
-                      if (editMode && !isCorridor) {
-                        startDragArea(e, a, "move");
-                      }
+                      if (!editMode) return;
+                      if (isCorridor) return;
+                      startDragArea(e, a, "move");
                     }}
                     style={{
                       position: "absolute",
@@ -666,21 +650,21 @@ export default function StockMap({ isAdmin }) {
                         : "pointer",
                       transition: isDragging
                         ? "none"
-                        : "all 250ms cubic-bezier(0.22, 1, 0.36, 1)",
+                        : "box-shadow 250ms ease, border-color 250ms ease, background 250ms ease",
                       display: "flex",
                       flexDirection: "column",
                       alignItems: "center",
                       justifyContent: "center",
                       gap: 3,
                       padding: 3,
-                      overflow: "hidden",
+                      overflow: "visible",
                       opacity: hidden ? 0.12 : 1,
                       transform: isSelected || isDragging
                         ? "scale(1.05)"
                         : isHovered && !editMode
                         ? "scale(1.03)"
                         : "scale(1)",
-                      boxShadow: isSelected
+                      boxShadow: isSelected || isDragging
                         ? "0 0 0 2px #00d4ff, 0 8px 24px rgba(0, 212, 255, 0.4)"
                         : isHovered && !editMode
                         ? "0 6px 16px rgba(0,0,0,0.5)"
@@ -688,58 +672,69 @@ export default function StockMap({ isAdmin }) {
                       zIndex: isSelected || isDragging ? 100 : isHovered ? 50 : idx,
                     }}
                   >
-                    {!isCorridor && layers.labels && (
-                      <>
-                        <div
-                          style={{
-                            fontSize: Math.max(8, Math.min(14, a.width * 0.9)),
-                            fontWeight: 800,
-                            color: "#fff",
-                            textShadow: "0 1px 2px rgba(0,0,0,0.6)",
-                            whiteSpace: "nowrap",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            maxWidth: "100%",
-                            lineHeight: 1.1,
-                            letterSpacing: "0.02em",
-                          }}
-                        >
-                          {a.code}
-                        </div>
-                        {a.height >= 8 && a.stats.skus > 0 && (
+                    <div style={{ overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", width: "100%", height: "100%", gap: 3 }}>
+                      {!isCorridor && layers.labels && (
+                        <>
                           <div
                             style={{
-                              fontSize: 9,
-                              color: "rgba(255,255,255,0.85)",
-                              fontWeight: 700,
-                              fontFamily: "var(--font-mono)",
+                              fontSize: Math.max(8, Math.min(14, a.width * 0.9)),
+                              fontWeight: 800,
+                              color: "#fff",
+                              textShadow: "0 1px 2px rgba(0,0,0,0.6)",
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              maxWidth: "100%",
+                              lineHeight: 1.1,
+                              letterSpacing: "0.02em",
                             }}
                           >
-                            {a.stats.skus} · {a.stats.totalQty}
+                            {a.code}
                           </div>
-                        )}
-                      </>
-                    )}
+                          {a.height >= 8 && a.stats.skus > 0 && (
+                            <div
+                              style={{
+                                fontSize: 9,
+                                color: "rgba(255,255,255,0.85)",
+                                fontWeight: 700,
+                                fontFamily: "var(--font-mono)",
+                              }}
+                            >
+                              {a.stats.skus} · {a.stats.totalQty}
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
 
-                    {/* Handle de resize (só em modo edição) */}
+                    {/* Handle de resize */}
                     {editMode && !isCorridor && (
                       <div
                         onMouseDown={(e) => startDragArea(e, a, "resize")}
                         style={{
                           position: "absolute",
-                          right: -6,
-                          bottom: -6,
-                          width: 14,
-                          height: 14,
+                          right: -8,
+                          bottom: -8,
+                          width: 18,
+                          height: 18,
                           background: "#00d4ff",
                           border: "2px solid #0a0e14",
-                          borderRadius: 4,
+                          borderRadius: 5,
                           cursor: "nwse-resize",
                           zIndex: 10,
-                          boxShadow: "0 2px 6px rgba(0,0,0,0.5)",
+                          boxShadow: "0 2px 8px rgba(0,212,255,0.6)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
                         }}
                         title="Arraste pra redimensionar"
-                      />
+                      >
+                        <svg width="10" height="10" viewBox="0 0 10 10" fill="#0a0e14">
+                          <rect x="6" y="6" width="3" height="3" />
+                          <rect x="2" y="6" width="2" height="2" opacity="0.5" />
+                          <rect x="6" y="2" width="2" height="2" opacity="0.5" />
+                        </svg>
+                      </div>
                     )}
                   </div>
                 );
@@ -811,12 +806,12 @@ export default function StockMap({ isAdmin }) {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14, paddingBottom: 14, borderBottom: "1px solid var(--border)" }}>
               <div>
                 <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 3 }}>SKUs</div>
-                <div style={{ fontSize: 20, fontWeight: 700 }}>{selectedArea.stats?.skus ?? selectedAreaItems.length}</div>
+                <div style={{ fontSize: 20, fontWeight: 700 }}>{selectedAreaItems.length}</div>
               </div>
               <div>
                 <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 3 }}>Qtd. total</div>
                 <div style={{ fontSize: 20, fontWeight: 700, color: "var(--accent)" }}>
-                  {selectedArea.stats?.totalQty ?? selectedAreaItems.reduce((s, i) => s + (i.quantity || 0), 0)}
+                  {selectedAreaItems.reduce((s, i) => s + (i.quantity || 0), 0)}
                 </div>
               </div>
             </div>
@@ -884,7 +879,6 @@ export default function StockMap({ isAdmin }) {
         <StockMapItemPicker area={selectedArea} item={editingItem} onClose={() => setPickerOpen(false)} onSaved={loadAll} />
       )}
 
-      {/* Modal nova área */}
       {newAreaModal && (
         <div className="kiosk-modal-backdrop" onClick={() => !areaBusy && setNewAreaModal(false)}>
           <div className="kiosk-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 560 }}>
