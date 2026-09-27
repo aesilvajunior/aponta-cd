@@ -34,6 +34,18 @@ import {
   IconChevronRight,
 } from "./Icons";
 
+const AVAILABLE_ROLES = [
+  { value: "separacao", label: "Separação" },
+  { value: "carregamento", label: "Carregamento" },
+  { value: "recebimento", label: "Recebimento" },
+  { value: "conferencia", label: "Conferência" },
+  { value: "limpeza", label: "Limpeza" },
+  { value: "lider", label: "Líder" },
+  { value: "analista", label: "Analista" },
+  { value: "auxiliar", label: "Auxiliar" },
+  { value: "estoque", label: "Estoque" },
+];
+
 function minutesToSeconds(minStr) {
   const n = parseInt(minStr, 10);
   return Number.isNaN(n) || n <= 0 ? null : n * 60;
@@ -42,6 +54,69 @@ function minutesToSeconds(minStr) {
 function secondsToMinutesLabel(sec) {
   if (!sec) return "";
   return String(Math.round(sec / 60));
+}
+
+function RoleTags({ roles }) {
+  if (!roles || roles.length === 0) return <span style={{ color: "var(--text-faint)", fontSize: 12 }}>—</span>;
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+      {roles.map((r) => {
+        const found = AVAILABLE_ROLES.find((x) => x.value === r);
+        return (
+          <span
+            key={r}
+            style={{
+              background: "var(--accent-soft)",
+              color: "var(--accent)",
+              padding: "2px 8px",
+              borderRadius: 5,
+              fontSize: 10.5,
+              fontWeight: 700,
+              textTransform: "capitalize",
+            }}
+          >
+            {found?.label || r}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+function RolePicker({ value, onChange, disabled }) {
+  const selected = value || [];
+  function toggle(r) {
+    if (selected.includes(r)) onChange(selected.filter((x) => x !== r));
+    else onChange([...selected, r]);
+  }
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+      {AVAILABLE_ROLES.map((r) => {
+        const active = selected.includes(r.value);
+        return (
+          <button
+            key={r.value}
+            type="button"
+            onClick={() => toggle(r.value)}
+            disabled={disabled}
+            style={{
+              padding: "5px 10px",
+              borderRadius: 6,
+              border: `1px solid ${active ? "var(--accent)" : "var(--border-strong)"}`,
+              background: active ? "var(--accent-soft)" : "transparent",
+              color: active ? "var(--accent)" : "var(--text-muted)",
+              fontSize: 11.5,
+              fontWeight: active ? 700 : 500,
+              cursor: disabled ? "not-allowed" : "pointer",
+              fontFamily: "inherit",
+            }}
+          >
+            {r.label}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 export default function TeamManager({
@@ -56,6 +131,7 @@ export default function TeamManager({
   const [newOpName, setNewOpName] = useState("");
   const [newOpRole, setNewOpRole] = useState("");
   const [newOpCode, setNewOpCode] = useState("");
+  const [newOpRoles, setNewOpRoles] = useState([]);
   const [newOpCanSchedule, setNewOpCanSchedule] = useState(false);
   const [newOpCanConference, setNewOpCanConference] = useState(false);
   const [newActivity, setNewActivity] = useState("");
@@ -69,6 +145,7 @@ export default function TeamManager({
     code: "",
     name: "",
     role: "",
+    roles: [],
     canScheduleDelivery: false,
     canConference: false,
   });
@@ -198,6 +275,7 @@ export default function TeamManager({
           code,
           name,
           role,
+          roles: newOpRoles,
           canScheduleDelivery: newOpCanSchedule,
           canConference: newOpCanConference,
         });
@@ -210,9 +288,8 @@ export default function TeamManager({
             afterData: {
               nome: name,
               função: role,
+              papéis: newOpRoles,
               código: code,
-              pode_agendar: newOpCanSchedule ? "Sim" : "Não",
-              pode_conferir: newOpCanConference ? "Sim" : "Não",
             },
           });
         }
@@ -222,6 +299,7 @@ export default function TeamManager({
         setNewOpName("");
         setNewOpRole("");
         setNewOpCode("");
+        setNewOpRoles([]);
         setNewOpCanSchedule(false);
         setNewOpCanConference(false);
       }
@@ -239,13 +317,7 @@ export default function TeamManager({
           entity: "operator",
           entityId: code,
           details: `Operador "${op.name}" removido`,
-          beforeData: {
-            nome: op.name,
-            função: op.role,
-            código: op.code,
-            pode_agendar: op.can_schedule_delivery ? "Sim" : "Não",
-            pode_conferir: op.can_conference ? "Sim" : "Não",
-          },
+          beforeData: { nome: op.name, função: op.role, código: op.code },
         });
       }
       return res;
@@ -258,6 +330,7 @@ export default function TeamManager({
       code: op.code,
       name: op.name,
       role: op.role || "",
+      roles: op.roles || [],
       canScheduleDelivery: !!op.can_schedule_delivery,
       canConference: !!op.can_conference,
     });
@@ -277,6 +350,7 @@ export default function TeamManager({
     const fields = {
       name,
       role: editValues.role.trim() || "-",
+      roles: editValues.roles || [],
       can_schedule_delivery: editValues.canScheduleDelivery,
       can_conference: editValues.canConference,
     };
@@ -296,20 +370,8 @@ export default function TeamManager({
           details: code !== originalCode
             ? `Operador renomeado de #${originalCode} para #${code}`
             : `Operador "${name}" editado`,
-          beforeData: {
-            nome: original.name,
-            função: original.role,
-            código: original.code,
-            pode_agendar: original.can_schedule_delivery ? "Sim" : "Não",
-            pode_conferir: original.can_conference ? "Sim" : "Não",
-          },
-          afterData: {
-            nome: name,
-            função: fields.role,
-            código: code,
-            pode_agendar: fields.can_schedule_delivery ? "Sim" : "Não",
-            pode_conferir: fields.can_conference ? "Sim" : "Não",
-          },
+          beforeData: { nome: original.name, papéis: original.roles },
+          afterData: { nome: name, papéis: fields.roles },
         });
       }
       return res;
@@ -349,7 +411,7 @@ export default function TeamManager({
           entity: "activity",
           entityId: name,
           details: `Atividade "${name}" removida`,
-          beforeData: { nome: act.name, meta: act.target_seconds ? `${Math.round(act.target_seconds / 60)} min` : "—" },
+          beforeData: { nome: act.name },
         });
       }
       return res;
@@ -382,15 +444,6 @@ export default function TeamManager({
     const asksShortage = editActivityValues.asksShortage;
 
     const nameChanged = name !== original.name;
-    const targetChanged = target !== (original.target_seconds ?? null);
-    const requiresChanged = requiresOrderInfo !== !!original.requires_order_info;
-    const extraFieldTypeChanged = extraFieldType !== (original.extra_field_type || "pedido");
-    const asksShortageChanged = asksShortage !== (original.asks_shortage ?? null);
-
-    if (!nameChanged && !targetChanged && !requiresChanged && !extraFieldTypeChanged && !asksShortageChanged) {
-      setEditingActivity(null);
-      return;
-    }
 
     const action = async () => {
       if (nameChanged) {
@@ -421,20 +474,6 @@ export default function TeamManager({
           details: nameChanged
             ? `Atividade renomeada de "${original.name}" para "${name}"`
             : `Atividade "${name}" editada`,
-          beforeData: {
-            nome: original.name,
-            meta: original.target_seconds ? `${Math.round(original.target_seconds / 60)} min` : "—",
-            pede_info: original.requires_order_info ? "Sim" : "Não",
-            tipo_info: original.extra_field_type || "pedido",
-            pergunta_falta: original.asks_shortage === true ? "Sempre" : original.asks_shortage === false ? "Nunca" : "Automático",
-          },
-          afterData: {
-            nome: name,
-            meta: target ? `${Math.round(target / 60)} min` : "—",
-            pede_info: requiresOrderInfo ? "Sim" : "Não",
-            tipo_info: extraFieldType,
-            pergunta_falta: asksShortage === true ? "Sempre" : asksShortage === false ? "Nunca" : "Automático",
-          },
         });
       }
       return res;
@@ -462,7 +501,6 @@ export default function TeamManager({
           entity: "error_type",
           entityId: name,
           details: `Tipo de erro "${name}" criado`,
-          afterData: { nome: name },
         });
       }
       return res;
@@ -479,7 +517,6 @@ export default function TeamManager({
           entity: "error_type",
           entityId: name,
           details: `Tipo de erro "${name}" removido`,
-          beforeData: { nome: name },
         });
       }
       return res;
@@ -509,8 +546,6 @@ export default function TeamManager({
           entity: "error_type",
           entityId: name,
           details: `Tipo de erro renomeado de "${originalName}" para "${name}"`,
-          beforeData: { nome: originalName },
-          afterData: { nome: name },
         });
       }
       return res;
@@ -533,7 +568,6 @@ export default function TeamManager({
           entity: "vehicle",
           entityId: plate,
           details: `Veículo ${plate} (${model}) adicionado`,
-          afterData: { placa: plate, modelo: model },
         });
       }
       return res;
@@ -542,16 +576,14 @@ export default function TeamManager({
 
   async function removeVehicle(plate) {
     if (!window.confirm(`Remover o veículo ${plate}?`)) return;
-    const v = vehicles.find((x) => x.plate === plate);
     await runAction(async () => {
       const res = await apiDeleteVehicle(plate);
-      if (!res.error && v) {
+      if (!res.error) {
         await audit({
           action: "remover",
           entity: "vehicle",
           entityId: plate,
-          details: `Veículo ${plate} (${v.model}) removido`,
-          beforeData: { placa: plate, modelo: v.model },
+          details: `Veículo ${plate} removido`,
         });
       }
       return res;
@@ -574,21 +606,14 @@ export default function TeamManager({
     if (plate !== originalPlate && vehicles.some((v) => v.plate.toUpperCase() === plate)) {
       return setFormError(`Já existe um veículo com a placa ${plate}.`);
     }
-    const original = vehicles.find((v) => v.plate === originalPlate);
-    if (plate === originalPlate && model === original?.model) {
-      setEditingVehiclePlate(null);
-      return;
-    }
     await runAction(async () => {
       const res = await updateVehicle(originalPlate, { plate, model });
-      if (!res.error && original) {
+      if (!res.error) {
         await audit({
           action: "editar",
           entity: "vehicle",
           entityId: plate,
           details: `Veículo ${originalPlate} editado`,
-          beforeData: { placa: original.plate, modelo: original.model },
-          afterData: { placa: plate, modelo: model },
         });
       }
       return res;
@@ -606,8 +631,6 @@ export default function TeamManager({
           entity: "admin_config",
           entityId: "pin",
           details: "PIN de administrador alterado",
-          beforeData: { valor: "****" },
-          afterData: { valor: "****" },
         });
       }
       return res;
@@ -618,7 +641,7 @@ export default function TeamManager({
     <div>
       <h1 className="page-title">Cadastros</h1>
       <p className="page-sub">
-        As atividades mudam mês a mês pelo rodízio. Marque quem pode agendar recebimento e/ou conferir pedidos.
+        As atividades mudam mês a mês pelo rodízio. Os papéis definem quem pode ser escalado em cada categoria da rotação.
       </p>
 
       {formError && (
@@ -674,7 +697,7 @@ export default function TeamManager({
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1fr", gap: 20, marginBottom: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr", gap: 20, marginBottom: 20 }}>
         <div className="card">
           <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <IconUsers size={16} /> Operadores
@@ -683,10 +706,15 @@ export default function TeamManager({
             <input className="field" style={{ flex: 1, minWidth: 100 }} placeholder="Nome" value={newOpName} onChange={(e) => setNewOpName(e.target.value)} disabled={busy} />
             <input className="field" style={{ width: 130 }} placeholder="Função" value={newOpRole} onChange={(e) => setNewOpRole(e.target.value)} disabled={busy} />
             <input className="field" style={{ width: 90 }} placeholder="Cód. (opc.)" value={newOpCode} onChange={(e) => setNewOpCode(e.target.value.replace(/\D/g, ""))} disabled={busy} />
-            <button className="btn-small" onClick={addOperator} disabled={busy} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-              <IconPlus size={14} /> Adicionar
-            </button>
           </div>
+
+          <div style={{ marginBottom: 12 }}>
+            <label style={{ fontSize: 11.5, color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6, display: "block" }}>
+              Papéis na rotação
+            </label>
+            <RolePicker value={newOpRoles} onChange={setNewOpRoles} disabled={busy} />
+          </div>
+
           <div style={{ display: "flex", gap: 16, marginBottom: 14, flexWrap: "wrap" }}>
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--text-muted)" }}>
               <input
@@ -707,6 +735,11 @@ export default function TeamManager({
               Pode conferir
             </label>
           </div>
+
+          <button className="btn-small btn-excel" onClick={addOperator} disabled={busy} style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 14 }}>
+            <IconPlus size={14} /> Adicionar operador
+          </button>
+
           <div style={{ overflowX: "auto" }}>
             <table className="data-table">
               <thead>
@@ -714,8 +747,7 @@ export default function TeamManager({
                   <th>Cód.</th>
                   <th>Nome</th>
                   <th>Função</th>
-                  <th title="Pode agendar recebimento">Agenda</th>
-                  <th title="Pode conferir">Conf.</th>
+                  <th>Papéis</th>
                   <th></th>
                 </tr>
               </thead>
@@ -729,25 +761,12 @@ export default function TeamManager({
                           <td><input className="field" style={{ width: 55, padding: "5px 8px" }} value={editValues.code} onChange={(e) => setEditValues((v) => ({ ...v, code: e.target.value.replace(/\D/g, "") }))} disabled={busy} /></td>
                           <td><input className="field" style={{ width: "100%", padding: "5px 8px" }} value={editValues.name} onChange={(e) => setEditValues((v) => ({ ...v, name: e.target.value }))} disabled={busy} /></td>
                           <td><input className="field" style={{ width: "100%", padding: "5px 8px" }} value={editValues.role} onChange={(e) => setEditValues((v) => ({ ...v, role: e.target.value }))} disabled={busy} /></td>
-                          <td>
-                            <input
-                              type="checkbox"
-                              checked={editValues.canScheduleDelivery}
-                              onChange={(e) => setEditValues((v) => ({ ...v, canScheduleDelivery: e.target.checked }))}
+                          <td colSpan={2}>
+                            <RolePicker
+                              value={editValues.roles}
+                              onChange={(r) => setEditValues((v) => ({ ...v, roles: r }))}
                               disabled={busy}
                             />
-                          </td>
-                          <td>
-                            <input
-                              type="checkbox"
-                              checked={editValues.canConference}
-                              onChange={(e) => setEditValues((v) => ({ ...v, canConference: e.target.checked }))}
-                              disabled={busy}
-                            />
-                          </td>
-                          <td style={{ whiteSpace: "nowrap" }}>
-                            <button className="btn-small" style={{ padding: "5px 10px", marginRight: 4 }} onClick={() => saveEdit(o.code)} disabled={busy}>Salvar</button>
-                            <button className="btn-small" style={{ padding: "5px 10px" }} onClick={cancelEdit} disabled={busy}>Cancelar</button>
                           </td>
                         </>
                       ) : (
@@ -755,34 +774,30 @@ export default function TeamManager({
                           <td>{o.code}</td>
                           <td style={{ fontFamily: "var(--font-display)" }}>{o.name}</td>
                           <td>{o.role}</td>
-                          <td style={{ textAlign: "center" }}>
-                            {o.can_schedule_delivery ? (
-                              <span title="Pode agendar recebimento" style={{ color: "var(--ok)", fontWeight: 700 }}>✓</span>
-                            ) : (
-                              <span style={{ color: "var(--text-faint)" }}>—</span>
-                            )}
-                          </td>
-                          <td style={{ textAlign: "center" }}>
-                            {o.can_conference ? (
-                              <span title="Pode conferir" style={{ color: "var(--ok)", fontWeight: 700 }}>✓</span>
-                            ) : (
-                              <span style={{ color: "var(--text-faint)" }}>—</span>
-                            )}
-                          </td>
-                          <td style={{ whiteSpace: "nowrap" }}>
+                          <td><RoleTags roles={o.roles || []} /></td>
+                        </>
+                      )}
+                      <td style={{ whiteSpace: "nowrap" }}>
+                        {isEditing ? (
+                          <>
+                            <button className="btn-small" style={{ padding: "5px 10px", marginRight: 4 }} onClick={() => saveEdit(o.code)} disabled={busy}>Salvar</button>
+                            <button className="btn-small" style={{ padding: "5px 10px" }} onClick={cancelEdit} disabled={busy}>Cancelar</button>
+                          </>
+                        ) : (
+                          <>
                             <button className="btn-small" style={{ padding: "5px 10px", marginRight: 4, display: "inline-flex", alignItems: "center", gap: 4 }} onClick={() => startEdit(o)} disabled={busy}>
                               <IconEdit size={12} /> Editar
                             </button>
                             <button className="btn-small" style={{ padding: "5px 10px", display: "inline-flex", alignItems: "center", gap: 4 }} onClick={() => removeOperator(o.code)} disabled={busy}>
                               <IconTrash size={12} /> Remover
                             </button>
-                          </td>
-                        </>
-                      )}
+                          </>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
-                {operators.length === 0 && <tr><td colSpan={6} style={{ color: "var(--text-muted)" }}>Nenhum operador cadastrado.</td></tr>}
+                {operators.length === 0 && <tr><td colSpan={5} style={{ color: "var(--text-muted)" }}>Nenhum operador cadastrado.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -875,16 +890,6 @@ export default function TeamManager({
                             {a.requires_order_info && (
                               <span style={{ marginLeft: 6, fontSize: 10.5, color: "var(--accent)" }}>
                                 {a.extra_field_type === "veiculo" ? "veículo" : a.extra_field_type === "fornecedor" ? "fornecedor" : "pedido"}
-                              </span>
-                            )}
-                            {a.asks_shortage === true && (
-                              <span style={{ marginLeft: 6, fontSize: 10.5, color: "var(--danger)" }} title="Sempre pergunta sobre falta">
-                                sempre
-                              </span>
-                            )}
-                            {a.asks_shortage === false && (
-                              <span style={{ marginLeft: 6, fontSize: 10.5, color: "var(--text-faint)" }} title="Nunca pergunta sobre falta">
-                                nunca
                               </span>
                             )}
                           </td>

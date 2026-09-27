@@ -1,201 +1,258 @@
+// ============================================================
+// Aponta CD — Rotação de atividades v2
+// - Tarefas rotativas (round-robin por dia)
+// - Tarefas equipe_fixa (caminhão → mesmos operadores todos os dias)
+// ============================================================
 import { supabase } from "../supabaseClient";
 
+// ---------- utilidades de data ----------
+export function getMondayOfWeek(date = new Date()) {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + diff);
+  return d;
+}
+
+export function isoDate(d) {
+  const dt = d instanceof Date ? d : new Date(d);
+  const tz = dt.getTimezoneOffset() * 60000;
+  return new Date(dt - tz).toISOString().slice(0, 10);
+}
+
+export function addDays(d, n) {
+  const dt = new Date(d);
+  dt.setDate(dt.getDate() + n);
+  return dt;
+}
+
+export const WEEKDAY_LABELS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+export const WEEKDAY_LONG = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+
+// Retorna array de 7 datas ISO a partir de uma segunda-feira
+export function weekDates(monday) {
+  const out = [];
+  for (let i = 0; i < 7; i++) out.push(isoDate(addDays(monday, i)));
+  return out;
+}
+
 // ============================================================
-// Rotação de atividades da equipe
-// (limpezas, organizações, inventários periódicos, etc)
+// DB — TAREFAS
 // ============================================================
-
-// ---------- Períodos ----------
-
-export function getPeriodKey(type, date = new Date()) {
-  if (type === "diaria") {
-    return isoDate(date);
-  }
-  if (type === "semanal") {
-    return getWeekKey(date);
-  }
-  if (type === "mensal") {
-    return getMonthKey(date);
-  }
-  return isoDate(date);
-}
-
-function isoDate(d) {
-  const tz = d.getTimezoneOffset() * 60000;
-  return new Date(d - tz).toISOString().slice(0, 10);
-}
-
-function getWeekKey(d) {
-  // Formato ISO: 2026-W39
-  const target = new Date(d);
-  target.setHours(0, 0, 0, 0);
-  const dayNr = (target.getDay() + 6) % 7;
-  target.setDate(target.getDate() - dayNr + 3);
-  const firstThursday = new Date(target.getFullYear(), 0, 4);
-  const diff = target - firstThursday;
-  const week = 1 + Math.round(diff / (7 * 24 * 60 * 60 * 1000));
-  return `${target.getFullYear()}-W${String(week).padStart(2, "0")}`;
-}
-
-function getMonthKey(d) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-
-export function formatPeriodKey(periodKey, type) {
-  if (type === "semanal") {
-    const [year, week] = periodKey.split("-W");
-    return `Semana ${parseInt(week, 10)} · ${year}`;
-  }
-  if (type === "mensal") {
-    const [year, month] = periodKey.split("-");
-    const names = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
-    return `${names[parseInt(month, 10) - 1]}/${year}`;
-  }
-  // diária
-  const [y, m, d] = periodKey.split("-");
-  return `${d}/${m}/${y}`;
-}
-
-export function getPreviousPeriodKey(type, periodKey) {
-  if (type === "diaria") {
-    const d = new Date(periodKey + "T12:00:00");
-    d.setDate(d.getDate() - 1);
-    return isoDate(d);
-  }
-  if (type === "semanal") {
-    const [year, week] = periodKey.split("-W");
-    const w = parseInt(week, 10);
-    if (w === 1) {
-      const prevYear = parseInt(year, 10) - 1;
-      const lastWeek = getWeeksInYear(prevYear);
-      return `${prevYear}-W${String(lastWeek).padStart(2, "0")}`;
-    }
-    return `${year}-W${String(w - 1).padStart(2, "0")}`;
-  }
-  if (type === "mensal") {
-    const [year, month] = periodKey.split("-");
-    const m = parseInt(month, 10);
-    if (m === 1) return `${parseInt(year, 10) - 1}-12`;
-    return `${year}-${String(m - 1).padStart(2, "0")}`;
-  }
-  return periodKey;
-}
-
-function getWeeksInYear(year) {
-  const d = new Date(year, 11, 31);
-  return getISOWeek(d);
-}
-
-function getISOWeek(date) {
-  const target = new Date(date);
-  target.setHours(0, 0, 0, 0);
-  const dayNr = (target.getDay() + 6) % 7;
-  target.setDate(target.getDate() - dayNr + 3);
-  const firstThursday = new Date(target.getFullYear(), 0, 4);
-  const diff = target - firstThursday;
-  return 1 + Math.round(diff / (7 * 24 * 60 * 60 * 1000));
-}
-
-// ---------- CRUD Tarefas ----------
-
 export async function fetchRotationTasks() {
   const { data, error } = await supabase
     .from("rotation_tasks")
     .select("*")
-    .order("sort_order", { ascending: true })
-    .order("name");
+    .eq("active", true)
+    .order("sort_order");
   return { data: data || [], error };
 }
 
-export async function addRotationTask({ name, description, frequency, sortOrder = 0 }) {
+export async function addRotationTask({
+  name, category, kind = "rotativa", daysOfWeek = [1, 2, 3, 4, 5], sortOrder = 0,
+}) {
   return supabase.from("rotation_tasks").insert({
-    name: name.trim(),
-    description: description?.trim() || null,
-    frequency,
+    name,
+    category,
+    kind,
+    days_of_week: daysOfWeek,
     sort_order: sortOrder,
     active: true,
-  });
+  }).select().maybeSingle();
 }
 
 export async function updateRotationTask(id, fields) {
-  return supabase.from("rotation_tasks").update(fields).eq("id", id);
+  return supabase.from("rotation_tasks").update(fields).eq("id", id).select().maybeSingle();
 }
 
 export async function deleteRotationTask(id) {
-  return supabase.from("rotation_tasks").delete().eq("id", id);
+  return supabase.from("rotation_tasks").update({ active: false }).eq("id", id);
 }
 
-// ---------- Assignments ----------
-
-export async function fetchRotationAssignments(periodKey) {
-  let query = supabase
-    .from("rotation_assignments")
-    .select("*")
-    .order("created_at", { ascending: true });
-  if (periodKey) query = query.eq("period_key", periodKey);
-  const { data, error } = await query;
+// ============================================================
+// DB — ASSIGNMENTS
+// ============================================================
+export async function fetchRotationAssignments({ from, to } = {}) {
+  let q = supabase.from("rotation_assignments").select("*");
+  if (from) q = q.gte("scheduled_date", from);
+  if (to) q = q.lte("scheduled_date", to);
+  const { data, error } = await q;
   return { data: data || [], error };
 }
 
-export async function addRotationAssignment({ taskId, operatorCode, operatorName, periodKey }) {
+// Substitui todos os assignments de (task, date) pelos novos
+export async function setCellAssignments({ taskId, scheduledDate, operators }) {
+  await supabase
+    .from("rotation_assignments")
+    .delete()
+    .eq("task_id", taskId)
+    .eq("scheduled_date", scheduledDate);
+
+  if (!operators || operators.length === 0) return { error: null };
+
+  const rows = operators.map((op) => ({
+    task_id: taskId,
+    scheduled_date: scheduledDate,
+    operator_code: op.code,
+    operator_name: op.name,
+    note: null,
+  }));
+  return supabase.from("rotation_assignments").insert(rows);
+}
+
+// Apaga todos os assignments de uma semana
+export async function clearWeekAssignments(fromDate, toDate) {
   return supabase
     .from("rotation_assignments")
-    .insert({
-      task_id: taskId,
-      operator_code: operatorCode,
-      operator_name: operatorName,
-      period_key: periodKey,
-      status: "pendente",
-    })
-    .select()
-    .maybeSingle();
+    .delete()
+    .gte("scheduled_date", fromDate)
+    .lte("scheduled_date", toDate);
 }
 
-export async function updateAssignmentStatus(id, status, note = "") {
-  return supabase
-    .from("rotation_assignments")
-    .update({
-      status,
-      completed_at: status === "concluida" ? new Date().toISOString() : null,
-      note: note || null,
-    })
-    .eq("id", id);
+// ============================================================
+// MOTOR — GERAÇÃO AUTOMÁTICA
+// ============================================================
+
+// Filtra operadores por papel compatível com a categoria
+export function operatorsForCategory(operators, category) {
+  const map = {
+    "Carregamento": ["carregamento", "separacao"],
+    "Separação": ["separacao"],
+    "Limpeza": ["limpeza", "separacao"],
+    "Recebimento": ["recebimento"],
+    "Conferência": ["conferencia"],
+  };
+  const allowed = map[category];
+  if (!allowed) return operators;
+  return operators.filter((op) => {
+    const roles = Array.isArray(op.roles) ? op.roles : [];
+    return roles.some((r) => allowed.includes(r));
+  });
 }
 
-export async function deleteRotationAssignment(id) {
-  return supabase.from("rotation_assignments").delete().eq("id", id);
-}
-
-// ---------- Gerador automático de rotação ----------
-
-// Distribui as tarefas ativas entre os operadores de forma round-robin
-export async function autoRotateAssignments({ periodKey, frequency, taskIds, operators }) {
-  if (!operators || operators.length === 0) {
-    return { error: { message: "Nenhum operador disponível." } };
-  }
-  if (!taskIds || taskIds.length === 0) {
-    return { error: { message: "Nenhuma tarefa selecionada." } };
-  }
-
-  // Remove assignments existentes desse período
-  await supabase.from("rotation_assignments").delete().eq("period_key", periodKey);
-
+/**
+ * Gera a rotação para uma semana inteira.
+ * @param {Object} args
+ *  - tasks: array de rotation_tasks
+ *  - operators: array de operators (com .roles)
+ *  - mondayISO: 'YYYY-MM-DD' da segunda-feira da semana
+ *  - overrides: { [taskId]: { [dateISO]: operator[] } } — mantém o que o usuário já editou
+ * @returns Array de rows para inserir em rotation_assignments
+ */
+export function generateRotation({ tasks, operators, mondayISO, overrides = {} }) {
   const rows = [];
-  taskIds.forEach((taskId, idx) => {
-    const op = operators[idx % operators.length];
-    rows.push({
-      task_id: taskId,
-      operator_code: op.code,
-      operator_name: op.name,
-      period_key: periodKey,
-      status: "pendente",
+
+  const monday = new Date(mondayISO + "T12:00:00");
+  const dates = weekDates(monday); // 7 datas ISO
+
+  // Agrupa tarefas por categoria
+  const byCategory = {};
+  tasks.forEach((t) => {
+    if (!byCategory[t.category]) byCategory[t.category] = [];
+    byCategory[t.category].push(t);
+  });
+
+  Object.entries(byCategory).forEach(([category, catTasks]) => {
+    const pool = operatorsForCategory(operators, category);
+    if (pool.length === 0) return;
+
+    // Ordena por sort_order
+    const sortedTasks = [...catTasks].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+
+    // Offset rotativo acumulado por dia
+    let rotationIndex = 0;
+
+    dates.forEach((dateISO, dayIdx) => {
+      // Dia da semana (0..6)
+      const weekday = new Date(dateISO + "T12:00:00").getDay();
+
+      sortedTasks.forEach((task, taskIdx) => {
+        const days = task.days_of_week || [1, 2, 3, 4, 5];
+        if (!days.includes(weekday)) return;
+
+        const overrideKey = `${task.id}`;
+        const existing = overrides[overrideKey]?.[dateISO];
+        if (existing) {
+          existing.forEach((op) => {
+            rows.push({
+              task_id: task.id,
+              scheduled_date: dateISO,
+              operator_code: op.code,
+              operator_name: op.name,
+              note: null,
+            });
+          });
+          return;
+        }
+
+        if (task.kind === "equipe_fixa") {
+          // Equipe fixa: usamos os primeiros N do pool (N = 2 por padrão) — o
+          // usuário pode depois ajustar célula a célula.
+          const teamSize = Math.min(2, pool.length);
+          for (let k = 0; k < teamSize; k++) {
+            const op = pool[(taskIdx + k) % pool.length];
+            rows.push({
+              task_id: task.id,
+              scheduled_date: dateISO,
+              operator_code: op.code,
+              operator_name: op.name,
+              note: null,
+            });
+          }
+        } else {
+          // Rotativa: round-robin por dia
+          const op = pool[(taskIdx + rotationIndex) % pool.length];
+          rows.push({
+            task_id: task.id,
+            scheduled_date: dateISO,
+            operator_code: op.code,
+            operator_name: op.name,
+            note: null,
+          });
+        }
+      });
+
+      // Avança o offset por dia (rotaciona a "linha" do pool)
+      rotationIndex = (rotationIndex + 1) % pool.length;
     });
   });
 
-  const { data, error } = await supabase
-    .from("rotation_assignments")
-    .insert(rows)
-    .select();
+  return rows;
+}
 
-  return { data: data || [], error };
+// Persiste a rotação gerada
+export async function persistRotation(rows) {
+  if (!rows || rows.length === 0) return { error: null };
+  return supabase.from("rotation_assignments").insert(rows);
+}
+
+// Exportar CSV simples
+export function rotationToCsv({ tasks, dates, assignmentMap, categories }) {
+  const lines = [];
+
+  categories.forEach((cat) => {
+    lines.push("");
+    lines.push(cat.toUpperCase());
+    const header = ["Tarefa", ...dates.map((d) => {
+      const wd = WEEKDAY_LABELS[new Date(d + "T12:00:00").getDay()];
+      const dd = d.slice(8, 10);
+      const mm = d.slice(5, 7);
+      return `${wd} ${dd}/${mm}`;
+    })];
+    lines.push(header.join(";"));
+    tasks
+      .filter((t) => t.category === cat)
+      .forEach((t) => {
+        const row = [t.name];
+        dates.forEach((d) => {
+          const key = `${t.id}|${d}`;
+          const ops = assignmentMap[key] || [];
+          row.push(ops.map((o) => o.operator_name).join(", "));
+        });
+        lines.push(row.join(";"));
+      });
+  });
+
+  return lines.join("\r\n");
 }

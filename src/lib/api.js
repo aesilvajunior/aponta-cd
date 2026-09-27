@@ -8,11 +8,12 @@ export async function fetchOperators() {
   return { data, error };
 }
 
-export async function addOperator({ code, name, role, canScheduleDelivery = false, canConference = false }) {
+export async function addOperator({ code, name, role, roles = [], canScheduleDelivery = false, canConference = false }) {
   return supabase.from("operators").insert({
     code,
     name,
     role,
+    roles,
     can_schedule_delivery: canScheduleDelivery,
     can_conference: canConference,
   });
@@ -29,6 +30,7 @@ export async function renameOperatorCode(oldCode, newCode, fields) {
       code: newCode,
       name: fields.name,
       role: fields.role,
+      roles: fields.roles || [],
       can_schedule_delivery: fields.can_schedule_delivery,
       can_conference: fields.can_conference ?? false,
     })
@@ -400,7 +402,7 @@ function getShiftFor(iso) {
 }
 
 // ============================================================
-// SESSION PARTNERS (DUPLA)
+// SESSION PARTNERS
 // ============================================================
 export async function fetchSessionPartners(sessionOperatorCode) {
   const { data, error } = await supabase
@@ -846,7 +848,7 @@ export async function resetConferenceItem(id) {
 }
 
 // ============================================================
-// FASE 2 — ALERT SETTINGS (WhatsApp)
+// FASE 2 — ALERT SETTINGS
 // ============================================================
 export async function fetchAlertSettings() {
   const { data, error } = await supabase
@@ -1076,7 +1078,7 @@ export async function fetchStockMapHistory({ areaId = null, limit = 500 } = {}) 
 }
 
 // ============================================================
-// FASE 2 — PUSH SUBSCRIPTIONS
+// PUSH SUBSCRIPTIONS
 // ============================================================
 export async function savePushSubscription(subscription, userEmail = null) {
   return supabase.from("push_subscriptions").upsert(
@@ -1096,4 +1098,73 @@ export async function removePushSubscription(endpoint) {
 export async function fetchPushSubscriptions() {
   const { data, error } = await supabase.from("push_subscriptions").select("*");
   return { data: data || [], error };
+}
+
+// ============================================================
+// ROTAÇÃO v2
+// ============================================================
+export async function fetchRotationTasks() {
+  const { data, error } = await supabase
+    .from("rotation_tasks")
+    .select("*")
+    .eq("active", true)
+    .order("sort_order");
+  return { data: data || [], error };
+}
+
+export async function addRotationTask({ name, category, kind = "rotativa", daysOfWeek = [1, 2, 3, 4, 5], sortOrder = 0 }) {
+  return supabase.from("rotation_tasks").insert({
+    name,
+    category,
+    kind,
+    days_of_week: daysOfWeek,
+    sort_order: sortOrder,
+    active: true,
+  }).select().maybeSingle();
+}
+
+export async function updateRotationTask(id, fields) {
+  return supabase.from("rotation_tasks").update(fields).eq("id", id).select().maybeSingle();
+}
+
+export async function deleteRotationTask(id) {
+  return supabase.from("rotation_tasks").update({ active: false }).eq("id", id);
+}
+
+export async function fetchRotationAssignments({ from, to } = {}) {
+  let q = supabase.from("rotation_assignments").select("*");
+  if (from) q = q.gte("scheduled_date", from);
+  if (to) q = q.lte("scheduled_date", to);
+  const { data, error } = await q;
+  return { data: data || [], error };
+}
+
+export async function upsertRotationAssignment({ taskId, scheduledDate, operatorCode, operatorName, note = null }) {
+  // Apaga qualquer assignment do mesmo task+date e insere os novos
+  // (o conceito agora é: uma célula pode ter N operadores; chamamos um por um)
+  const { data, error } = await supabase
+    .from("rotation_assignments")
+    .insert({
+      task_id: taskId,
+      scheduled_date: scheduledDate,
+      operator_code: operatorCode,
+      operator_name: operatorName,
+      note,
+    })
+    .select()
+    .maybeSingle();
+  return { data, error };
+}
+
+export async function clearRotationAssignment(taskId, scheduledDate) {
+  return supabase
+    .from("rotation_assignments")
+    .delete()
+    .eq("task_id", taskId)
+    .eq("scheduled_date", scheduledDate);
+}
+
+export async function bulkInsertRotationAssignments(rows) {
+  if (!rows || rows.length === 0) return { error: null };
+  return supabase.from("rotation_assignments").insert(rows);
 }
