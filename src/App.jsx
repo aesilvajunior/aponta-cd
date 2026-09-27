@@ -88,6 +88,9 @@ export default function App() {
   const [activeSessions, setActiveSessions] = useState([]);
   const [separationErrors, setSeparationErrors] = useState([]);
 
+  // Operador logado (para checar can_manage_rotation)
+  const [currentOperator, setCurrentOperator] = useState(null);
+
   const alertedRef = useRef(new Set());
 
   useEffect(() => {
@@ -95,10 +98,33 @@ export default function App() {
     navigator.serviceWorker.register("/sw.js").catch(() => {});
   }, []);
 
+  // Carrega operador logado do sessionStorage (o Kiosk guarda ao logar)
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem("aponta_schedule_operator");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const found = operators.find((o) => o.code === parsed.code);
+        if (found) setCurrentOperator(found);
+      }
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [operators]);
+
   const loadOperators = useCallback(async () => {
     const { data, error } = await fetchOperators();
     if (error) return error;
-    setOperators(data && data.length ? data : DEFAULT_OPERATORS);
+    const list = data && data.length ? data : DEFAULT_OPERATORS;
+    setOperators(list);
+    // Re-sincroniza o operador logado se ele ainda existir
+    try {
+      const raw = sessionStorage.getItem("aponta_schedule_operator");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const found = list.find((o) => o.code === parsed.code);
+        if (found) setCurrentOperator(found);
+      }
+    } catch {}
     return null;
   }, []);
 
@@ -377,7 +403,11 @@ export default function App() {
             <SalesTeamQuery />
           )}
           {tab === "rotation" && (
-            <RotationManager operators={operators} isAdmin={isAdmin} />
+            <RotationManager
+              operators={operators}
+              isAdmin={isAdmin}
+              currentOperator={currentOperator}
+            />
           )}
           {tab === "goals-dashboard" && (
             <GoalsDashboard />

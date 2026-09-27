@@ -9,13 +9,11 @@ import {
   operatorsForCategory,
   getMondayOfWeek,
   addDays,
-  isoDate,
   weekDates,
   WEEKDAY_LABELS,
-  WEEKDAY_LONG,
   rotationToCsv,
+  deleteRotationTask,
 } from "../lib/rotation";
-import { deleteRotationTask } from "../lib/rotation";
 import { fmtDate } from "../lib/format";
 import RotationTaskModal from "./RotationTaskModal";
 import RotationCellEditor from "./RotationCellEditor";
@@ -29,11 +27,13 @@ import {
   IconDownload,
   IconRotateCcw,
   IconAlertTriangle,
-  IconCheck,
   IconTarget,
+  IconLock,
 } from "./Icons";
 
-export default function RotationManager({ operators = [], isAdmin }) {
+export default function RotationManager({ operators = [], isAdmin, currentOperator = null }) {
+  const canEdit = isAdmin || !!currentOperator?.can_manage_rotation;
+
   const [tasks, setTasks] = useState([]);
   const [assignments, setAssignments] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -71,7 +71,6 @@ export default function RotationManager({ operators = [], isAdmin }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fromDate, toDate]);
 
-  // Mapa: "taskId|dateISO" -> [assignments]
   const assignmentMap = useMemo(() => {
     const m = {};
     assignments.forEach((a) => {
@@ -82,7 +81,6 @@ export default function RotationManager({ operators = [], isAdmin }) {
     return m;
   }, [assignments]);
 
-  // Categorias em uso
   const categoriesInUse = useMemo(() => {
     const set = new Set(tasks.map((t) => t.category));
     return Array.from(set).sort();
@@ -96,7 +94,6 @@ export default function RotationManager({ operators = [], isAdmin }) {
     setMonday(getMondayOfWeek(new Date()));
   }
 
-  // ---------- Ações ----------
   async function handleGenerateWeek() {
     if (!window.confirm(
       "Preencher automaticamente a semana?\n\n" +
@@ -106,19 +103,13 @@ export default function RotationManager({ operators = [], isAdmin }) {
     setBusy(true);
     setError("");
 
-    // Limpa a semana
     const { error: clearErr } = await clearWeekAssignments(fromDate, toDate);
     if (clearErr) {
       setBusy(false);
       return setError(clearErr.message);
     }
 
-    // Gera
-    const rows = generateRotation({
-      tasks,
-      operators,
-      mondayISO: fromDate,
-    });
+    const rows = generateRotation({ tasks, operators, mondayISO: fromDate });
 
     if (rows.length === 0) {
       setBusy(false);
@@ -158,6 +149,7 @@ export default function RotationManager({ operators = [], isAdmin }) {
   }
 
   function openCellEditor(task, dateISO) {
+    if (!canEdit) return;
     const key = `${task.id}|${dateISO}`;
     const initial = assignmentMap[key] || [];
     const available = operatorsForCategory(operators, task.category);
@@ -168,9 +160,7 @@ export default function RotationManager({ operators = [], isAdmin }) {
     const csv = rotationToCsv({
       tasks,
       dates,
-      assignmentMap: Object.fromEntries(
-        Object.entries(assignmentMap).map(([k, v]) => [k, v])
-      ),
+      assignmentMap,
       categories: categoriesInUse,
     });
     const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" });
@@ -182,7 +172,6 @@ export default function RotationManager({ operators = [], isAdmin }) {
     URL.revokeObjectURL(url);
   }
 
-  // ---------- Render ----------
   const weekLabel = `${fmtDate(dates[0] + "T12:00:00")} — ${fmtDate(dates[6] + "T12:00:00")}`;
 
   return (
@@ -192,6 +181,11 @@ export default function RotationManager({ operators = [], isAdmin }) {
           <h1 className="page-title">Rotação de atividades</h1>
           <p className="page-sub" style={{ marginBottom: 0 }}>
             Distribua as tarefas por dia da semana · {tasks.length} tarefa(s) cadastrada(s)
+            {!canEdit && (
+              <span style={{ marginLeft: 10, color: "var(--text-faint)", display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <IconLock size={12} /> modo leitura
+              </span>
+            )}
           </p>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -232,27 +226,29 @@ export default function RotationManager({ operators = [], isAdmin }) {
         </div>
       </div>
 
-      {/* Ações */}
-      <div className="card" style={{ marginBottom: 16 }}>
-        <div className="card-title">Ações da semana</div>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <button className="btn-small btn-excel" onClick={handleGenerateWeek} disabled={busy}>
-            <IconRotateCcw size={14} /> Preencher automaticamente
-          </button>
-          <button className="btn-small" onClick={openNewTask} disabled={busy}>
-            <IconPlus size={14} /> Nova tarefa
-          </button>
-          <button className="btn-small" onClick={handleClearWeek} disabled={busy} style={{ color: "var(--danger)", borderColor: "var(--danger)" }}>
-            <IconTrash size={14} /> Limpar semana
-          </button>
-          {operatorsForCategory(operators, "Separação").length === 0 && (
-            <span style={{ fontSize: 12, color: "var(--warning)", display: "inline-flex", alignItems: "center", gap: 6 }}>
-              <IconAlertTriangle size={13} />
-              Nenhum operador com papel "Separação" cadastrado
-            </span>
-          )}
+      {/* Ações — só para admin ou quem pode gerenciar rotação */}
+      {canEdit && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <div className="card-title">Ações da semana</div>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <button className="btn-small btn-excel" onClick={handleGenerateWeek} disabled={busy}>
+              <IconRotateCcw size={14} /> Preencher automaticamente
+            </button>
+            <button className="btn-small" onClick={openNewTask} disabled={busy}>
+              <IconPlus size={14} /> Nova tarefa
+            </button>
+            <button className="btn-small" onClick={handleClearWeek} disabled={busy} style={{ color: "var(--danger)", borderColor: "var(--danger)" }}>
+              <IconTrash size={14} /> Limpar semana
+            </button>
+            {operatorsForCategory(operators, "Separação").length === 0 && (
+              <span style={{ fontSize: 12, color: "var(--warning)", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <IconAlertTriangle size={13} />
+                Nenhum operador com papel "Separação" cadastrado
+              </span>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {loading ? (
         <div className="schedule-empty">Carregando...</div>
@@ -261,9 +257,11 @@ export default function RotationManager({ operators = [], isAdmin }) {
           <div className="schedule-empty">
             <div className="schedule-empty-icon"><IconTarget size={36} /></div>
             <div>Nenhuma tarefa cadastrada ainda.</div>
-            <button className="btn-small btn-excel" style={{ marginTop: 16 }} onClick={openNewTask}>
-              <IconPlus size={14} /> Criar primeira tarefa
-            </button>
+            {canEdit && (
+              <button className="btn-small btn-excel" style={{ marginTop: 16 }} onClick={openNewTask}>
+                <IconPlus size={14} /> Criar primeira tarefa
+              </button>
+            )}
           </div>
         </div>
       ) : (
@@ -273,12 +271,9 @@ export default function RotationManager({ operators = [], isAdmin }) {
           return (
             <div key={cat} className="card" style={{ marginBottom: 16 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-                <div
-                  className="card-title"
-                  style={{ marginBottom: 0, display: "flex", alignItems: "center", gap: 8 }}
-                >
+                <div className="card-title" style={{ marginBottom: 0 }}>
                   {cat}
-                  <span style={{ fontSize: 11.5, color: "var(--text-faint)", fontWeight: 400 }}>
+                  <span style={{ fontSize: 11.5, color: "var(--text-faint)", fontWeight: 400, marginLeft: 8 }}>
                     {catTasks.length} tarefa(s)
                   </span>
                 </div>
@@ -324,7 +319,7 @@ export default function RotationManager({ operators = [], isAdmin }) {
                           </th>
                         );
                       })}
-                      <th style={{ width: 80, borderBottom: "1px solid var(--border)" }}></th>
+                      {canEdit && <th style={{ width: 80, borderBottom: "1px solid var(--border)" }}></th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -369,12 +364,12 @@ export default function RotationManager({ operators = [], isAdmin }) {
                             return (
                               <td
                                 key={d}
-                                onClick={() => isAdmin && appliesToDay && openCellEditor(task, d)}
+                                onClick={() => canEdit && appliesToDay && openCellEditor(task, d)}
                                 style={{
                                   padding: "8px 10px",
                                   borderBottom: "1px solid var(--border)",
                                   textAlign: "center",
-                                  cursor: isAdmin && appliesToDay ? "pointer" : "default",
+                                  cursor: canEdit && appliesToDay ? "pointer" : "default",
                                   background: !appliesToDay
                                     ? "var(--surface-sunken)"
                                     : ops.length === 0
@@ -388,47 +383,35 @@ export default function RotationManager({ operators = [], isAdmin }) {
                                   transition: "background 120ms ease",
                                   position: "relative",
                                 }}
-                                onMouseEnter={(e) => {
-                                  if (isAdmin && appliesToDay) e.currentTarget.style.background = "var(--accent-soft)";
-                                }}
-                                onMouseLeave={(e) => {
-                                  e.currentTarget.style.background = !appliesToDay
-                                    ? "var(--surface-sunken)"
-                                    : ops.length === 0
-                                    ? "var(--surface)"
-                                    : "var(--accent-soft)";
-                                }}
                               >
                                 {!appliesToDay
                                   ? "—"
                                   : ops.length === 0
-                                  ? "+"
+                                  ? (canEdit ? "+" : "—")
                                   : ops.map((o) => o.operator_name).join(", ")}
                               </td>
                             );
                           })}
-                          <td style={{ padding: "8px", borderBottom: "1px solid var(--border)", textAlign: "center" }}>
-                            {isAdmin && (
-                              <>
-                                <button
-                                  className="btn-small"
-                                  style={{ padding: "5px 9px", marginRight: 4 }}
-                                  onClick={() => openEditTask(task)}
-                                  title="Editar tarefa"
-                                >
-                                  <IconEdit size={12} />
-                                </button>
-                                <button
-                                  className="btn-small"
-                                  style={{ padding: "5px 9px", color: "var(--danger)", borderColor: "var(--danger)" }}
-                                  onClick={() => handleRemoveTask(task)}
-                                  title="Remover tarefa"
-                                >
-                                  <IconTrash size={12} />
-                                </button>
-                              </>
-                            )}
-                          </td>
+                          {canEdit && (
+                            <td style={{ padding: "8px", borderBottom: "1px solid var(--border)", textAlign: "center" }}>
+                              <button
+                                className="btn-small"
+                                style={{ padding: "5px 9px", marginRight: 4 }}
+                                onClick={() => openEditTask(task)}
+                                title="Editar tarefa"
+                              >
+                                <IconEdit size={12} />
+                              </button>
+                              <button
+                                className="btn-small"
+                                style={{ padding: "5px 9px", color: "var(--danger)", borderColor: "var(--danger)" }}
+                                onClick={() => handleRemoveTask(task)}
+                                title="Remover tarefa"
+                              >
+                                <IconTrash size={12} />
+                              </button>
+                            </td>
+                          )}
                         </tr>
                       );
                     })}
@@ -440,7 +423,7 @@ export default function RotationManager({ operators = [], isAdmin }) {
         })
       )}
 
-      {taskModalOpen && (
+      {taskModalOpen && canEdit && (
         <RotationTaskModal
           task={editingTask}
           categoriesInUse={categoriesInUse}
@@ -449,7 +432,7 @@ export default function RotationManager({ operators = [], isAdmin }) {
         />
       )}
 
-      {cellEditor && (
+      {cellEditor && canEdit && (
         <RotationCellEditor
           task={cellEditor.task}
           dateISO={cellEditor.dateISO}

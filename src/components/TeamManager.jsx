@@ -30,8 +30,6 @@ import {
   IconEdit,
   IconTrash,
   IconPlus,
-  IconChevronDown,
-  IconChevronRight,
 } from "./Icons";
 
 const AVAILABLE_ROLES = [
@@ -134,6 +132,7 @@ export default function TeamManager({
   const [newOpRoles, setNewOpRoles] = useState([]);
   const [newOpCanSchedule, setNewOpCanSchedule] = useState(false);
   const [newOpCanConference, setNewOpCanConference] = useState(false);
+  const [newOpCanManageRotation, setNewOpCanManageRotation] = useState(false);
   const [newActivity, setNewActivity] = useState("");
   const [newActivityTarget, setNewActivityTarget] = useState("");
   const [newPin, setNewPin] = useState("");
@@ -148,6 +147,7 @@ export default function TeamManager({
     roles: [],
     canScheduleDelivery: false,
     canConference: false,
+    canManageRotation: false,
   });
 
   const [editingActivity, setEditingActivity] = useState(null);
@@ -278,6 +278,7 @@ export default function TeamManager({
           roles: newOpRoles,
           canScheduleDelivery: newOpCanSchedule,
           canConference: newOpCanConference,
+          canManageRotation: newOpCanManageRotation,
         });
         if (!res.error) {
           await audit({
@@ -290,6 +291,7 @@ export default function TeamManager({
               função: role,
               papéis: newOpRoles,
               código: code,
+              pode_gerenciar_rotacao: newOpCanManageRotation ? "Sim" : "Não",
             },
           });
         }
@@ -302,6 +304,7 @@ export default function TeamManager({
         setNewOpRoles([]);
         setNewOpCanSchedule(false);
         setNewOpCanConference(false);
+        setNewOpCanManageRotation(false);
       }
     );
   }
@@ -333,6 +336,7 @@ export default function TeamManager({
       roles: op.roles || [],
       canScheduleDelivery: !!op.can_schedule_delivery,
       canConference: !!op.can_conference,
+      canManageRotation: !!op.can_manage_rotation,
     });
     setFormError("");
   }
@@ -353,6 +357,7 @@ export default function TeamManager({
       roles: editValues.roles || [],
       can_schedule_delivery: editValues.canScheduleDelivery,
       can_conference: editValues.canConference,
+      can_manage_rotation: editValues.canManageRotation,
     };
     const original = operators.find((o) => o.code === originalCode);
 
@@ -717,22 +722,16 @@ export default function TeamManager({
 
           <div style={{ display: "flex", gap: 16, marginBottom: 14, flexWrap: "wrap" }}>
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--text-muted)" }}>
-              <input
-                type="checkbox"
-                checked={newOpCanSchedule}
-                onChange={(e) => setNewOpCanSchedule(e.target.checked)}
-                disabled={busy}
-              />
+              <input type="checkbox" checked={newOpCanSchedule} onChange={(e) => setNewOpCanSchedule(e.target.checked)} disabled={busy} />
               Pode agendar recebimento
             </label>
             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--text-muted)" }}>
-              <input
-                type="checkbox"
-                checked={newOpCanConference}
-                onChange={(e) => setNewOpCanConference(e.target.checked)}
-                disabled={busy}
-              />
+              <input type="checkbox" checked={newOpCanConference} onChange={(e) => setNewOpCanConference(e.target.checked)} disabled={busy} />
               Pode conferir
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--text-muted)" }}>
+              <input type="checkbox" checked={newOpCanManageRotation} onChange={(e) => setNewOpCanManageRotation(e.target.checked)} disabled={busy} />
+              Pode gerenciar rotação
             </label>
           </div>
 
@@ -767,6 +766,24 @@ export default function TeamManager({
                               onChange={(r) => setEditValues((v) => ({ ...v, roles: r }))}
                               disabled={busy}
                             />
+                            <div style={{ display: "flex", gap: 12, marginTop: 8, flexWrap: "wrap" }}>
+                              <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11.5 }}>
+                                <input type="checkbox" checked={editValues.canScheduleDelivery} onChange={(e) => setEditValues((v) => ({ ...v, canScheduleDelivery: e.target.checked }))} disabled={busy} />
+                                Agenda
+                              </label>
+                              <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11.5 }}>
+                                <input type="checkbox" checked={editValues.canConference} onChange={(e) => setEditValues((v) => ({ ...v, canConference: e.target.checked }))} disabled={busy} />
+                                Conferência
+                              </label>
+                              <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 11.5 }}>
+                                <input type="checkbox" checked={editValues.canManageRotation} onChange={(e) => setEditValues((v) => ({ ...v, canManageRotation: e.target.checked }))} disabled={busy} />
+                                Rotação
+                              </label>
+                            </div>
+                            <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                              <button className="btn-small" style={{ padding: "5px 10px" }} onClick={() => saveEdit(o.code)} disabled={busy}>Salvar</button>
+                              <button className="btn-small" style={{ padding: "5px 10px" }} onClick={cancelEdit} disabled={busy}>Cancelar</button>
+                            </div>
                           </td>
                         </>
                       ) : (
@@ -775,25 +792,16 @@ export default function TeamManager({
                           <td style={{ fontFamily: "var(--font-display)" }}>{o.name}</td>
                           <td>{o.role}</td>
                           <td><RoleTags roles={o.roles || []} /></td>
-                        </>
-                      )}
-                      <td style={{ whiteSpace: "nowrap" }}>
-                        {isEditing ? (
-                          <>
-                            <button className="btn-small" style={{ padding: "5px 10px", marginRight: 4 }} onClick={() => saveEdit(o.code)} disabled={busy}>Salvar</button>
-                            <button className="btn-small" style={{ padding: "5px 10px" }} onClick={cancelEdit} disabled={busy}>Cancelar</button>
-                          </>
-                        ) : (
-                          <>
+                          <td style={{ whiteSpace: "nowrap" }}>
                             <button className="btn-small" style={{ padding: "5px 10px", marginRight: 4, display: "inline-flex", alignItems: "center", gap: 4 }} onClick={() => startEdit(o)} disabled={busy}>
                               <IconEdit size={12} /> Editar
                             </button>
                             <button className="btn-small" style={{ padding: "5px 10px", display: "inline-flex", alignItems: "center", gap: 4 }} onClick={() => removeOperator(o.code)} disabled={busy}>
                               <IconTrash size={12} /> Remover
                             </button>
-                          </>
-                        )}
-                      </td>
+                          </td>
+                        </>
+                      )}
                     </tr>
                   );
                 })}
@@ -831,12 +839,7 @@ export default function TeamManager({
                           <td>
                             <input className="field" style={{ width: "100%", padding: "5px 8px", marginBottom: 8 }} value={editActivityValues.name} onChange={(e) => setEditActivityValues((v) => ({ ...v, name: e.target.value }))} disabled={busy} />
                             <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-muted)", marginBottom: 8 }}>
-                              <input
-                                type="checkbox"
-                                checked={editActivityValues.requiresOrderInfo}
-                                onChange={(e) => setEditActivityValues((v) => ({ ...v, requiresOrderInfo: e.target.checked }))}
-                                disabled={busy}
-                              />
+                              <input type="checkbox" checked={editActivityValues.requiresOrderInfo} onChange={(e) => setEditActivityValues((v) => ({ ...v, requiresOrderInfo: e.target.checked }))} disabled={busy} />
                               Pede informação extra ao iniciar
                             </label>
                             {editActivityValues.requiresOrderInfo && (

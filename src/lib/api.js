@@ -8,7 +8,10 @@ export async function fetchOperators() {
   return { data, error };
 }
 
-export async function addOperator({ code, name, role, roles = [], canScheduleDelivery = false, canConference = false }) {
+export async function addOperator({
+  code, name, role, roles = [],
+  canScheduleDelivery = false, canConference = false, canManageRotation = false,
+}) {
   return supabase.from("operators").insert({
     code,
     name,
@@ -16,6 +19,7 @@ export async function addOperator({ code, name, role, roles = [], canScheduleDel
     roles,
     can_schedule_delivery: canScheduleDelivery,
     can_conference: canConference,
+    can_manage_rotation: canManageRotation,
   });
 }
 
@@ -33,6 +37,7 @@ export async function renameOperatorCode(oldCode, newCode, fields) {
       roles: fields.roles || [],
       can_schedule_delivery: fields.can_schedule_delivery,
       can_conference: fields.can_conference ?? false,
+      can_manage_rotation: fields.can_manage_rotation ?? false,
     })
     .eq("code", oldCode);
   if (updError) return { error: updError };
@@ -1140,8 +1145,6 @@ export async function fetchRotationAssignments({ from, to } = {}) {
 }
 
 export async function upsertRotationAssignment({ taskId, scheduledDate, operatorCode, operatorName, note = null }) {
-  // Apaga qualquer assignment do mesmo task+date e insere os novos
-  // (o conceito agora é: uma célula pode ter N operadores; chamamos um por um)
   const { data, error } = await supabase
     .from("rotation_assignments")
     .insert({
