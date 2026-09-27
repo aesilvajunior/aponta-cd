@@ -105,6 +105,7 @@ export default function StockMap({ isAdmin }) {
   const wrapperRef = useRef(null); // caixa com a proporção 4:3 (ou 100vh em fullscreen) — é o que medimos
   const stageRef = useRef(null);
   const layerRef = useRef(null);
+  const corridorLayerRef = useRef(null); // layer separado só pras linhas animadas dos corredores
   const transformerRef = useRef(null);
   const shapeRefs = useRef({}); // areaId -> nó Konva.Rect (pro Transformer conseguir "agarrar")
   const corridorLineRefs = useRef({}); // areaId -> nó Konva.Line (linha animada do corredor)
@@ -239,8 +240,13 @@ export default function StockMap({ isAdmin }) {
   }, [editMode, selectedArea, decoratedAreas]);
 
   // -------- Animação do "fluxo" dos corredores (marching ants na linha central) --------
+  // Roda num Layer separado de propósito: Konva.Animation redesenha o layer
+  // inteiro a cada frame (60x/s), e se isso fosse o layer principal (com
+  // todas as prateleiras, textos e grade), o mapa inteiro seria redesenhado
+  // 60x/s só pra animar 2 ou 3 linhas — era exatamente isso que deixava o
+  // mapa "pesado". Separado, só as linhas dos corredores são redesenhadas.
   useEffect(() => {
-    const layer = layerRef.current;
+    const layer = corridorLayerRef.current;
     if (!layer) return;
     const dashPeriod = 24; // soma do padrão de dash usado nas linhas [14,10]
     const anim = new Konva.Animation((frame) => {
@@ -397,7 +403,11 @@ export default function StockMap({ isAdmin }) {
   }
 
   function handleStageMouseMove(e) {
-    setMousePos({ x: e.evt.clientX, y: e.evt.clientY, show: true });
+    // O tooltip só aparece quando tem hoveredArea, então só vale a pena
+    // re-renderizar (setState) nesse caso — sem essa checagem, cada pixel
+    // que o mouse anda (inclusive só passeando/dando pan no mapa vazio)
+    // disparava um re-render do componente inteiro.
+    if (hoveredArea) setMousePos({ x: e.evt.clientX, y: e.evt.clientY, show: true });
   }
 
   function handleStageMouseLeave() {
@@ -661,8 +671,6 @@ export default function StockMap({ isAdmin }) {
                         : isSelected
                         ? "#00d4ff"
                         : "rgba(255,255,255,0.15)";
-                      const showFlow = isCorridor && layers.corridorFlow && a.matches;
-                      const flowHorizontal = world.width >= world.height;
                       const canInteract = editMode || a.matches;
 
                       return (
@@ -684,36 +692,21 @@ export default function StockMap({ isAdmin }) {
                             opacity={a.matches ? 1 : 0.12}
                             listening={canInteract}
                             draggable={editMode}
+                            perfectDrawEnabled={false}
                             onDragStart={() => setActiveDragId(a.id)}
                             onDragEnd={(e) => handleAreaDragEnd(a, e)}
                             onTransformEnd={(e) => handleAreaTransformEnd(a, e)}
                             onClick={() => { setSelectedArea(a); setPanelView("lista"); }}
                             onTap={() => { setSelectedArea(a); setPanelView("lista"); }}
-                            onMouseEnter={() => setHoveredArea(a)}
+                            onMouseEnter={(e) => {
+                              setHoveredArea(a);
+                              setMousePos({ x: e.evt.clientX, y: e.evt.clientY, show: true });
+                            }}
                             onMouseLeave={() => setHoveredArea(null)}
                             shadowColor="black"
-                            shadowBlur={isSelected ? 18 : 5}
-                            shadowOpacity={isSelected ? 0.5 : 0.3}
+                            shadowBlur={isSelected ? 18 : 0}
+                            shadowOpacity={isSelected ? 0.5 : 0}
                           />
-
-                          {showFlow && (
-                            <Line
-                              ref={(node) => {
-                                if (node) corridorLineRefs.current[a.id] = node;
-                                else delete corridorLineRefs.current[a.id];
-                              }}
-                              points={
-                                flowHorizontal
-                                  ? [world.x + 8, world.y + world.height / 2, world.x + world.width - 8, world.y + world.height / 2]
-                                  : [world.x + world.width / 2, world.y + 8, world.x + world.width / 2, world.y + world.height - 8]
-                              }
-                              stroke="rgba(0, 212, 255, 0.85)"
-                              strokeWidth={3}
-                              dash={[14, 10]}
-                              lineCap="round"
-                              listening={false}
-                            />
-                          )}
 
                           {layers.labels && world.width > 16 && world.height > 10 && (
                             <Text
@@ -759,6 +752,40 @@ export default function StockMap({ isAdmin }) {
                       boundBoxFunc={handleTransformerBoundBox}
                     />
                   )}
+                </Layer>
+
+                {/* Layer separado só pras linhas animadas dos corredores — veja o
+                    comentário no useEffect da animação: isso evita redesenhar o
+                    mapa inteiro 60x/s só pra animar 2 ou 3 linhas. */}
+                <Layer ref={corridorLayerRef} listening={false}>
+                  {!loading &&
+                    layers.corridorFlow &&
+                    decoratedAreas
+                      .filter((a) => a.area_type === "corredor" && a.matches)
+                      .map((a) => {
+                        const world = areaToWorld(a);
+                        const flowHorizontal = world.width >= world.height;
+                        return (
+                          <Line
+                            key={a.id}
+                            ref={(node) => {
+                              if (node) corridorLineRefs.current[a.id] = node;
+                              else delete corridorLineRefs.current[a.id];
+                            }}
+                            points={
+                              flowHorizontal
+                                ? [world.x + 8, world.y + world.height / 2, world.x + world.width - 8, world.y + world.height / 2]
+                                : [world.x + world.width / 2, world.y + 8, world.x + world.width / 2, world.y + world.height - 8]
+                            }
+                            stroke="rgba(0, 212, 255, 0.85)"
+                            strokeWidth={3}
+                            dash={[14, 10]}
+                            lineCap="round"
+                            perfectDrawEnabled={false}
+                            listening={false}
+                          />
+                        );
+                      })}
                 </Layer>
               </Stage>
             )}
