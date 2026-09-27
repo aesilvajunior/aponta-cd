@@ -667,10 +667,23 @@ export default function TvBoard() {
                           </span>
                         )}
                         {isPaused && (
-                          <span style={{ background: `${p.textMuted}33`, color: p.textMuted, padding: "2px 8px", borderRadius: 4, fontSize: 10, fontWeight: 700, letterSpacing: "0.04em" }}>
-                            ⏸ PAUSADO
-                          </span>
-                        )}
+  <span
+    style={{
+      background: `${p.textMuted}33`,
+      color: p.textMuted,
+      padding: "2px 8px",
+      borderRadius: 4,
+      fontSize: 10,
+      fontWeight: 700,
+      letterSpacing: "0.04em",
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 4,
+    }}
+  >
+    <IconPause size={10} /> PAUSADO
+  </span>
+)}
                         {isAlert && !isPaused && (
                           <span style={{ background: `${p.danger}33`, color: p.danger, padding: "2px 8px", borderRadius: 4, fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", display: "inline-flex", alignItems: "center", gap: 3 }}>
                             <IconAlertTriangle size={10} /> DEMORADA

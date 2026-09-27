@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../supabaseClient";
 import { fetchEntries } from "../lib/api";
 import { localISODate, todayLocalISODate, fmtDuration } from "../lib/format";
-import { IconCrown, IconZap } from "./Icons";
+import { IconCrown, IconZap, IconTrophy } from "./Icons";
 
 export default function TvGamification({ palette: p, hideNames, displayName }) {
   const [entries, setEntries] = useState([]);
@@ -79,7 +79,7 @@ export default function TvGamification({ palette: p, hideNames, displayName }) {
       .slice(0, 3);
   }, [entries]);
 
-  const display = (name) => hideNames ? displayName(name) : name;
+  const display = (name) => (hideNames ? displayName(name) : name);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -96,7 +96,9 @@ export default function TvGamification({ palette: p, hideNames, displayName }) {
             <IconCrown size={12} /> Operador do dia
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <div style={{ fontSize: 40 }}>🏆</div>
+            <div style={{ color: p.accent, display: "flex", flexShrink: 0 }}>
+              <IconTrophy size={40} />
+            </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 18, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                 {display(operadorDoDia.name)}
@@ -123,7 +125,7 @@ export default function TvGamification({ palette: p, hideNames, displayName }) {
                 </div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                <span style={{ fontSize: 14 }}>🔥</span>
+                <IconZap size={14} style={{ color: p.warning }} />
                 <span style={{ fontSize: 14, fontWeight: 800, color: p.warning }}>{s.streak}</span>
               </div>
             </div>

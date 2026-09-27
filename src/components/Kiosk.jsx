@@ -996,21 +996,26 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
                   disabled={paused}
                 />
 
-                {paused && (
-                  <div style={{
-                    padding: "12px 16px",
-                    background: "var(--warning-soft)",
-                    border: "1px solid var(--warning)",
-                    borderRadius: 10,
-                    color: "var(--warning)",
-                    fontSize: 13,
-                    fontWeight: 600,
-                    textAlign: "center",
-                    marginBottom: 12,
-                  }}>
-                    ⏸ Em pausa desde {fmtClock(pausedAt)}
-                  </div>
-                )}
+          {paused && (
+  <div style={{
+    padding: "12px 16px",
+    background: "var(--warning-soft)",
+    border: "1px solid var(--warning)",
+    borderRadius: 10,
+    color: "var(--warning)",
+    fontSize: 13,
+    fontWeight: 600,
+    textAlign: "center",
+    marginBottom: 12,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    width: "100%",
+  }}>
+    <IconPause size={14} /> Em pausa desde {fmtClock(pausedAt)}
+  </div>
+)}
 
                 <div style={{ display: "flex", gap: 10 }}>
                   {!paused ? (

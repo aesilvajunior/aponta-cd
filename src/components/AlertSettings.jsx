@@ -18,6 +18,7 @@ import {
   IconPackage,
   IconClipboardCheck,
   IconMessageCircle,
+  IconPause,
 } from "./Icons";
 
 const ALERT_TYPES = [
@@ -26,42 +27,42 @@ const ALERT_TYPES = [
     icon: <IconAlertTriangle size={16} />,
     label: "Atividade demorada",
     description: "Quando uma atividade passa muito do tempo esperado",
-    example: "⚠️ Atividade muito atrasada\nJoão Silva — Separação\nTempo: 45min (meta: 15min)",
+    example: "Atividade muito atrasada\nJoão Silva — Separação\nTempo: 45min (meta: 15min)",
   },
   {
     field: "alert_mesa_enabled",
     icon: <IconClipboardCheck size={16} />,
     label: "Mesa acumulada",
     description: "Quando a mesa de conferência passa do limite",
-    example: "🔴 Mesa de conferência acumulando\n12 pedidos aguardando",
+    example: "Mesa de conferência acumulando\n12 pedidos aguardando",
   },
   {
     field: "alert_missing_enabled",
     icon: <IconClock size={16} />,
     label: "Operador esquecido",
     description: "Sessão aberta há muito tempo sem finalizar",
-    example: "👻 Sessão esquecida\nMaria Souza — Recebimento\nAberta há 5.2h",
+    example: "Sessão esquecida\nMaria Souza — Recebimento\nAberta há 5.2h",
   },
   {
     field: "alert_shortage_realtime_enabled",
     icon: <IconPackage size={16} />,
     label: "Falta registrada (tempo real)",
     description: "Avisa assim que uma falta é registrada no kiosk",
-    example: "📦 Falta registrada\nProduto: PARAF-1234 (3un)\nPor: João Silva",
+    example: "Falta registrada\nProduto: PARAF-1234 (3un)\nPor: João Silva",
   },
   {
     field: "alert_conference_problem_enabled",
     icon: <IconAlertTriangle size={16} />,
     label: "Problema na conferência",
     description: "Quando um conferente reporta problema",
-    example: "🚨 Problema na conferência\nPedido #1234 — Falta produto\nPor: Carlos Lima",
+    example: "Problema na conferência\nPedido #1234 — Falta produto\nPor: Carlos Lima",
   },
   {
     field: "alert_goal_enabled",
     icon: <IconTarget size={16} />,
     label: "Meta da equipe atingida",
     description: "Quando uma equipe bate a meta do período",
-    example: "🏆 Meta atingida!\nEquipe Manhã — 210 registros",
+    example: "Meta atingida!\nEquipe Manhã — 210 registros",
   },
 ];
 
@@ -78,7 +79,7 @@ export default function AlertSettings() {
     alert_goal_enabled: false,
     alert_conference_problem_enabled: true,
     alert_shortage_realtime_enabled: false,
-    message_header: "🚨 Aponta CD",
+    message_header: "Aponta CD",
     quiet_hours_enabled: false,
     quiet_hours_start: 22,
     quiet_hours_end: 6,
@@ -132,7 +133,7 @@ export default function AlertSettings() {
       alert_goal_enabled: !!settings.alert_goal_enabled,
       alert_conference_problem_enabled: !!settings.alert_conference_problem_enabled,
       alert_shortage_realtime_enabled: !!settings.alert_shortage_realtime_enabled,
-      message_header: (settings.message_header || "").trim() || "🚨 Aponta CD",
+      message_header: (settings.message_header || "").trim() || "Aponta CD",
       quiet_hours_enabled: !!settings.quiet_hours_enabled,
       quiet_hours_start: Number(settings.quiet_hours_start) || 22,
       quiet_hours_end: Number(settings.quiet_hours_end) || 6,
@@ -148,8 +149,8 @@ export default function AlertSettings() {
     setTestSending(true);
     setTestResult(null);
     try {
-      const header = settings.message_header || "🚨 Aponta CD";
-      const message = `${header}\n\n🔔 <b>Teste de alerta</b>\nSe você está vendo isso, os alertas estão funcionando perfeitamente!`;
+      const header = settings.message_header || "Aponta CD";
+      const message = `📣 ${header}\n\n<b>Teste de alerta</b>\nSe você está vendo isso, os alertas estão funcionando perfeitamente!`;
       const res = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-telegram`,
         {
@@ -206,8 +207,21 @@ export default function AlertSettings() {
                 id="tg-enabled"
                 style={{ width: 20, height: 20, cursor: "pointer" }}
               />
-              <label htmlFor="tg-enabled" style={{ flex: 1, fontSize: 16, fontWeight: 700, cursor: "pointer" }}>
-                {settings.whatsapp_enabled ? "✅ Alertas Telegram ativados" : "⏸ Alertas Telegram desativados"}
+              <label
+                htmlFor="tg-enabled"
+                style={{ flex: 1, fontSize: 16, fontWeight: 700, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 8 }}
+              >
+                {settings.whatsapp_enabled ? (
+                  <>
+                    <IconCheck size={18} style={{ color: "var(--ok)" }} />
+                    Alertas Telegram ativados
+                  </>
+                ) : (
+                  <>
+                    <IconPause size={18} style={{ color: "var(--text-muted)" }} />
+                    Alertas Telegram desativados
+                  </>
+                )}
               </label>
               <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
                 {enabledCount} de {ALERT_TYPES.length} tipos ativos
@@ -227,14 +241,14 @@ export default function AlertSettings() {
                 <input
                   className="field"
                   style={{ width: "100%", fontSize: 15, fontFamily: "var(--font-mono)" }}
-                  placeholder="🚨 Aponta CD"
+                  placeholder="Aponta CD"
                   value={settings.message_header || ""}
                   onChange={(e) => set("message_header", e.target.value)}
                   disabled={saving}
                   maxLength={40}
                 />
                 <p style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: 6 }}>
-                  Aparece no topo de todas as mensagens enviadas. Aceita emoji.
+                  Aparece no topo de todas as mensagens enviadas.
                 </p>
               </div>
 
@@ -253,9 +267,9 @@ export default function AlertSettings() {
                     minHeight: 80,
                   }}
                 >
-                  {settings.message_header || "🚨 Aponta CD"}
+                  {`📣 ${settings.message_header || "Aponta CD"}`}
                   {"\n\n"}
-                  ⚠️ Atividade muito atrasada
+                  <b>Atividade muito atrasada</b>
                   {"\n"}João Silva — Separação
                   {"\n"}Tempo: 45min (meta: 15min)
                 </div>
@@ -326,7 +340,7 @@ export default function AlertSettings() {
             </div>
           </div>
 
-          {/* CONFIGURAÇÃO DE LIMITES */}
+          {/* LIMITES DE DISPARO */}
           <div className="card" style={{ marginBottom: 20 }}>
             <div className="card-title">Limites de disparo</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
@@ -437,7 +451,15 @@ export default function AlertSettings() {
           <div className="card" style={{ marginBottom: 20 }}>
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <button className="btn-small btn-excel" onClick={save} disabled={saving}>
-                {saved ? <><IconCheck size={14} /> Salvo</> : saving ? "Salvando..." : "Salvar configurações"}
+                {saved ? (
+                  <>
+                    <IconCheck size={14} /> Salvo
+                  </>
+                ) : saving ? (
+                  "Salvando..."
+                ) : (
+                  "Salvar configurações"
+                )}
               </button>
               <button
                 className="btn-small"

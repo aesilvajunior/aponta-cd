@@ -9,22 +9,36 @@ import {
 } from "../lib/api";
 import { fmtDate } from "../lib/format";
 import {
-  IconAward,
   IconRefresh,
-  IconTrophy,
+  IconAward,
   IconTarget,
   IconZap,
   IconShield,
+  IconTrophy,
+  IconCrown,
+  IconStar,
+  IconMedal,
 } from "./Icons";
 
-const ICONS = {
-  "100_sem_falta": "💯",
-  semana_perfeita: "⭐",
-  mes_ouro: "🥇",
-  speed_demon: "⚡",
-  zero_erro_30d: "🛡️",
-  streak_7: "🔥",
-  streak_30: "💎",
+// Mapeia cada conquista para um ícone SVG
+const ACHIEVEMENT_ICONS = {
+  "100_sem_falta": IconAward,
+  semana_perfeita: IconStar,
+  mes_ouro: IconMedal,
+  speed_demon: IconZap,
+  zero_erro_30d: IconShield,
+  streak_7: IconTarget,
+  streak_30: IconCrown,
+};
+
+const ACHIEVEMENT_COLORS = {
+  "100_sem_falta": "var(--accent)",
+  semana_perfeita: "var(--warning)",
+  mes_ouro: "#fbbf24",
+  speed_demon: "var(--danger)",
+  zero_erro_30d: "var(--ok)",
+  streak_7: "#f97316",
+  streak_30: "#8b5cf6",
 };
 
 export default function Achievements({ operators = [] }) {
@@ -61,14 +75,11 @@ export default function Achievements({ operators = [] }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ====================== SCANNER ======================
-  // Roda em memória, calcula e desbloqueia novos achievements
   async function runScan() {
     setScanning(true);
     setError("");
     const unlocks = [];
 
-    // Agrupa entries por operador
     const byOp = {};
     entries.forEach((e) => {
       if (!byOp[e.operator_code]) byOp[e.operator_code] = { name: e.operator_name, list: [] };
@@ -80,7 +91,6 @@ export default function Achievements({ operators = [] }) {
     for (const [code, info] of Object.entries(byOp)) {
       const list = info.list.sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
 
-      // streak de dias com >= 5 registros
       const dayCount = {};
       list.forEach((e) => {
         const d = e.start_time.slice(0, 10);
@@ -107,7 +117,6 @@ export default function Achievements({ operators = [] }) {
         unlocks.push({ code, name: info.name, id: "streak_30" });
       }
 
-      // speed demon: 5+ atividades no mesmo dia com tempo abaixo da média geral
       const sameDay = {};
       list.forEach((e) => {
         const d = e.start_time.slice(0, 10);
@@ -122,7 +131,6 @@ export default function Achievements({ operators = [] }) {
         unlocks.push({ code, name: info.name, id: "speed_demon" });
       }
 
-      // zero_erro_30d: sem erros nos últimos 30 dias
       const errorsOfOp = errors.filter(
         (er) => er.error_operator_code === code &&
         (Date.now() - new Date(er.created_at).getTime()) / (1000 * 60 * 60 * 24) <= 30
@@ -132,7 +140,6 @@ export default function Achievements({ operators = [] }) {
       }
     }
 
-    // Aplica os unlocks
     for (const u of unlocks) {
       await unlockAchievement(u.code, u.name, u.id);
     }
@@ -160,7 +167,9 @@ export default function Achievements({ operators = [] }) {
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          <button className="btn-small" onClick={loadAll}><IconRefresh size={14} /> Atualizar</button>
+          <button className="btn-small" onClick={loadAll}>
+            <IconRefresh size={14} /> Atualizar
+          </button>
           <button className="btn-small btn-excel" onClick={runScan} disabled={scanning}>
             {scanning ? "Escaneando..." : "Escanear conquistas"}
           </button>
@@ -170,15 +179,45 @@ export default function Achievements({ operators = [] }) {
       {error && <div className="alert-card alert-danger" style={{ marginBottom: 20 }}>{error}</div>}
 
       <div className="card" style={{ marginBottom: 20 }}>
-        <div className="card-title">Catálogo de conquistas</div>
+        <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <IconTrophy size={16} /> Catálogo de conquistas
+        </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
-          {definitions.map((d) => (
-            <div key={d.id} style={{ padding: 14, background: "var(--surface-raised)", border: "1px solid var(--border)", borderRadius: 10 }}>
-              <div style={{ fontSize: 28, marginBottom: 6 }}>{ICONS[d.id] || d.icon}</div>
-              <div style={{ fontSize: 13.5, fontWeight: 700 }}>{d.label}</div>
-              <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 4 }}>{d.description}</div>
-            </div>
-          ))}
+          {definitions.map((d) => {
+            const Icon = ACHIEVEMENT_ICONS[d.id] || IconAward;
+            const color = ACHIEVEMENT_COLORS[d.id] || "var(--accent)";
+            return (
+              <div
+                key={d.id}
+                style={{
+                  padding: 14,
+                  background: "var(--surface-raised)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 10,
+                }}
+              >
+                <div
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: 10,
+                    background: `${color}1a`,
+                    color,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginBottom: 10,
+                  }}
+                >
+                  <Icon size={22} />
+                </div>
+                <div style={{ fontSize: 13.5, fontWeight: 700 }}>{d.label}</div>
+                <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 4 }}>
+                  {d.description}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -209,22 +248,29 @@ export default function Achievements({ operators = [] }) {
                         <span style={{ color: "var(--text-faint)", fontSize: 12 }}>Nenhuma</span>
                       ) : (
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                          {list.map((u) => (
-                            <span
-                              key={u.id}
-                              title={`${u.achievement_id} em ${fmtDate(u.unlocked_at)}`}
-                              style={{
-                                background: "var(--accent-soft)",
-                                color: "var(--accent)",
-                                padding: "4px 10px",
-                                borderRadius: 6,
-                                fontSize: 14,
-                                cursor: "help",
-                              }}
-                            >
-                              {ICONS[u.achievement_id] || "🏆"}
-                            </span>
-                          ))}
+                          {list.map((u) => {
+                            const Icon = ACHIEVEMENT_ICONS[u.achievement_id] || IconAward;
+                            const color = ACHIEVEMENT_COLORS[u.achievement_id] || "var(--accent)";
+                            return (
+                              <span
+                                key={u.id}
+                                title={`${u.achievement_id} em ${fmtDate(u.unlocked_at)}`}
+                                style={{
+                                  width: 30,
+                                  height: 30,
+                                  borderRadius: 8,
+                                  background: `${color}1a`,
+                                  color,
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  cursor: "help",
+                                }}
+                              >
+                                <Icon size={16} />
+                              </span>
+                            );
+                          })}
                         </div>
                       )}
                     </td>
