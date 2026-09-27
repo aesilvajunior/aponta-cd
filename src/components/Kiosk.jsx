@@ -3,8 +3,10 @@ import { fetchActiveSessionFor, startSession, finishSession, saveShortages, addT
 import { fmtDuration, fmtClock, fmtDate, shiftFor } from "../lib/format";
 import { getStationName, promptForStationName } from "../lib/station";
 import { playSuccess, playError, playKey } from "../utils/sound";
+import { playEventSound } from "../lib/sounds";
 import useKeyboardNav from "../hooks/useKeyboardNav";
 import { useTheme } from "../context/ThemeContext";
+import { supabase } from "../supabaseClient";
 import {
   IconActivity,
   IconClipboardCheck,
@@ -22,6 +24,8 @@ import {
   IconFlag,
   IconSun,
   IconMoon,
+  IconPause,
+  IconPlay,
 } from "./Icons";
 
 const CODE_LENGTH = 3;
@@ -78,6 +82,10 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
     }
   });
 
+  const [paused, setPaused] = useState(false);
+  const [pausedAt, setPausedAt] = useState(null);
+  const [totalPausedSeconds, setTotalPausedSeconds] = useState(0);
+
   const [orderFormActivity, setOrderFormActivity] = useState(null);
   const [orderFieldType, setOrderFieldType] = useState("pedido");
   const [orderBranch, setOrderBranch] = useState(null);
@@ -105,17 +113,12 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
   const mainContainerRef = useRef(null);
   const modalRef = useRef(null);
 
-  // Aplica tema local do kiosk
   useEffect(() => {
     try {
       localStorage.setItem(KIOSK_THEME_KEY, localTheme);
     } catch {}
 
-    if (localTheme === "auto") {
-      // Não mexe, deixa o ThemeProvider cuidar
-      return;
-    }
-    // Força tema no HTML
+    if (localTheme === "auto") return;
     const html = document.documentElement;
     const previous = html.getAttribute("data-theme");
     html.setAttribute("data-theme", localTheme === "dark" ? "dark" : "light");
@@ -164,11 +167,12 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
     if (!loggedOperator) return;
     const iv = setInterval(() => {
       if (finishModalOpenRef.current) return;
+      if (paused) return;
       if (Date.now() - lastInteractionRef.current > IDLE_TIMEOUT_MS) reset();
     }, 1000);
     return () => clearInterval(iv);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loggedOperator]);
+  }, [loggedOperator, paused]);
 
   useEffect(() => {
     finishModalOpenRef.current = showFinishModal;
@@ -212,6 +216,9 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
     setFinishHadShortage(null);
     setShortages([]);
     setFinishNote("");
+    setPaused(false);
+    setPausedAt(null);
+    setTotalPausedSeconds(0);
     cancelOrderForm();
   }
 
@@ -256,6 +263,15 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
     }
     playSuccess();
     setSession(data || null);
+    if (data) {
+      setPaused(!!data.paused_at);
+      setPausedAt(data.paused_at ? new Date(data.paused_at).getTime() : null);
+      setTotalPausedSeconds(data.total_paused_seconds || 0);
+    } else {
+      setPaused(false);
+      setPausedAt(null);
+      setTotalPausedSeconds(0);
+    }
     setLoggedOperator(op);
     setCheckingLogin(false);
   }
@@ -313,6 +329,9 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
       const { data } = await fetchActiveSessionFor(loggedOperator.code);
       if (data) {
         setSession(data);
+        setPaused(!!data.paused_at);
+        setPausedAt(data.paused_at ? new Date(data.paused_at).getTime() : null);
+        setTotalPausedSeconds(data.total_paused_seconds || 0);
         setMsgType("info");
         setMsg("Você já tinha uma atividade em andamento — ela foi carregada aqui.");
       } else {
@@ -431,21 +450,71 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
     setOrderError("Escolha uma opção acima.");
   }
 
+  async function handlePause() {
+    if (!session || busy) return;
+    bump();
+    setBusy(true);
+    const nowIso = new Date().toISOString();
+    const { error: err } = await supabase
+      .from("active_sessions")
+      .update({ paused_at: nowIso })
+      .eq("operator_code", session.operator_code);
+    setBusy(false);
+    if (err) {
+      playError();
+      setMsgType("error");
+      setMsg(`Erro ao pausar. ${err.message}`);
+      return;
+    }
+    setPaused(true);
+    setPausedAt(Date.now());
+    setSession((s) => s ? { ...s, paused_at: nowIso } : s);
+  }
+
+  async function handleResume() {
+    if (!session || busy || !pausedAt) return;
+    bump();
+    setBusy(true);
+    const addedPause = Math.round((Date.now() - pausedAt) / 1000);
+    const newTotal = (session.total_paused_seconds || 0) + addedPause;
+    const { error: err } = await supabase
+      .from("active_sessions")
+      .update({ paused_at: null, total_paused_seconds: newTotal })
+      .eq("operator_code", session.operator_code);
+    setBusy(false);
+    if (err) {
+      playError();
+      setMsgType("error");
+      setMsg(`Erro ao retomar. ${err.message}`);
+      return;
+    }
+    playSuccess();
+    setPaused(false);
+    setPausedAt(null);
+    setTotalPausedSeconds(newTotal);
+    setSession((s) => s ? { ...s, paused_at: null, total_paused_seconds: newTotal } : s);
+  }
+
   async function finishDirectly() {
     if (!session || busy) return;
     bump();
     setBusy(true);
-    const duration = Math.round((Date.now() - new Date(session.start_time).getTime()) / 1000);
-    const { data: newEntry, error } = await finishSession(session, duration, shiftFor(session.start_time), noteInput.trim(), !!session.is_encaixe);
+    const pausedSecs = session.total_paused_seconds || 0;
+    const duration = Math.max(0, Math.round((Date.now() - new Date(session.start_time).getTime()) / 1000) - pausedSecs);
+    const { data: newEntry, error } = await finishSession(session, duration, shiftFor(session.start_time), noteInput.trim(), !!session.is_encaixe, pausedSecs);
     setBusy(false);
     if (!error) {
       playSuccess();
+      playEventSound("sound_goal");
       if (newEntry && isSeparationEntry(newEntry)) {
         await addToConferenceQueue(newEntry);
       }
       refreshEntries?.();
       setSession(null);
       setNoteInput("");
+      setPaused(false);
+      setPausedAt(null);
+      setTotalPausedSeconds(0);
       setConfirmation({ kind: "finished", activity: session.activity, extra: fmtDuration(duration) });
       autoReturnTimeoutRef.current = setTimeout(reset, AUTO_RETURN_MS);
     } else {
@@ -509,7 +578,8 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
     }
 
     setBusy(true);
-    const duration = Math.round((Date.now() - new Date(session.start_time).getTime()) / 1000);
+    const pausedSecs = session.total_paused_seconds || 0;
+    const duration = Math.max(0, Math.round((Date.now() - new Date(session.start_time).getTime()) / 1000) - pausedSecs);
     const shift = shiftFor(session.start_time);
     const finalNote = finishNote.trim();
 
@@ -518,7 +588,8 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
       duration,
       shift,
       finalNote,
-      !!session.is_encaixe
+      !!session.is_encaixe,
+      pausedSecs
     );
 
     if (error) {
@@ -535,6 +606,7 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
         .map((s) => ({
           productCode: s.productCode.trim(),
           quantity: Number(s.quantity) || 1,
+          supplierName: session.supplier_name || null,
         }));
 
       const { error: errShortage } = await saveShortages(newEntry.id, validShortages);
@@ -548,6 +620,7 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
         refreshEntries?.();
         return;
       }
+      playEventSound("sound_shortage");
     }
 
     if (newEntry && isSeparationEntry(newEntry)) {
@@ -556,9 +629,13 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
 
     setBusy(false);
     playSuccess();
+    playEventSound("sound_goal");
     refreshEntries?.();
     setSession(null);
     setNoteInput("");
+    setPaused(false);
+    setPausedAt(null);
+    setTotalPausedSeconds(0);
     setConfirmation({
       kind: "finished",
       activity: session.activity,
@@ -573,7 +650,6 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
   }
 
   const dots = Array.from({ length: CODE_LENGTH }, (_, i) => i < codeInput.length);
-
   const themeIcon = localTheme === "dark" ? <IconMoon size={14} /> : localTheme === "light" ? <IconSun size={14} /> : <IconActivity size={14} />;
 
   return (
@@ -901,10 +977,13 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
 
                 <div className="kiosk-session-timer">
                   <div className="kiosk-session-timer-value">
-                    {fmtDuration(Math.round((now - new Date(session.start_time).getTime()) / 1000))}
+                    {fmtDuration(Math.max(0, Math.round((now - new Date(session.start_time).getTime()) / 1000) - (session.total_paused_seconds || 0)))}
                   </div>
                   <div className="kiosk-session-timer-label">
                     desde {fmtClock(session.start_time)}
+                    {(session.total_paused_seconds || 0) > 0 && (
+                      <> · pausado {fmtDuration(session.total_paused_seconds)}</>
+                    )}
                   </div>
                 </div>
 
@@ -914,11 +993,56 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
                   value={noteInput}
                   onChange={(e) => { bump(); setNoteInput(e.target.value); }}
                   rows={2}
+                  disabled={paused}
                 />
 
-                <button className="kiosk-btn kiosk-btn-finish" onClick={handleFinishClick} disabled={busy}>
-                  {busy ? "Salvando..." : "Finalizar atividade"}
-                </button>
+                {paused && (
+                  <div style={{
+                    padding: "12px 16px",
+                    background: "var(--warning-soft)",
+                    border: "1px solid var(--warning)",
+                    borderRadius: 10,
+                    color: "var(--warning)",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    textAlign: "center",
+                    marginBottom: 12,
+                  }}>
+                    ⏸ Em pausa desde {fmtClock(pausedAt)}
+                  </div>
+                )}
+
+                <div style={{ display: "flex", gap: 10 }}>
+                  {!paused ? (
+                    <>
+                      <button
+                        className="kiosk-btn kiosk-btn-secondary"
+                        onClick={handlePause}
+                        disabled={busy}
+                        style={{ flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}
+                      >
+                        <IconPause size={16} /> Pausar
+                      </button>
+                      <button
+                        className="kiosk-btn kiosk-btn-finish"
+                        onClick={handleFinishClick}
+                        disabled={busy}
+                        style={{ flex: 2 }}
+                      >
+                        {busy ? "Salvando..." : "Finalizar atividade"}
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      className="kiosk-btn kiosk-btn-primary"
+                      onClick={handleResume}
+                      disabled={busy}
+                      style={{ flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8 }}
+                    >
+                      <IconPlay size={16} /> {busy ? "..." : "Retomar atividade"}
+                    </button>
+                  )}
+                </div>
               </div>
             )}
 

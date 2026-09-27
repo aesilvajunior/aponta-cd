@@ -23,11 +23,6 @@ export async function updateOperator(code, fields) {
 }
 
 export async function renameOperatorCode(oldCode, newCode, fields) {
-  // Antes fazia insert(novo) + delete(antigo), o que deixava órfão todo
-  // histórico em entries/active_sessions/separation_errors que ainda
-  // apontava pro código antigo. Agora atualiza a chave em operators e
-  // cascateia manualmente pras tabelas que guardam operator_code como
-  // texto solto (não há FK real no schema).
   const { error: updError } = await supabase
     .from("operators")
     .update({
@@ -89,10 +84,6 @@ export async function updateActivity(name, fields) {
 }
 
 export async function renameActivity(oldName, newName) {
-  // Mesmo problema do renameOperatorCode: insert+delete deixava órfãos
-  // os registros de entries/active_sessions que guardam o nome antigo
-  // da atividade (activities.name é o identificador usado em todo lugar,
-  // não há FK real). Agora faz update na própria linha e cascateia.
   const { error: updError } = await supabase
     .from("activities")
     .update({ name: newName })
@@ -197,17 +188,14 @@ export async function deleteAllEntries() {
   return supabase.from("entries").delete().neq("id", "00000000-0000-0000-0000-000000000000");
 }
 
-// NOVO — admin master
 export async function updateEntry(id, fields) {
   return supabase.from("entries").update(fields).eq("id", id).select().maybeSingle();
 }
 
-// NOVO — admin master
 export async function deleteEntry(id) {
   return supabase.from("entries").delete().eq("id", id);
 }
 
-// NOVO — admin master (bulk)
 export async function bulkDeleteEntries(ids) {
   if (!ids || ids.length === 0) return { error: null };
   return supabase.from("entries").delete().in("id", ids);
@@ -304,7 +292,8 @@ export async function startSession({
   return { data, error };
 }
 
-export async function finishSession(session, durationSeconds, shift, note, isEncaixe) {
+// NOVA assinatura: aceita pausedSeconds (opcional, default 0)
+export async function finishSession(session, durationSeconds, shift, note, isEncaixe, pausedSeconds = 0) {
   const entryPayload = {
     operator_code: session.operator_code,
     operator_name: session.operator_name,
@@ -326,6 +315,7 @@ export async function finishSession(session, durationSeconds, shift, note, isEnc
     is_encaixe: isEncaixe || false,
     manual_entry: false,
     note: note || null,
+    paused_seconds: pausedSeconds || 0,
   };
 
   const { data: entry, error } = await supabase
@@ -341,7 +331,6 @@ export async function finishSession(session, durationSeconds, shift, note, isEnc
   return { data: entry, error: null };
 }
 
-// NOVO — admin master
 export async function updateActiveSession(operatorCode, fields) {
   return supabase
     .from("active_sessions")
@@ -351,11 +340,10 @@ export async function updateActiveSession(operatorCode, fields) {
     .maybeSingle();
 }
 
-// NOVO — admin master
-// Força finalização: salva no histórico como se o operador tivesse finalizado agora
 export async function forceFinishActiveSession(session, note = "") {
   const now = new Date();
-  const duration = Math.round((now.getTime() - new Date(session.start_time).getTime()) / 1000);
+  const pausedSecs = session.total_paused_seconds || 0;
+  const duration = Math.max(0, Math.round((now.getTime() - new Date(session.start_time).getTime()) / 1000) - pausedSecs);
   const shift = getShiftFor(session.start_time);
 
   const entryPayload = {
@@ -379,6 +367,7 @@ export async function forceFinishActiveSession(session, note = "") {
     is_encaixe: session.is_encaixe || false,
     manual_entry: false,
     note: note || "[finalizada pelo admin]",
+    paused_seconds: pausedSecs,
   };
 
   const { data: entry, error } = await supabase
@@ -394,12 +383,10 @@ export async function forceFinishActiveSession(session, note = "") {
   return { data: entry, error: null };
 }
 
-// NOVO — admin master
 export async function cancelActiveSession(operatorCode) {
   return supabase.from("active_sessions").delete().eq("operator_code", operatorCode);
 }
 
-// Helper interno de turno (espelho do lib/format.js)
 function getShiftFor(iso) {
   const d = new Date(iso);
   const h = d.getHours();
@@ -419,12 +406,14 @@ export async function fetchShortages({ limit = 5000 } = {}) {
   return { data, error };
 }
 
+// Aceita supplierName opcional
 export async function saveShortages(entryId, shortages) {
   if (!shortages || shortages.length === 0) return { error: null };
   const rows = shortages.map((s) => ({
     entry_id: entryId,
     product_code: s.productCode,
     quantity: s.quantity,
+    supplier_name: s.supplierName || null,
   }));
   return supabase.from("entry_shortages").insert(rows);
 }
@@ -433,17 +422,14 @@ export async function deleteAllShortages() {
   return supabase.from("entry_shortages").delete().neq("id", 0);
 }
 
-// NOVO — admin master
 export async function updateShortage(id, fields) {
   return supabase.from("entry_shortages").update(fields).eq("id", id).select().maybeSingle();
 }
 
-// NOVO — admin master
 export async function deleteShortage(id) {
   return supabase.from("entry_shortages").delete().eq("id", id);
 }
 
-// NOVO — admin master
 export async function deleteShortagesByEntry(entryId) {
   return supabase.from("entry_shortages").delete().eq("entry_id", entryId);
 }
@@ -480,12 +466,10 @@ export async function deleteAllSeparationErrors() {
   return supabase.from("separation_errors").delete().neq("id", 0);
 }
 
-// NOVO — admin master
 export async function updateSeparationError(id, fields) {
   return supabase.from("separation_errors").update(fields).eq("id", id).select().maybeSingle();
 }
 
-// NOVO — admin master
 export async function deleteSeparationError(id) {
   return supabase.from("separation_errors").delete().eq("id", id);
 }
@@ -679,7 +663,7 @@ export async function demoteLeaderToMember(leaderCode) {
 }
 
 // ============================================================
-// CONFERENCE QUEUE (MESA DE CONFERÊNCIA)
+// CONFERENCE QUEUE
 // ============================================================
 export async function fetchConferenceQueue({ includeFinished = false } = {}) {
   let query = supabase
@@ -801,7 +785,6 @@ async function getConferenceStartedAt(id) {
   return data?.conference_started_at || null;
 }
 
-// NOVO — admin master
 export async function updateConferenceItem(id, fields) {
   return supabase
     .from("conference_queue")
@@ -811,13 +794,10 @@ export async function updateConferenceItem(id, fields) {
     .maybeSingle();
 }
 
-// NOVO — admin master
 export async function deleteConferenceItem(id) {
   return supabase.from("conference_queue").delete().eq("id", id);
 }
 
-// NOVO — admin master
-// Volta o item pra "aguardando" e limpa dados de conferência
 export async function resetConferenceItem(id) {
   return supabase
     .from("conference_queue")
