@@ -25,6 +25,7 @@ import {
   IconEdit3,
   IconLayoutDashboard,
   IconList,
+  IconLock,
 } from "./Icons";
 
 const COLORS = ["#1e3a5f", "#4a7ba7", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444", "#06b6d4", "#6b7280"];
@@ -115,6 +116,80 @@ function quickRange(type) {
   return { from: "", to: "" };
 }
 
+// Modal de confirmação digitada
+function DeleteEntryModal({ entry, onClose, onConfirmed }) {
+  const [phrase, setPhrase] = useState("");
+  const [busy, setBusy] = useState(false);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    setTimeout(() => inputRef.current?.focus(), 60);
+  }, []);
+
+  async function confirm() {
+    if (phrase.trim().toUpperCase() !== "APAGAR") return;
+    setBusy(true);
+    await onConfirmed();
+    setBusy(false);
+  }
+
+  return (
+    <div className="kiosk-modal-backdrop" onClick={onClose}>
+      <div className="kiosk-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
+        <div className="kiosk-modal-header">
+          <div>
+            <div className="kiosk-modal-title" style={{ color: "var(--danger)", display: "flex", alignItems: "center", gap: 8 }}>
+              <IconAlertTriangle size={18} /> Apagar lançamento
+            </div>
+            <div className="kiosk-modal-sub">
+              {entry.operator_name} — {entry.activity} · {fmtDate(entry.start_time)}
+            </div>
+          </div>
+          <button className="kiosk-modal-close" onClick={onClose} aria-label="Fechar">
+            <IconX size={18} />
+          </button>
+        </div>
+
+        <div className="kiosk-modal-body">
+          <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 0 }}>
+            Isso apaga o registro <strong>permanentemente</strong>. A ação fica registrada na auditoria.
+          </p>
+          <div>
+            <label className="schedule-modal-label">
+              Digite <strong>APAGAR</strong> para confirmar
+            </label>
+            <input
+              ref={inputRef}
+              className="schedule-modal-field"
+              style={{ fontFamily: "var(--font-mono)", textAlign: "center", letterSpacing: 3, fontSize: 18, fontWeight: 700 }}
+              value={phrase}
+              onChange={(e) => setPhrase(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && confirm()}
+              placeholder="APAGAR"
+              disabled={busy}
+              maxLength={10}
+            />
+          </div>
+        </div>
+
+        <div className="kiosk-modal-footer">
+          <button className="kiosk-btn kiosk-btn-secondary" onClick={onClose} disabled={busy}>
+            Cancelar
+          </button>
+          <button
+            className="kiosk-btn"
+            style={{ background: "var(--danger)", color: "#fff", flex: 1 }}
+            onClick={confirm}
+            disabled={busy || phrase.trim().toUpperCase() !== "APAGAR"}
+          >
+            {busy ? "Apagando..." : "Apagar lançamento"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Panel({
   entries,
   activities,
@@ -123,6 +198,7 @@ export default function Panel({
   separationErrors = [],
   shortages = [],
   alertThreshold = DEFAULT_ALERT_SECONDS,
+  isAdmin = false,
   onResetEntries,
   onResetSeparationErrors,
   onResetShortages,
@@ -172,6 +248,9 @@ export default function Panel({
 
   const [conferenceHistory, setConferenceHistory] = useState([]);
 
+  // Modal de exclusão (admin + confirmação digitada)
+  const [entryToDelete, setEntryToDelete] = useState(null);
+
   useEffect(() => {
     const iv = setInterval(() => setNow(Date.now()), 15000);
     return () => clearInterval(iv);
@@ -193,7 +272,6 @@ export default function Panel({
 
   useEffect(() => {
     if (!externalFilter) return;
-
     if (
       externalFilter.type === "hoje" ||
       externalFilter.type === "ontem" ||
@@ -205,11 +283,9 @@ export default function Panel({
       setDateFrom(range.from);
       setDateTo(range.to);
     }
-
     if (externalFilter.type === "pedido" && externalFilter.value) {
       setFilterOrderNumber(String(externalFilter.value));
     }
-
     onExternalFilterHandled?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [externalFilter, onExternalProfileHandled]);
@@ -378,11 +454,6 @@ export default function Panel({
           osc.start();
           osc.stop(ctx.currentTime + 0.28);
         } catch {}
-        if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-          new Notification("Atividade demorada", {
-            body: `${a.operator_name} — ${a.activity} — ${fmtDuration(a.elapsed)}`,
-          });
-        }
       }
     });
     alertedRef.current = currentKeys;
@@ -651,15 +722,11 @@ export default function Panel({
     }
   }
 
-  function openInAdminMaster(entityId, entityType) {
-    if (onOpenAdminMaster) {
-      onOpenAdminMaster({ tab: entityType, id: entityId });
-    }
-  }
-
-  async function quickDeleteEntry(entry) {
-    if (!window.confirm(`Apagar este lançamento de "${entry.operator_name}" (${entry.activity})?`)) return;
+  async function confirmDeleteEntry() {
+    if (!entryToDelete) return;
+    const entry = entryToDelete;
     const { error } = await deleteEntry(entry.id);
+    setEntryToDelete(null);
     if (error) {
       alert("Erro ao apagar: " + error.message);
       return;
@@ -667,11 +734,11 @@ export default function Panel({
     try {
       await logAudit({
         actorCode: "admin",
-        actorName: "Admin (rápido)",
+        actorName: "Admin (Painel)",
         action: "remover",
         entity: "entry",
         entityId: String(entry.id),
-        details: `Lançamento apagado rápido pelo admin`,
+        details: `Lançamento apagado pelo admin (confirmação digitada)`,
         beforeData: entry,
       });
     } catch {}
@@ -1109,13 +1176,15 @@ export default function Panel({
           <button className="btn-small btn-excel" onClick={exportHistoricoXLSX}>
             <IconDownload size={14} /> Excel
           </button>
-          <button className="btn-danger-outline" onClick={() => setConfirmingReset((v) => !v)}>
-            <IconTrash size={14} /> Zerar resultados
-          </button>
+          {isAdmin && (
+            <button className="btn-danger-outline" onClick={() => setConfirmingReset((v) => !v)}>
+              <IconTrash size={14} /> Zerar resultados
+            </button>
+          )}
         </div>
       </div>
 
-      {confirmingReset && (
+      {confirmingReset && isAdmin && (
         <div className="confirm-box" style={{ marginBottom: 22 }}>
           <strong style={{ color: "var(--danger)", fontSize: 14 }}>Isso apaga todo o histórico de registros, permanentemente.</strong>
           <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "8px 0 14px 0" }}>
@@ -1264,7 +1333,6 @@ export default function Panel({
         </div>
       )}
 
-      {/* TABS */}
       <div className="quick-filters" style={{ marginBottom: 20 }}>
         {TABS.map((t) => {
           const TabIcon = t.Icon;
@@ -1454,13 +1522,15 @@ export default function Panel({
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button className="btn-small" onClick={exportErrorsCSV}><IconDownload size={14} /> CSV</button>
                 <button className="btn-small btn-excel" onClick={exportErrorsXLSX}><IconDownload size={14} /> Excel</button>
-                <button className="btn-danger-outline" onClick={() => setConfirmingResetErrors((v) => !v)}>
-                  <IconTrash size={14} /> Zerar erros
-                </button>
+                {isAdmin && (
+                  <button className="btn-danger-outline" onClick={() => setConfirmingResetErrors((v) => !v)}>
+                    <IconTrash size={14} /> Zerar erros
+                  </button>
+                )}
               </div>
             </div>
 
-            {confirmingResetErrors && (
+            {confirmingResetErrors && isAdmin && (
               <div className="confirm-box" style={{ marginBottom: 16 }}>
                 <strong style={{ color: "var(--danger)", fontSize: 14 }}>Isso apaga todo o histórico de erros de separação, permanentemente.</strong>
                 <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
@@ -1686,12 +1756,14 @@ export default function Panel({
           <div className="card">
             <div className="page-header-row" style={{ marginBottom: 16 }}>
               <div className="card-title" style={{ marginBottom: 0 }}>Pedidos com falta ({shortageEntries.length})</div>
-              <button className="btn-danger-outline" onClick={() => setConfirmingResetShortages((v) => !v)}>
-                <IconTrash size={14} /> Zerar faltas
-              </button>
+              {isAdmin && (
+                <button className="btn-danger-outline" onClick={() => setConfirmingResetShortages((v) => !v)}>
+                  <IconTrash size={14} /> Zerar faltas
+                </button>
+              )}
             </div>
 
-            {confirmingResetShortages && (
+            {confirmingResetShortages && isAdmin && (
               <div className="confirm-box" style={{ marginBottom: 16 }}>
                 <strong style={{ color: "var(--danger)", fontSize: 14 }}>Isso apaga todas as faltas registradas, permanentemente.</strong>
                 <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
@@ -1760,7 +1832,7 @@ export default function Panel({
         <div className="card">
           <div className="page-header-row" style={{ marginBottom: 16 }}>
             <div className="card-title" style={{ marginBottom: 0 }}>Histórico detalhado</div>
-            {onOpenAdminMaster && (
+            {isAdmin && onOpenAdminMaster && (
               <button className="btn-small" onClick={() => onOpenAdminMaster({ tab: "entries" })}>
                 <IconEdit3 size={14} /> Abrir na Central de controle
               </button>
@@ -1772,7 +1844,7 @@ export default function Panel({
                 <tr>
                   <th>Data</th><th>Operador</th><th>Atividade</th><th>Turno</th>
                   <th>Estação</th><th>Início</th><th>Fim</th><th>Duração</th><th>Flags</th>
-                  <th style={{ width: 130 }}>Admin</th>
+                  {isAdmin && <th style={{ width: 130 }}>Admin</th>}
                 </tr>
               </thead>
               <tbody>
@@ -1823,32 +1895,39 @@ export default function Panel({
                           </span>
                         )}
                       </td>
-                      <td style={{ whiteSpace: "nowrap" }}>
-                        {onOpenAdminMaster && (
-                          <button className="btn-small" style={{ padding: "5px 9px", marginRight: 4 }} onClick={() => onOpenAdminMaster({ tab: "entries", id: e.id })} title="Editar">
-                            <IconEdit size={12} />
+                      {isAdmin && (
+                        <td style={{ whiteSpace: "nowrap" }}>
+                          {onOpenAdminMaster && (
+                            <button className="btn-small" style={{ padding: "5px 9px", marginRight: 4 }} onClick={() => onOpenAdminMaster({ tab: "entries", id: e.id })} title="Editar">
+                              <IconEdit size={12} />
+                            </button>
+                          )}
+                          <button
+                            className="btn-small"
+                            style={{ padding: "5px 9px", color: "var(--danger)", borderColor: "var(--danger)" }}
+                            onClick={() => setEntryToDelete(e)}
+                            title="Excluir (pede confirmação)"
+                          >
+                            <IconTrash size={12} />
                           </button>
-                        )}
-                        <button
-                          className="btn-small"
-                          style={{ padding: "5px 9px", color: "var(--danger)", borderColor: "var(--danger)" }}
-                          onClick={async () => {
-                            await quickDeleteEntry(e);
-                            onOpenAdminMaster?.({ tab: "entries", refresh: true });
-                          }}
-                          title="Excluir"
-                        >
-                          <IconTrash size={12} />
-                        </button>
-                      </td>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
-                {filteredEntries.length === 0 && <tr><td colSpan={10} style={{ color: "var(--text-muted)" }}>Nenhum registro encontrado.</td></tr>}
+                {filteredEntries.length === 0 && <tr><td colSpan={isAdmin ? 10 : 9} style={{ color: "var(--text-muted)" }}>Nenhum registro encontrado.</td></tr>}
               </tbody>
             </table>
           </div>
         </div>
+      )}
+
+      {entryToDelete && (
+        <DeleteEntryModal
+          entry={entryToDelete}
+          onClose={() => setEntryToDelete(null)}
+          onConfirmed={confirmDeleteEntry}
+        />
       )}
     </div>
   );

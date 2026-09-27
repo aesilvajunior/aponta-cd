@@ -15,6 +15,7 @@ import {
   groupItemsByCategory,
   summarizeArea,
 } from "../lib/stockMap";
+import { logStockMapAction } from "../lib/api";
 import {
   createInitialView,
   zoomIn,
@@ -59,9 +60,9 @@ function occupancyColor(ratio) {
   return "#7f1d1d";
 }
 
-const MIN_WORLD_W = 0.02 * WORLD_W; // mesmo mínimo de 2% que o formulário sempre respeitou
+const MIN_WORLD_W = 0.02 * WORLD_W;
 const MIN_WORLD_H = 0.02 * WORLD_H;
-const GRID_COLS = 20; // 5% de espaçamento, igual ao grid antigo
+const GRID_COLS = 20;
 const GRID_ROWS = 15;
 
 export default function StockMap({ isAdmin }) {
@@ -102,17 +103,33 @@ export default function StockMap({ isAdmin }) {
   });
   const [areaBusy, setAreaBusy] = useState(false);
 
-  const wrapperRef = useRef(null); // caixa com a proporção 4:3 (ou 100vh em fullscreen) — é o que medimos
+  const wrapperRef = useRef(null);
   const stageRef = useRef(null);
   const layerRef = useRef(null);
-  const corridorLayerRef = useRef(null); // layer separado só pras linhas animadas dos corredores
+  const corridorLayerRef = useRef(null);
   const transformerRef = useRef(null);
-  const shapeRefs = useRef({}); // areaId -> nó Konva.Rect (pro Transformer conseguir "agarrar")
-  const corridorLineRefs = useRef({}); // areaId -> nó Konva.Line (linha animada do corredor)
+  const shapeRefs = useRef({});
+  const corridorLineRefs = useRef({});
 
   const viewRef = useRef(view);
   viewRef.current = view;
   const touchStateRef = useRef(createTouchState());
+
+  // ---------- Auditoria ----------
+  async function auditMap({ action, areaId, areaCode, beforeData, afterData }) {
+    if (!isAdmin) return;
+    try {
+      await logStockMapAction({
+        areaId,
+        areaCode,
+        action,
+        beforeData,
+        afterData,
+        actorCode: "admin",
+        actorName: "Admin",
+      });
+    } catch {}
+  }
 
   async function loadAll() {
     setLoading(true);
@@ -147,9 +164,6 @@ export default function StockMap({ isAdmin }) {
     return () => document.removeEventListener("fullscreenchange", onChange);
   }, []);
 
-  // Mede o container real em pixels (funciona tanto no modo normal — caixa
-  // com padding-bottom: 75% — quanto em fullscreen — 100vh). getBoundingClientRect
-  // sempre reflete o tamanho renderizado de verdade, mesmo com o truque de padding.
   useEffect(() => {
     const el = wrapperRef.current;
     if (!el) return;
@@ -217,16 +231,11 @@ export default function StockMap({ isAdmin }) {
       });
   }, [areas, itemsByArea, items, search, filterType, maxSkus]);
 
-  // Escala que faz o "mundo" (1000x750) caber no container mantendo a
-  // proporção — diferente da versão anterior (que esticava em % por eixo
-  // separado), isso garante que uma prateleira quadrada nunca vira retângulo
-  // só porque a tela não é exatamente 4:3 (ex: em fullscreen).
   const baseScale = useMemo(() => {
     if (!size.width || !size.height) return 0;
     return Math.min(size.width / WORLD_W, size.height / WORLD_H);
   }, [size]);
 
-  // -------- Transformer: gruda na área selecionada, some quando ninguém tá selecionado --------
   useEffect(() => {
     const tr = transformerRef.current;
     if (!tr) return;
@@ -239,16 +248,10 @@ export default function StockMap({ isAdmin }) {
     tr.getLayer()?.batchDraw();
   }, [editMode, selectedArea, decoratedAreas]);
 
-  // -------- Animação do "fluxo" dos corredores (marching ants na linha central) --------
-  // Roda num Layer separado de propósito: Konva.Animation redesenha o layer
-  // inteiro a cada frame (60x/s), e se isso fosse o layer principal (com
-  // todas as prateleiras, textos e grade), o mapa inteiro seria redesenhado
-  // 60x/s só pra animar 2 ou 3 linhas — era exatamente isso que deixava o
-  // mapa "pesado". Separado, só as linhas dos corredores são redesenhadas.
   useEffect(() => {
     const layer = corridorLayerRef.current;
     if (!layer) return;
-    const dashPeriod = 24; // soma do padrão de dash usado nas linhas [14,10]
+    const dashPeriod = 24;
     const anim = new Konva.Animation((frame) => {
       const offset = -((frame.time / 35) % dashPeriod);
       Object.values(corridorLineRefs.current).forEach((node) => {
@@ -259,7 +262,6 @@ export default function StockMap({ isAdmin }) {
     return () => anim.stop();
   }, [layers.corridorFlow, decoratedAreas.length]);
 
-  // Keyboard
   useEffect(() => {
     function onKeyDown(e) {
       const tag = (e.target && e.target.tagName) || "";
@@ -287,7 +289,6 @@ export default function StockMap({ isAdmin }) {
     return `${visibleWidthM.toFixed(1)} m × ${visibleHeightM.toFixed(1)} m`;
   }, [view.zoom]);
 
-  // -------- Zoom no cursor (scroll) / rotação (shift+scroll) --------
   function handleWheel(e) {
     e.evt.preventDefault();
     const stage = stageRef.current;
@@ -335,11 +336,10 @@ export default function StockMap({ isAdmin }) {
     });
   }
 
-  // -------- Pinça de 2 dedos: zoom + rotação juntos --------
   function handleTouchStart(e) {
     const touches = e.evt.touches;
     if (touches.length === 2) {
-      stageRef.current?.draggable(false); // evita brigar com o pan de 1 dedo do Konva
+      stageRef.current?.draggable(false);
       const rect = wrapperRef.current.getBoundingClientRect();
       touchStateRef.current = {
         active: true,
@@ -385,7 +385,6 @@ export default function StockMap({ isAdmin }) {
     }
   }
 
-  // -------- Pan (o próprio Konva cuida do arraste do fundo) --------
   function handleStageDragEnd(e) {
     const stage = e.target;
     setView((v) => ({
@@ -395,18 +394,11 @@ export default function StockMap({ isAdmin }) {
     }));
   }
 
-  // Clique no fundo (fora de qualquer área) limpa a seleção. Clique numa
-  // área é tratado no próprio Rect — como os dois eventos se propagam pro
-  // Stage, só limpamos quando o alvo original do clique é o Stage mesmo.
   function handleStageClick(e) {
     if (e.target === e.target.getStage()) setSelectedArea(null);
   }
 
   function handleStageMouseMove(e) {
-    // O tooltip só aparece quando tem hoveredArea, então só vale a pena
-    // re-renderizar (setState) nesse caso — sem essa checagem, cada pixel
-    // que o mouse anda (inclusive só passeando/dando pan no mapa vazio)
-    // disparava um re-render do componente inteiro.
     if (hoveredArea) setMousePos({ x: e.evt.clientX, y: e.evt.clientY, show: true });
   }
 
@@ -415,23 +407,27 @@ export default function StockMap({ isAdmin }) {
     setMousePos((p) => ({ ...p, show: false }));
   }
 
-  // -------- Ações --------
   async function handleDeleteArea(a) {
+    if (!isAdmin) return;
     if (!window.confirm(`Remover a área "${a.label}"?`)) return;
+    const beforeData = { code: a.code, label: a.label, areaType: a.area_type };
     await deleteMapArea(a.id);
+    await auditMap({ action: "remover", areaId: a.id, areaCode: a.code, beforeData });
     if (selectedArea?.id === a.id) setSelectedArea(null);
     await loadAll();
+    flashSuccess("Área removida");
   }
 
   async function handleDeleteItem(it) {
+    if (!isAdmin) return;
     if (!window.confirm(`Remover ${it.product_code}?`)) return;
+    const beforeData = { productCode: it.product_code, quantity: it.quantity, areaId: it.area_id };
     await deleteMapItem(it.id);
+    await auditMap({ action: "item_remove", areaId: it.area_id, areaCode: selectedArea?.code, beforeData });
     await loadAll();
+    flashSuccess("Item removido");
   }
 
-  // Mover uma área (drag) — só persiste no Supabase quando solta (onDragEnd);
-  // durante o arraste o próprio Konva move o retângulo na tela sem precisar
-  // de re-render do React a cada frame (bem mais leve que a versão anterior).
   async function handleAreaDragEnd(a, e) {
     const node = e.target;
     const world = areaToWorld(a);
@@ -439,14 +435,16 @@ export default function StockMap({ isAdmin }) {
     setActiveDragId(null);
     setAreas((prev) => prev.map((x) => (x.id === a.id ? { ...x, x: pct.x, y: pct.y } : x)));
     setSelectedArea((prev) => (prev?.id === a.id ? { ...prev, x: pct.x, y: pct.y } : prev));
+    const beforeData = { x: a.x, y: a.y };
     const { error: err } = await updateMapArea(a.id, { x: pct.x, y: pct.y });
-    if (err) setError(err.message);
-    else flashSuccess("Área atualizada");
+    if (err) {
+      setError(err.message);
+      return;
+    }
+    await auditMap({ action: "mover", areaId: a.id, areaCode: a.code, beforeData, afterData: { x: pct.x, y: pct.y } });
+    flashSuccess("Área movida");
   }
 
-  // Redimensionar (Transformer) — ele escala o nó em vez de mudar width/height
-  // direto, então lemos scaleX/scaleY, aplicamos no tamanho real e resetamos
-  // a escala pra 1 (senão o próximo resize "acumula" escala errada).
   async function handleAreaTransformEnd(a, e) {
     const node = e.target;
     const newWorldWidth = Math.max(MIN_WORLD_W, node.width() * node.scaleX());
@@ -459,9 +457,14 @@ export default function StockMap({ isAdmin }) {
     const pct = worldToAreaPct({ x: node.x(), y: node.y(), width: newWorldWidth, height: newWorldHeight });
     setAreas((prev) => prev.map((x) => (x.id === a.id ? { ...x, ...pct } : x)));
     setSelectedArea((prev) => (prev?.id === a.id ? { ...prev, ...pct } : prev));
+    const beforeData = { x: a.x, y: a.y, width: a.width, height: a.height };
     const { error: err } = await updateMapArea(a.id, pct);
-    if (err) setError(err.message);
-    else flashSuccess("Área atualizada");
+    if (err) {
+      setError(err.message);
+      return;
+    }
+    await auditMap({ action: "resize", areaId: a.id, areaCode: a.code, beforeData, afterData: pct });
+    flashSuccess("Área redimensionada");
   }
 
   function handleTransformerBoundBox(oldBox, newBox) {
@@ -469,15 +472,15 @@ export default function StockMap({ isAdmin }) {
     return newBox;
   }
 
-  // Criar nova área
   async function handleCreateArea() {
+    if (!isAdmin) return;
     const code = newAreaForm.code.trim().toUpperCase();
     const label = newAreaForm.label.trim();
     if (!code) return setError("Digite o código da área.");
     if (!label) return setError("Digite o rótulo.");
 
     setAreaBusy(true);
-    const { error: err } = await addMapArea({
+    const { data, error: err } = await addMapArea({
       code,
       label,
       areaType: newAreaForm.areaType,
@@ -491,6 +494,21 @@ export default function StockMap({ isAdmin }) {
     });
     setAreaBusy(false);
     if (err) return setError(err.message);
+    await auditMap({
+      action: "criar",
+      areaId: data?.id,
+      areaCode: code,
+      afterData: {
+        code,
+        label,
+        areaType: newAreaForm.areaType,
+        x: newAreaForm.x,
+        y: newAreaForm.y,
+        width: newAreaForm.width,
+        height: newAreaForm.height,
+        hasSides: newAreaForm.hasSides,
+      },
+    });
     setNewAreaModal(false);
     setNewAreaForm({ code: "", label: "", areaType: "prateleira", x: 40, y: 40, width: 10, height: 15, hasSides: false });
     await loadAll();
@@ -501,7 +519,6 @@ export default function StockMap({ isAdmin }) {
   const bySide = selectedArea?.has_sides ? groupItemsBySide(selectedAreaItems) : null;
   const byCategory = selectedArea ? groupItemsByCategory(selectedAreaItems) : [];
 
-  // ---------- Linhas do grid de fundo ----------
   const gridLines = useMemo(() => {
     if (!layers.grid) return [];
     const lines = [];
@@ -754,9 +771,6 @@ export default function StockMap({ isAdmin }) {
                   )}
                 </Layer>
 
-                {/* Layer separado só pras linhas animadas dos corredores — veja o
-                    comentário no useEffect da animação: isso evita redesenhar o
-                    mapa inteiro 60x/s só pra animar 2 ou 3 linhas. */}
                 <Layer ref={corridorLayerRef} listening={false}>
                   {!loading &&
                     layers.corridorFlow &&
@@ -931,7 +945,24 @@ export default function StockMap({ isAdmin }) {
       </div>
 
       {pickerOpen && selectedArea && (
-        <StockMapItemPicker area={selectedArea} item={editingItem} onClose={() => setPickerOpen(false)} onSaved={loadAll} />
+        <StockMapItemPicker
+          area={selectedArea}
+          item={editingItem}
+          onClose={() => setPickerOpen(false)}
+          onSaved={async (payload) => {
+            // payload: { action, item } quando salvar
+            if (payload?.action && payload?.item) {
+              await auditMap({
+                action: payload.action,
+                areaId: selectedArea.id,
+                areaCode: selectedArea.code,
+                beforeData: payload.action === "item_edit" ? payload.before : null,
+                afterData: payload.item,
+              });
+            }
+            await loadAll();
+          }}
+        />
       )}
 
       {newAreaModal && (

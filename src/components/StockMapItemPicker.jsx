@@ -33,18 +33,36 @@ export default function StockMapItemPicker({ area, item, onClose, onSaved }) {
     setBusy(true);
     setError("");
 
+    const payload = {
+      side: form.side || null,
+      product_code: code,
+      product_name: form.productName.trim() || null,
+      category: form.category.trim() || null,
+      quantity: Number(form.quantity) || 0,
+      slot: form.slot.trim() || null,
+      note: form.note.trim() || null,
+    };
+
     if (isEditing) {
-      const { error: err } = await updateMapItem(item.id, {
-        side: form.side || null,
-        product_code: code,
-        product_name: form.productName.trim() || null,
-        category: form.category.trim() || null,
-        quantity: Number(form.quantity) || 0,
-        slot: form.slot.trim() || null,
-        note: form.note.trim() || null,
-      });
+      const before = {
+        productCode: item.product_code,
+        productName: item.product_name,
+        category: item.category,
+        quantity: item.quantity,
+        slot: item.slot,
+        side: item.side,
+        note: item.note,
+      };
+
+      const { error: err } = await updateMapItem(item.id, payload);
       setBusy(false);
       if (err) return setError(err.message);
+
+      onSaved?.({
+        action: "item_edit",
+        item: payload,
+        before,
+      });
     } else {
       const { error: err } = await addMapItem({
         areaId: area.id,
@@ -58,9 +76,13 @@ export default function StockMapItemPicker({ area, item, onClose, onSaved }) {
       });
       setBusy(false);
       if (err) return setError(err.message);
+
+      onSaved?.({
+        action: "item_add",
+        item: payload,
+      });
     }
 
-    onSaved?.();
     onClose();
   }
 
