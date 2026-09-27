@@ -19,6 +19,12 @@ import {
   IconLogOut,
   IconChevronLeft,
   IconChevronRight,
+  IconRotateCcw,
+  IconTarget,
+  IconUpload,
+  IconMapPin,
+  IconShield,
+  IconVolume2,
 } from "./Icons";
 
 const STORAGE_KEY = "aponta_sidebar_collapsed";
@@ -33,6 +39,9 @@ const SECTIONS = [
       { key: "conference", label: "Conferência", Icon: IconClipboardCheck },
       { key: "shortages", label: "Faltas", Icon: IconBox },
       { key: "sales-query", label: "Líder da equipe", Icon: IconSearch },
+      { key: "rotation", label: "Rotação de tarefas", Icon: IconRotateCcw },
+      { key: "goals-dashboard", label: "Dashboard de metas", Icon: IconTrendingUp },
+      { key: "stock-map", label: "Mapa do estoque", Icon: IconMapPin },
     ],
   },
   {
@@ -41,7 +50,11 @@ const SECTIONS = [
       { key: "executive", label: "Visão geral", Icon: IconTrendingUp },
       { key: "panel", label: "Indicadores", Icon: IconLayoutDashboard },
       { key: "manual", label: "Lançamento manual", Icon: IconEdit3 },
+      { key: "goals", label: "Metas individuais", Icon: IconTarget },
       { key: "admin-master", label: "Central de controle", Icon: IconStar },
+      { key: "csv-import", label: "Importar CSV", Icon: IconUpload },
+      { key: "fraud", label: "Detecção de fraude", Icon: IconShield },
+      { key: "reports-scheduler", label: "Export agendado", Icon: IconVolume2 },
       { key: "team", label: "Cadastros", Icon: IconSettings },
       { key: "sales-team", label: "Equipe comercial", Icon: IconUsers },
       { key: "audit", label: "Auditoria", Icon: IconClock },

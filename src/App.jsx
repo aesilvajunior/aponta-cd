@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { supabase, missingConfig } from "./supabaseClient";
 import { useAuth } from "./context/AuthContext";
 import {
@@ -15,6 +15,11 @@ import {
   deleteAllSeparationErrors,
   deleteAllShortages,
 } from "./lib/api";
+import {
+  isPushEnabled,
+  notifyNewConferenceItem,
+  notifyLateActivity,
+} from "./lib/pushNotifications";
 import Sidebar from "./components/Sidebar";
 import Kiosk from "./components/Kiosk";
 import ErrorKiosk from "./components/ErrorKiosk";
@@ -31,6 +36,14 @@ import SalesTeamManager from "./components/SalesTeamManager";
 import ShortagePanel from "./components/ShortagePanel";
 import ConferenceTable from "./components/ConferenceTable";
 import AdminMaster from "./components/AdminMaster";
+import RotationManager from "./components/RotationManager";
+import GoalsManager from "./components/GoalsManager";
+import GoalsDashboard from "./components/GoalsDashboard";
+import CsvImport from "./components/CsvImport";
+import FraudPanel from "./components/FraudPanel";
+import ReportsScheduler from "./components/ReportsScheduler";
+import StockMap from "./components/StockMap";
+import PushSetup from "./components/PushSetup";
 import LoginScreen from "./components/LoginScreen";
 import {
   DEFAULT_OPERATORS,
@@ -64,6 +77,14 @@ export default function App() {
   const [entries, setEntries] = useState([]);
   const [activeSessions, setActiveSessions] = useState([]);
   const [separationErrors, setSeparationErrors] = useState([]);
+
+  const alertedRef = useRef(new Set());
+
+  // Registra SW uma vez
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+  }, []);
 
   const loadOperators = useCallback(async () => {
     const { data, error } = await fetchOperators();
@@ -198,8 +219,41 @@ export default function App() {
       supabase.channel("shortages-changes").on("postgres_changes", { event: "*", schema: "public", table: "entry_shortages" }, reloadShortages).subscribe(),
     ];
 
-    return () => { channels.forEach((ch) => supabase.removeChannel(ch)); };
+    // Notificação local pra nova conferência
+    const confChannel = supabase
+      .channel("notify-conference")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "conference_queue" }, (payload) => {
+        if (!isPushEnabled()) return;
+        if (payload.new) notifyNewConferenceItem(payload.new);
+      })
+      .subscribe();
+
+    return () => {
+      channels.forEach((ch) => supabase.removeChannel(ch));
+      supabase.removeChannel(confChannel);
+    };
   }, [session, loadOperators, loadActivities, loadErrorTypes, loadVehicles, loadAdminConfig, loadEntries, loadActiveSessions, loadSeparationErrors, loadShortages, loadAll]);
+
+  // Notificação de atividade demorada
+  useEffect(() => {
+    if (!isPushEnabled()) return;
+    const iv = setInterval(() => {
+      const now = Date.now();
+      activeSessions.forEach((s) => {
+        const elapsed = Math.round((now - new Date(s.start_time).getTime()) / 1000);
+        const cfg = activities.find((a) => a.name === s.activity);
+        const threshold = cfg?.target_seconds || alertThreshold || DEFAULT_ALERT_THRESHOLD;
+        if (elapsed > threshold && !alertedRef.current.has(s.operator_code)) {
+          alertedRef.current.add(s.operator_code);
+          notifyLateActivity(s, elapsed);
+        }
+        if (elapsed <= threshold && alertedRef.current.has(s.operator_code)) {
+          alertedRef.current.delete(s.operator_code);
+        }
+      });
+    }, 60 * 1000); // checa a cada minuto
+    return () => clearInterval(iv);
+  }, [activeSessions, activities, alertThreshold]);
 
   useEffect(() => {
     function onKeyDown(e) {
@@ -225,7 +279,7 @@ export default function App() {
     return (
       <div className="loading-screen">
         <div className="loading-spinner" />
-        <div>Verificando sessão…</div>
+        <div>Verificando sessão...</div>
       </div>
     );
   }
@@ -238,16 +292,21 @@ export default function App() {
     return (
       <div className="loading-screen">
         <div className="loading-spinner" />
-        <div>Carregando…</div>
+        <div>Carregando...</div>
       </div>
     );
   }
+
+  const adminTabs = [
+    "executive", "panel", "team", "manual", "audit", "sales-team",
+    "admin-master", "goals", "csv-import", "fraud", "reports-scheduler", "stock-map-edit",
+  ];
 
   return (
     <div className="app-shell">
       {missingConfig && (
         <div className="global-banner">
-          ⚠️ Supabase NÃO está configurado — nenhum dado está sendo salvo.
+          Supabase NÃO está configurado — nenhum dado está sendo salvo.
         </div>
       )}
 
@@ -266,7 +325,7 @@ export default function App() {
 
         {usingDefaults && !connectionError && (
           <div className="alert-card alert-warning">
-            ⚠️ Exibindo dados padrão — o banco está vazio.
+            Exibindo dados padrão — o banco está vazio.
           </div>
         )}
 
@@ -291,10 +350,20 @@ export default function App() {
           {tab === "sales-query" && (
             <SalesTeamQuery />
           )}
+          {tab === "rotation" && (
+            <RotationManager operators={operators} isAdmin={isAdmin} />
+          )}
+          {tab === "goals-dashboard" && (
+            <GoalsDashboard />
+          )}
+          {tab === "stock-map" && (
+            <StockMap isAdmin={isAdmin} />
+          )}
 
-          {(tab === "executive" || tab === "panel" || tab === "team" || tab === "manual" || tab === "audit" || tab === "sales-team" || tab === "admin-master") && !isAdmin && (
+          {adminTabs.includes(tab) && !isAdmin && (
             <AdminGate correctPin={adminPin} onUnlock={() => setIsAdmin(true)} />
           )}
+
           {tab === "executive" && isAdmin && (
             <ExecutiveView entries={entries} activities={activities} operators={operators} activeSessions={activeSessions} separationErrors={separationErrors} shortages={shortages} onViewOperator={handleViewOperator} />
           )}
@@ -332,12 +401,26 @@ export default function App() {
           {tab === "sales-team" && isAdmin && (
             <SalesTeamManager />
           )}
+          {tab === "goals" && isAdmin && (
+            <GoalsManager operators={operators} isAdmin={isAdmin} />
+          )}
+          {tab === "csv-import" && isAdmin && (
+            <CsvImport />
+          )}
+          {tab === "fraud" && isAdmin && (
+            <FraudPanel operators={operators} />
+          )}
+          {tab === "reports-scheduler" && isAdmin && (
+            <ReportsScheduler />
+          )}
         </div>
 
         <div className="footer-note">
           Aponta CD
         </div>
       </main>
+
+      <PushSetup />
 
       <CommandPalette
         open={cmdOpen}

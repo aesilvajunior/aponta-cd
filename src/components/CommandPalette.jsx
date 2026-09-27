@@ -16,24 +16,42 @@ import {
   IconUsers,
   IconClock,
   IconTrendingUp,
-  IconDot,
+  IconRotateCcw,
+  IconTarget,
+  IconUpload,
+  IconMapPin,
+  IconShield,
+  IconVolume2,
 } from "./Icons";
 
-// Ícone por tipo de item
-function ItemIcon({ type }) {
-  switch (type) {
-    case "action":
-      return <IconActivity size={15} />;
-    case "operator":
-      return <IconUser size={15} />;
-    case "order":
-      return <IconPackage size={15} />;
-    case "product":
-      return <IconSettings size={15} />;
-    case "customer":
-      return <IconBuilding size={15} />;
-    default:
-      return <IconDot size={15} />;
+function ItemIcon({ type, actionKey }) {
+  if (type === "operator") return <IconUser size={15} />;
+  if (type === "order") return <IconPackage size={15} />;
+  if (type === "product") return <IconSettings size={15} />;
+  if (type === "customer") return <IconBuilding size={15} />;
+
+  // action
+  switch (actionKey) {
+    case "nav-kiosk": return <IconActivity size={15} />;
+    case "nav-errors": return <IconAlertTriangle size={15} />;
+    case "nav-schedules": return <IconCalendar size={15} />;
+    case "nav-conference": return <IconClipboardCheck size={15} />;
+    case "nav-shortages": return <IconBox size={15} />;
+    case "nav-rotation": return <IconRotateCcw size={15} />;
+    case "nav-goals-dashboard": return <IconTrendingUp size={15} />;
+    case "nav-stock-map": return <IconMapPin size={15} />;
+    case "nav-panel": return <IconLayoutDashboard size={15} />;
+    case "nav-manual": return <IconEdit3 size={15} />;
+    case "nav-goals": return <IconTarget size={15} />;
+    case "nav-admin-master": return <IconStar size={15} />;
+    case "nav-csv-import": return <IconUpload size={15} />;
+    case "nav-fraud": return <IconShield size={15} />;
+    case "nav-reports-scheduler": return <IconVolume2 size={15} />;
+    case "nav-team": return <IconSettings size={15} />;
+    case "nav-sales-team": return <IconUsers size={15} />;
+    case "nav-audit": return <IconClock size={15} />;
+    case "action-tv": return <IconTv size={15} />;
+    default: return <IconActivity size={15} />;
   }
 }
 
@@ -63,25 +81,31 @@ export default function CommandPalette({
   const allItems = useMemo(() => {
     const items = [];
 
-    // Ações rápidas
     items.push(
-      { id: "nav-kiosk", type: "action", title: "Ir para Apontar atividade", subtitle: "Registro de atividade no chão de fábrica", onSelect: () => onNavigate?.("kiosk") },
-      { id: "nav-errors", type: "action", title: "Ir para Apontar erro", subtitle: "Registro de erro de separação", onSelect: () => onNavigate?.("errors-kiosk") },
-      { id: "nav-schedules", type: "action", title: "Ir para Agenda", subtitle: "Agendamentos de recebimento", onSelect: () => onNavigate?.("schedules") },
-      { id: "nav-conference", type: "action", title: "Ir para Conferência", subtitle: "Mesa de conferência de pedidos", onSelect: () => onNavigate?.("conference") },
-      { id: "nav-shortages", type: "action", title: "Ir para Faltas", subtitle: "Consulta de faltas de material", onSelect: () => onNavigate?.("shortages") },
-      { id: "nav-panel", type: "action", title: "Ir para Indicadores", subtitle: "Painel de métricas do admin", onSelect: () => onNavigate?.("panel") },
-      { id: "nav-manual", type: "action", title: "Ir para Lançamento manual", subtitle: "Digitar dados antigos", onSelect: () => onNavigate?.("manual") },
-      { id: "nav-team", type: "action", title: "Ir para Cadastros", subtitle: "Operadores, atividades, veículos", onSelect: () => onNavigate?.("team") },
-      { id: "nav-admin-master", type: "action", title: "Ir para Central de controle", subtitle: "Poderes totais do admin", onSelect: () => onNavigate?.("admin-master") },
-      { id: "nav-audit", type: "action", title: "Ir para Auditoria", subtitle: "Histórico de alterações", onSelect: () => onNavigate?.("audit") },
-      { id: "action-tv", type: "action", title: "Abrir Painel TV", subtitle: "Painel de exibição em nova aba", onSelect: () => window.open("/tv", "_blank") },
-      { id: "action-today", type: "action", title: "Filtrar Indicadores por Hoje", subtitle: "Aplica filtro de período rápido", onSelect: () => { onNavigate?.("panel"); onApplyFilter?.({ type: "hoje" }); } },
-      { id: "action-week", type: "action", title: "Filtrar Indicadores por Últimos 7 dias", subtitle: "Aplica filtro de período rápido", onSelect: () => { onNavigate?.("panel"); onApplyFilter?.({ type: "7dias" }); } },
-      { id: "action-month", type: "action", title: "Filtrar Indicadores por Este mês", subtitle: "Aplica filtro de período rápido", onSelect: () => { onNavigate?.("panel"); onApplyFilter?.({ type: "mes" }); } },
+      { id: "nav-kiosk", type: "action", actionKey: "nav-kiosk", title: "Ir para Apontar atividade", subtitle: "Registro de atividade no chão de fábrica", onSelect: () => onNavigate?.("kiosk") },
+      { id: "nav-errors", type: "action", actionKey: "nav-errors", title: "Ir para Apontar erro", subtitle: "Registro de erro de separação", onSelect: () => onNavigate?.("errors-kiosk") },
+      { id: "nav-schedules", type: "action", actionKey: "nav-schedules", title: "Ir para Agenda", subtitle: "Agendamentos de recebimento", onSelect: () => onNavigate?.("schedules") },
+      { id: "nav-conference", type: "action", actionKey: "nav-conference", title: "Ir para Conferência", subtitle: "Mesa de conferência de pedidos", onSelect: () => onNavigate?.("conference") },
+      { id: "nav-shortages", type: "action", actionKey: "nav-shortages", title: "Ir para Faltas", subtitle: "Consulta de faltas de material", onSelect: () => onNavigate?.("shortages") },
+      { id: "nav-rotation", type: "action", actionKey: "nav-rotation", title: "Ir para Rotação de tarefas", subtitle: "Limpezas e organizações", onSelect: () => onNavigate?.("rotation") },
+      { id: "nav-goals-dashboard", type: "action", actionKey: "nav-goals-dashboard", title: "Ir para Dashboard de metas", subtitle: "Progresso consolidado", onSelect: () => onNavigate?.("goals-dashboard") },
+      { id: "nav-stock-map", type: "action", actionKey: "nav-stock-map", title: "Ir para Mapa do estoque", subtitle: "Layout interativo do galpão", onSelect: () => onNavigate?.("stock-map") },
+      { id: "nav-panel", type: "action", actionKey: "nav-panel", title: "Ir para Indicadores", subtitle: "Painel de métricas do admin", onSelect: () => onNavigate?.("panel") },
+      { id: "nav-manual", type: "action", actionKey: "nav-manual", title: "Ir para Lançamento manual", subtitle: "Digitar dados antigos", onSelect: () => onNavigate?.("manual") },
+      { id: "nav-goals", type: "action", actionKey: "nav-goals", title: "Ir para Metas individuais", subtitle: "Configurar metas por operador", onSelect: () => onNavigate?.("goals") },
+      { id: "nav-admin-master", type: "action", actionKey: "nav-admin-master", title: "Ir para Central de controle", subtitle: "Poderes totais do admin", onSelect: () => onNavigate?.("admin-master") },
+      { id: "nav-csv-import", type: "action", actionKey: "nav-csv-import", title: "Ir para Importar CSV", subtitle: "Analisar planilhas externas", onSelect: () => onNavigate?.("csv-import") },
+      { id: "nav-fraud", type: "action", actionKey: "nav-fraud", title: "Ir para Detecção de fraude", subtitle: "Padrões suspeitos", onSelect: () => onNavigate?.("fraud") },
+      { id: "nav-reports-scheduler", type: "action", actionKey: "nav-reports-scheduler", title: "Ir para Export agendado", subtitle: "Envio automático de relatórios", onSelect: () => onNavigate?.("reports-scheduler") },
+      { id: "nav-team", type: "action", actionKey: "nav-team", title: "Ir para Cadastros", subtitle: "Operadores, atividades, veículos", onSelect: () => onNavigate?.("team") },
+      { id: "nav-sales-team", type: "action", actionKey: "nav-sales-team", title: "Ir para Equipe comercial", subtitle: "Líderes e vendedores", onSelect: () => onNavigate?.("sales-team") },
+      { id: "nav-audit", type: "action", actionKey: "nav-audit", title: "Ir para Auditoria", subtitle: "Histórico de alterações", onSelect: () => onNavigate?.("audit") },
+      { id: "action-tv", type: "action", actionKey: "action-tv", title: "Abrir Painel TV", subtitle: "Painel de exibição em nova aba", onSelect: () => window.open("/tv", "_blank") },
+      { id: "action-today", type: "action", actionKey: "nav-panel", title: "Filtrar Indicadores por Hoje", subtitle: "Aplica filtro de período rápido", onSelect: () => { onNavigate?.("panel"); onApplyFilter?.({ type: "hoje" }); } },
+      { id: "action-week", type: "action", actionKey: "nav-panel", title: "Filtrar Indicadores por Últimos 7 dias", subtitle: "Aplica filtro de período rápido", onSelect: () => { onNavigate?.("panel"); onApplyFilter?.({ type: "7dias" }); } },
+      { id: "action-month", type: "action", actionKey: "nav-panel", title: "Filtrar Indicadores por Este mês", subtitle: "Aplica filtro de período rápido", onSelect: () => { onNavigate?.("panel"); onApplyFilter?.({ type: "mes" }); } },
     );
 
-    // Operadores
     operators.forEach((op) => {
       items.push({
         id: `op-${op.code}`,
@@ -93,7 +117,6 @@ export default function CommandPalette({
       });
     });
 
-    // Pedidos
     const seenOrders = new Set();
     entries.forEach((e) => {
       if (!e.order_number) return;
@@ -235,7 +258,9 @@ export default function CommandPalette({
                           }}
                           onMouseEnter={() => setSelectedIndex(globalIdx)}
                         >
-                          <div className="cmd-item-icon"><ItemIcon type={item.type} /></div>
+                          <div className="cmd-item-icon">
+                            <ItemIcon type={item.type} actionKey={item.actionKey} />
+                          </div>
                           <div className="cmd-item-content">
                             <div className="cmd-item-title">{item.title}</div>
                             {item.subtitle && <div className="cmd-item-subtitle">{item.subtitle}</div>}
