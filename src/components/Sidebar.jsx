@@ -19,6 +19,7 @@ import {
   IconLogOut,
   IconChevronLeft,
   IconChevronRight,
+  IconChevronDown,
   IconRotateCcw,
   IconTarget,
   IconUpload,
@@ -31,9 +32,13 @@ import {
   IconTruck,
   IconLayers,
   IconDownload,
+  IconBuilding,
+  IconHistory,
 } from "./Icons";
 
 const STORAGE_KEY = "aponta_sidebar_collapsed";
+const SECTIONS_KEY = "aponta_sidebar_sections";
+const GROUPS_KEY = "aponta_sidebar_groups";
 
 const SECTIONS = [
   {
@@ -41,38 +46,62 @@ const SECTIONS = [
     items: [
       { key: "kiosk", label: "Apontar atividade", Icon: IconActivity },
       { key: "errors-kiosk", label: "Apontar erro", Icon: IconAlertTriangle },
-      { key: "schedules", label: "Agenda", Icon: IconCalendar },
       { key: "conference", label: "Conferência", Icon: IconClipboardCheck },
-      { key: "shortages", label: "Faltas", Icon: IconBox },
+      { key: "schedules", label: "Agenda", Icon: IconCalendar },
       { key: "checklist", label: "Checklist do CD", Icon: IconClipboardCheck },
-      { key: "equipment", label: "Equipamentos", Icon: IconTruck },
-      { key: "sales-query", label: "Líder da equipe", Icon: IconSearch },
       { key: "rotation", label: "Rotação de tarefas", Icon: IconRotateCcw },
-      { key: "goals-dashboard", label: "Dashboard de metas", Icon: IconTrendingUp },
-      { key: "stock-map", label: "Mapa do estoque", Icon: IconMapPin },
     ],
   },
   {
-    title: "Gestão",
+    title: "Análise",
     items: [
       { key: "executive", label: "Visão geral", Icon: IconTrendingUp },
       { key: "panel", label: "Indicadores", Icon: IconLayoutDashboard },
       { key: "turn-comparison", label: "Comparação de turnos", Icon: IconActivity },
-      { key: "supplier-shortages", label: "Faltas por fornecedor", Icon: IconPackage },
-      { key: "team-goals", label: "Metas por equipe", Icon: IconTarget },
+      {
+        key: "faltas-group",
+        label: "Faltas",
+        Icon: IconBox,
+        children: [
+          { key: "shortages", label: "Todas as faltas" },
+          { key: "supplier-shortages", label: "Por fornecedor", Icon: IconBuilding },
+        ],
+      },
+      { key: "stock-map", label: "Mapa do estoque", Icon: IconMapPin },
+      { key: "stock-map-history", label: "Histórico do mapa", Icon: IconHistory },
+    ],
+  },
+  {
+    title: "Pessoas",
+    items: [
+      {
+        key: "metas-group",
+        label: "Metas",
+        Icon: IconTarget,
+        children: [
+          { key: "goals", label: "Individuais" },
+          { key: "team-goals", label: "Por equipe" },
+          { key: "goals-dashboard", label: "Dashboard" },
+        ],
+      },
       { key: "achievements", label: "Conquistas", Icon: IconAward },
-      { key: "monthly-report", label: "Relatório mensal", Icon: IconDownload },
-      { key: "stock-map-history", label: "Histórico do mapa", Icon: IconLayers },
-      { key: "manual", label: "Lançamento manual", Icon: IconEdit3 },
-      { key: "goals", label: "Metas individuais", Icon: IconTarget },
+      { key: "sales-query", label: "Líder da equipe", Icon: IconSearch },
+      { key: "sales-team", label: "Equipe comercial", Icon: IconUsers },
+      { key: "team", label: "Cadastros", Icon: IconSettings },
+      { key: "equipment", label: "Equipamentos", Icon: IconTruck },
+    ],
+  },
+  {
+    title: "Sistema",
+    items: [
       { key: "admin-master", label: "Central de controle", Icon: IconStar },
+      { key: "manual", label: "Lançamento manual", Icon: IconEdit3 },
       { key: "csv-import", label: "Importar CSV", Icon: IconUpload },
+      { key: "monthly-report", label: "Relatório mensal", Icon: IconDownload },
       { key: "fraud", label: "Detecção de fraude", Icon: IconShield },
       { key: "reports-scheduler", label: "Export agendado", Icon: IconVolume2 },
       { key: "alert-settings", label: "Alertas Telegram", Icon: IconAlertCircle },
-      { key: "team", label: "Cadastros", Icon: IconSettings },
       { key: "sound-settings", label: "Sons do sistema", Icon: IconVolume2 },
-      { key: "sales-team", label: "Equipe comercial", Icon: IconUsers },
       { key: "audit", label: "Auditoria", Icon: IconClock },
     ],
   },
@@ -80,22 +109,47 @@ const SECTIONS = [
 
 export default function Sidebar({ tab, setTab, isAdmin, onLock }) {
   const { session, signOut } = useAuth();
+
   const [collapsed, setCollapsed] = useState(() => {
+    try { return localStorage.getItem(STORAGE_KEY) === "1"; } catch { return false; }
+  });
+
+  const [sectionOpen, setSectionOpen] = useState(() => {
     try {
-      return localStorage.getItem(STORAGE_KEY) === "1";
-    } catch {
-      return false;
-    }
+      const raw = localStorage.getItem(SECTIONS_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return SECTIONS.reduce((acc, s) => ({ ...acc, [s.title]: true }), {});
+  });
+
+  const [groupOpen, setGroupOpen] = useState(() => {
+    try {
+      const raw = localStorage.getItem(GROUPS_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return { "faltas-group": false, "metas-group": false };
   });
 
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, collapsed ? "1" : "0");
-    } catch {}
+    try { localStorage.setItem(STORAGE_KEY, collapsed ? "1" : "0"); } catch {}
   }, [collapsed]);
 
-  function toggle() {
-    setCollapsed((v) => !v);
+  useEffect(() => {
+    try { localStorage.setItem(SECTIONS_KEY, JSON.stringify(sectionOpen)); } catch {}
+  }, [sectionOpen]);
+
+  useEffect(() => {
+    try { localStorage.setItem(GROUPS_KEY, JSON.stringify(groupOpen)); } catch {}
+  }, [groupOpen]);
+
+  function toggle() { setCollapsed((v) => !v); }
+
+  function toggleSection(title) {
+    setSectionOpen((s) => ({ ...s, [title]: !s[title] }));
+  }
+
+  function toggleGroup(key) {
+    setGroupOpen((g) => ({ ...g, [key]: !g[key] }));
   }
 
   async function handleSignOut() {
@@ -105,13 +159,16 @@ export default function Sidebar({ tab, setTab, isAdmin, onLock }) {
 
   const email = session?.user?.email || "";
 
+  function groupHasActiveChild(item) {
+    if (!item.children) return false;
+    return item.children.some((c) => c.key === tab);
+  }
+
   return (
     <nav className={`sidebar ${collapsed ? "sidebar-collapsed" : ""}`}>
       <div className="sidebar-brand-row">
         <div className="sidebar-brand">
-          {!collapsed && (
-            <div className="sidebar-brand-text">Aponta CD</div>
-          )}
+          {!collapsed && <div className="sidebar-brand-text">Aponta CD</div>}
         </div>
         <button
           className="sidebar-toggle"
@@ -124,26 +181,125 @@ export default function Sidebar({ tab, setTab, isAdmin, onLock }) {
       </div>
 
       <div className="sidebar-nav">
-        {SECTIONS.map((section) => (
-          <div key={section.title} className="sidebar-section">
-            {!collapsed ? (
-              <div className="sidebar-section-title">{section.title}</div>
-            ) : (
-              <div className="sidebar-section-divider" />
-            )}
-            {section.items.map(({ key, label, Icon }) => (
-              <div
-                key={key}
-                className={`nav-item ${tab === key ? "active" : ""}`}
-                onClick={() => setTab(key)}
-                title={collapsed ? label : undefined}
-              >
-                <span className="nav-item-icon"><Icon size={18} /></span>
-                {!collapsed && <span className="nav-item-label">{label}</span>}
-              </div>
-            ))}
-          </div>
-        ))}
+        {SECTIONS.map((section) => {
+          const isOpen = sectionOpen[section.title] !== false;
+
+          return (
+            <div key={section.title} className="sidebar-section">
+              {!collapsed ? (
+                <button
+                  className="sidebar-section-header"
+                  onClick={() => toggleSection(section.title)}
+                  style={{
+                    width: "100%",
+                    background: "transparent",
+                    border: "none",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "10px 12px 6px 12px",
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                    color: "var(--text-faint)",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  <span>{section.title}</span>
+                  <IconChevronDown
+                    size={12}
+                    style={{
+                      transform: isOpen ? "rotate(0deg)" : "rotate(-90deg)",
+                      transition: "transform 150ms ease",
+                    }}
+                  />
+                </button>
+              ) : (
+                <div className="sidebar-section-divider" />
+              )}
+
+              {isOpen && section.items.map((item) => {
+                if (item.children) {
+                  const isGroupOpen = groupOpen[item.key];
+                  const hasActiveChild = groupHasActiveChild(item);
+                  const GroupIcon = item.Icon;
+
+                  return (
+                    <div key={item.key}>
+                      <div
+                        className={`nav-item ${hasActiveChild ? "active" : ""}`}
+                        onClick={() => {
+                          if (collapsed) {
+                            setTab(item.children[0].key);
+                          } else {
+                            toggleGroup(item.key);
+                          }
+                        }}
+                        title={collapsed ? item.label : undefined}
+                        style={{ cursor: "pointer" }}
+                      >
+                        <span className="nav-item-icon">
+                          {GroupIcon && <GroupIcon size={18} />}
+                        </span>
+                        {!collapsed && (
+                          <>
+                            <span className="nav-item-label">{item.label}</span>
+                            <IconChevronDown
+                              size={12}
+                              style={{
+                                marginLeft: "auto",
+                                transform: isGroupOpen ? "rotate(0deg)" : "rotate(-90deg)",
+                                transition: "transform 150ms ease",
+                                color: "var(--text-faint)",
+                              }}
+                            />
+                          </>
+                        )}
+                      </div>
+                      {!collapsed && isGroupOpen && (
+                        <div style={{ paddingLeft: 20 }}>
+                          {item.children.map((child) => {
+                            const ChildIcon = child.Icon;
+                            return (
+                              <div
+                                key={child.key}
+                                className={`nav-item ${tab === child.key ? "active" : ""}`}
+                                onClick={() => setTab(child.key)}
+                                style={{ fontSize: 13 }}
+                              >
+                                <span className="nav-item-icon">
+                                  {ChildIcon ? <ChildIcon size={15} /> : <span style={{ width: 15, display: "inline-block" }} />}
+                                </span>
+                                <span className="nav-item-label">{child.label}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+
+                const ItemIcon = item.Icon;
+                return (
+                  <div
+                    key={item.key}
+                    className={`nav-item ${tab === item.key ? "active" : ""}`}
+                    onClick={() => setTab(item.key)}
+                    title={collapsed ? item.label : undefined}
+                  >
+                    <span className="nav-item-icon">
+                      {ItemIcon && <ItemIcon size={18} />}
+                    </span>
+                    {!collapsed && <span className="nav-item-label">{item.label}</span>}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
 
         {isAdmin && (
           <div className="sidebar-section">
@@ -168,9 +324,7 @@ export default function Sidebar({ tab, setTab, isAdmin, onLock }) {
       <div className="sidebar-footer">
         {!collapsed && email && (
           <div className="sidebar-user" title={email}>
-            <div className="sidebar-user-avatar">
-              {email.charAt(0).toUpperCase()}
-            </div>
+            <div className="sidebar-user-avatar">{email.charAt(0).toUpperCase()}</div>
             <div className="sidebar-user-email">{email}</div>
           </div>
         )}
