@@ -4,8 +4,19 @@ import {
 } from "recharts";
 import { fmtDate, fmtDuration } from "../lib/format";
 import { mean } from "../lib/metrics";
+import {
+  IconTrendingUp,
+  IconZap,
+  IconActivity,
+  IconAlertTriangle,
+  IconPackage,
+  IconAward,
+  IconTarget,
+  IconClock,
+  IconClipboardCheck,
+} from "./Icons";
 
-const COLORS = ["#0a3d7a", "#00a0e4", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444", "#06b6d4", "#6b7280"];
+const COLORS = ["#1e3a5f", "#4a7ba7", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444", "#06b6d4", "#6b7280"];
 
 function fmtDateTime(iso) {
   const d = new Date(iso);
@@ -13,11 +24,6 @@ function fmtDateTime(iso) {
   const pad = (n) => String(n).padStart(2, "0");
   return `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
-
-// ============================================================
-// Perfil do operador — mostra métricas individuais + comparação
-// com a média do time.
-// ============================================================
 
 export default function OperatorProfile({
   operator,
@@ -27,28 +33,23 @@ export default function OperatorProfile({
   shortagesByEntry,
   onBack,
 }) {
-  // ---- Registros do operador (exclui dados de teste óbvios)
   const opEntries = useMemo(
     () => entries.filter((e) => e.operator_code === operator.code),
     [entries, operator.code]
   );
 
-  // ---- Registros de TODOS (pra calcular média do time)
   const allEntries = entries;
 
-  // ---- Erros que ele cometeu (é o error_operator_code)
   const errorsAsOffender = useMemo(
     () => separationErrors.filter((e) => e.error_operator_code === operator.code),
     [separationErrors, operator.code]
   );
 
-  // ---- Erros que ele reportou (operator_code)
   const errorsAsReporter = useMemo(
     () => separationErrors.filter((e) => e.operator_code === operator.code),
     [separationErrors, operator.code]
   );
 
-  // ---- Faltas que ele reportou
   const shortagesReported = useMemo(() => {
     const list = [];
     opEntries.forEach((e) => {
@@ -59,17 +60,11 @@ export default function OperatorProfile({
     return list;
   }, [opEntries, shortagesByEntry]);
 
-  // ============================================================
-  // MÉTRICAS INDIVIDUAIS
-  // ============================================================
   const totalSegundos = opEntries.reduce((s, e) => s + (e.duration_seconds || 0), 0);
   const tempoMedio = opEntries.length > 0 ? Math.round(totalSegundos / opEntries.length) : 0;
   const totalEncaixes = opEntries.filter((e) => e.is_encaixe).length;
   const totalComFalta = opEntries.filter((e) => (shortagesByEntry[e.id]?.length || 0) > 0).length;
 
-  // ============================================================
-  // MÉTRICAS DO TIME (pra comparação)
-  // ============================================================
   const teamByOperator = useMemo(() => {
     const map = {};
     allEntries.forEach((e) => {
@@ -100,9 +95,6 @@ export default function OperatorProfile({
     return valid.length > 0 ? Math.round(mean(valid.map((o) => o.count))) : 0;
   }, [teamByOperator]);
 
-  // ============================================================
-  // RANKING
-  // ============================================================
   const rankingByVolume = useMemo(
     () => [...teamByOperator].sort((a, b) => b.count - a.count),
     [teamByOperator]
@@ -116,9 +108,6 @@ export default function OperatorProfile({
   const posVolume = rankingByVolume.findIndex((o) => o.code === operator.code) + 1;
   const posSpeed = rankingBySpeed.findIndex((o) => o.code === operator.code) + 1;
 
-  // ============================================================
-  // ATIVIDADES QUE ELE MAIS FEZ
-  // ============================================================
   const byActivity = useMemo(() => {
     const map = {};
     opEntries.forEach((e) => {
@@ -131,9 +120,6 @@ export default function OperatorProfile({
       .sort((a, b) => b.count - a.count);
   }, [opEntries]);
 
-  // ============================================================
-  // ATIVIDADE NOS ÚLTIMOS 30 DIAS (gráfico de linha)
-  // ============================================================
   const last30Days = useMemo(() => {
     const today = new Date();
     today.setHours(23, 59, 59, 999);
@@ -166,9 +152,6 @@ export default function OperatorProfile({
 
   const daysWithActivity = last30Days.filter((d) => d.count > 0).length;
 
-  // ============================================================
-  // RENDER
-  // ============================================================
   const initials = operator.name
     .split(" ")
     .map((n) => n[0])
@@ -192,7 +175,8 @@ export default function OperatorProfile({
             {operator.role} · #{operator.code}
           </div>
           <div className="profile-badge">
-            📊 {opEntries.length} registros no período
+            <IconActivity size={13} />
+            {opEntries.length} registros no período
             {daysWithActivity > 0 && ` · ${daysWithActivity} dia${daysWithActivity > 1 ? "s" : ""} ativo${daysWithActivity > 1 ? "s" : ""} (30d)`}
           </div>
         </div>
@@ -254,12 +238,13 @@ export default function OperatorProfile({
 
       {/* Ranking + comparação com o time */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 20, marginBottom: 20 }}>
-        {/* Ranking por volume */}
         <div className="card">
-          <div className="card-title">🏆 Ranking por volume</div>
+          <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <IconAward size={16} /> Ranking por volume
+          </div>
           {posVolume > 0 ? (
             <>
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                 <div style={{ fontSize: 32, fontWeight: 700, color: "var(--accent)" }}>
                   {posVolume}º
                 </div>
@@ -274,7 +259,7 @@ export default function OperatorProfile({
               </div>
               {teamAvgRegistros > 0 && (
                 <div className="profile-compare">
-                  <span style={{ minWidth: 70 }}>
+                  <span style={{ minWidth: 80 }}>
                     {opEntries.length >= teamAvgRegistros ? "Acima da" : "Abaixo da"} média
                   </span>
                   <div className="profile-compare-bar">
@@ -296,12 +281,13 @@ export default function OperatorProfile({
           )}
         </div>
 
-        {/* Ranking por velocidade */}
         <div className="card">
-          <div className="card-title">⚡ Ranking por velocidade</div>
+          <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <IconZap size={16} /> Ranking por velocidade
+          </div>
           {posSpeed > 0 ? (
             <>
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                 <div style={{ fontSize: 32, fontWeight: 700, color: "var(--ok)" }}>
                   {posSpeed}º
                 </div>
@@ -316,7 +302,7 @@ export default function OperatorProfile({
               </div>
               {teamAvgMedia > 0 && (
                 <div className="profile-compare">
-                  <span style={{ minWidth: 70 }}>
+                  <span style={{ minWidth: 80 }}>
                     {tempoMedio <= teamAvgMedia ? "Mais rápido" : "Mais lento"}
                   </span>
                   <div className="profile-compare-bar">
@@ -335,16 +321,18 @@ export default function OperatorProfile({
             </>
           ) : (
             <p style={{ color: "var(--text-faint)", fontSize: 13 }}>
-              Precisa de pelo menos 3 registros pra entrar no ranking
+              Precisa de pelo menos 3 registros para entrar no ranking
             </p>
           )}
         </div>
       </div>
 
-      {/* Gráfico de atividade nos últimos 30 dias */}
+      {/* Gráfico 30 dias */}
       <div className="card" style={{ marginBottom: 20 }}>
-        <div className="card-title">📈 Atividade nos últimos 30 dias</div>
-        <ResponsiveContainer width="100%" height={200}>
+        <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <IconTrendingUp size={16} /> Atividade nos últimos 30 dias
+        </div>
+        <ResponsiveContainer width="100%" height={220}>
           <BarChart data={last30Days}>
             <CartesianGrid stroke="var(--border)" vertical={false} />
             <XAxis
@@ -354,14 +342,14 @@ export default function OperatorProfile({
             />
             <YAxis tick={{ fill: "var(--text-muted)", fontSize: 11 }} allowDecimals={false} />
             <Tooltip
-              contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", fontSize: 12, borderRadius: 8 }}
+              contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", fontSize: 12, borderRadius: 10 }}
               labelStyle={{ color: "var(--text)" }}
               formatter={(value, name) => [value, name === "count" ? "Registros" : "Minutos"]}
             />
-            <Bar dataKey="count" fill="var(--accent)" radius={[2, 2, 0, 0]} />
+            <Bar dataKey="count" fill="var(--accent)" radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
-        <p style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 10, marginBottom: 0 }}>
+        <p style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 12, marginBottom: 0 }}>
           Cada barra representa um dia. Total no período: {opEntries.filter((e) => {
             const d = new Date(e.start_time);
             const diff = (Date.now() - d.getTime()) / (1000 * 60 * 60 * 24);
@@ -372,18 +360,20 @@ export default function OperatorProfile({
 
       {/* Atividades que ele mais fez */}
       <div className="card" style={{ marginBottom: 20 }}>
-        <div className="card-title">🔧 Atividades que ele mais fez</div>
+        <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <IconActivity size={16} /> Atividades que ele mais fez
+        </div>
         {byActivity.length > 0 ? (
           <ResponsiveContainer width="100%" height={Math.max(180, byActivity.length * 36)}>
             <BarChart data={byActivity.slice(0, 10)} layout="vertical">
               <CartesianGrid stroke="var(--border)" horizontal={false} />
               <XAxis type="number" tick={{ fill: "var(--text-muted)", fontSize: 11 }} allowDecimals={false} />
-              <YAxis type="category" dataKey="name" tick={{ fill: "var(--text-muted)", fontSize: 11 }} width={140} />
+              <YAxis type="category" dataKey="name" tick={{ fill: "var(--text-muted)", fontSize: 11 }} width={150} />
               <Tooltip
-                contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", fontSize: 12, borderRadius: 8 }}
+                contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", fontSize: 12, borderRadius: 10 }}
                 labelStyle={{ color: "var(--text)" }}
               />
-              <Bar dataKey="count" radius={[0, 3, 3, 0]}>
+              <Bar dataKey="count" radius={[0, 4, 4, 0]}>
                 {byActivity.slice(0, 10).map((_, i) => (
                   <Cell key={i} fill={COLORS[i % COLORS.length]} />
                 ))}
@@ -395,7 +385,7 @@ export default function OperatorProfile({
         )}
 
         {byActivity.length > 0 && (
-          <table className="data-table" style={{ marginTop: 14 }}>
+          <table className="data-table" style={{ marginTop: 16 }}>
             <thead>
               <tr><th>Atividade</th><th>Registros</th><th>Tempo médio</th><th>Tempo total</th></tr>
             </thead>
@@ -416,7 +406,9 @@ export default function OperatorProfile({
       {/* Erros que ele cometeu */}
       {errorsAsOffender.length > 0 && (
         <div className="card" style={{ marginBottom: 20 }}>
-          <div className="card-title">🚨 Erros que ele cometeu ({errorsAsOffender.length})</div>
+          <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <IconAlertTriangle size={16} /> Erros que ele cometeu ({errorsAsOffender.length})
+          </div>
           <div style={{ overflowX: "auto" }}>
             <table className="data-table">
               <thead>
@@ -441,7 +433,7 @@ export default function OperatorProfile({
               </tbody>
             </table>
           </div>
-          <p style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 10, marginBottom: 0 }}>
+          <p style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 12, marginBottom: 0 }}>
             Mostrando os 30 mais recentes.
           </p>
         </div>
@@ -450,7 +442,9 @@ export default function OperatorProfile({
       {/* Faltas que ele reportou */}
       {shortagesReported.length > 0 && (
         <div className="card">
-          <div className="card-title">📦 Faltas que ele reportou ({shortagesReported.length})</div>
+          <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <IconPackage size={16} /> Faltas que ele reportou ({shortagesReported.length})
+          </div>
           <div style={{ overflowX: "auto" }}>
             <table className="data-table">
               <thead>
@@ -477,7 +471,7 @@ export default function OperatorProfile({
               </tbody>
             </table>
           </div>
-          <p style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 10, marginBottom: 0 }}>
+          <p style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 12, marginBottom: 0 }}>
             Mostrando as 30 mais recentes.
           </p>
         </div>
@@ -485,11 +479,13 @@ export default function OperatorProfile({
 
       {opEntries.length === 0 && errorsAsOffender.length === 0 && shortagesReported.length === 0 && (
         <div className="card" style={{ textAlign: "center", padding: "60px 20px" }}>
-          <div style={{ fontSize: 48, opacity: 0.4, marginBottom: 12 }}>📭</div>
+          <div style={{ color: "var(--text-faint)", marginBottom: 16, display: "flex", justifyContent: "center" }}>
+            <IconActivity size={48} strokeWidth={1} />
+          </div>
           <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text)" }}>
             Ainda não há dados para {operator.name}
           </div>
-          <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 6 }}>
+          <div style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 8 }}>
             Quando esse operador registrar atividades, os dados vão aparecer aqui.
           </div>
         </div>

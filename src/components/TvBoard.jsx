@@ -32,6 +32,8 @@ import {
   IconMaximize,
   IconMinimize,
   IconFilter,
+  IconSettings,
+  IconX,
   IconActivity,
 } from "./Icons";
 
@@ -122,6 +124,7 @@ export default function TvBoard() {
   const [activities, setActivities] = useState([]);
   const [now, setNow] = useState(Date.now());
   const [soundEnabled, setSoundEnabled] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const [conferenceQueue, setConferenceQueue] = useState([]);
   const [conferenceHistory, setConferenceHistory] = useState([]);
@@ -166,6 +169,20 @@ export default function TvBoard() {
     onChange();
     return () => document.removeEventListener("fullscreenchange", onChange);
   }, []);
+
+  // Fecha o menu ao clicar fora
+  useEffect(() => {
+    if (!menuOpen) return;
+    function handleClick(e) {
+      const menu = document.getElementById("tv-floating-menu");
+      const btn = document.getElementById("tv-menu-button");
+      if (menu && !menu.contains(e.target) && btn && !btn.contains(e.target)) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [menuOpen]);
 
   useEffect(() => {
     try { localStorage.setItem("tv_theme", theme); } catch {}
@@ -254,6 +271,7 @@ export default function TvBoard() {
 
   function enterFullscreen() {
     document.documentElement.requestFullscreen?.().catch(() => {});
+    setMenuOpen(false);
   }
   function exitFullscreen() {
     document.exitFullscreen?.().catch(() => {});
@@ -468,7 +486,7 @@ export default function TvBoard() {
         background: p.gradient,
         color: p.text,
         fontFamily: "'Inter', -apple-system, system-ui, sans-serif",
-        padding: "28px 36px",
+        padding: "28px 36px 100px 36px",
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
@@ -500,11 +518,16 @@ export default function TvBoard() {
           0%, 100% { transform: scale(1); opacity: 1; }
           50%      { transform: scale(1.02); opacity: 0.92; }
         }
+        @keyframes menuIn {
+          from { opacity: 0; transform: translateY(8px) scale(0.96); }
+          to   { opacity: 1; transform: translateY(0) scale(1); }
+        }
         .tv-row-enter { animation: slideIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }
         .tv-rank-enter { animation: fadeUp 0.4s cubic-bezier(0.22, 1, 0.36, 1) both; }
         .tv-pulse { animation: pulseDot 1.6s ease-in-out infinite; }
         .tv-alert { animation: pulseAlert 1.8s ease-in-out infinite; }
         .tv-mesa-alert { animation: pulseMesa 2s ease-in-out infinite; }
+        .tv-menu-enter { animation: menuIn 200ms cubic-bezier(0.22, 1, 0.36, 1); }
       `}</style>
 
       <div
@@ -941,76 +964,115 @@ export default function TvBoard() {
         </div>
       )}
 
-      <div style={{ position: "fixed", bottom: 20, right: 20, display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end", maxWidth: "calc(100% - 40px)" }}>
-        <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} style={btnStyle(p)} title="Alternar tema claro/escuro">
-          {theme === "dark" ? (
-            <>
-              <IconSun size={14} /> Claro
-            </>
-          ) : (
-            <>
-              <IconMoon size={14} /> Escuro
-            </>
-          )}
-        </button>
+      {/* Botão de configurações no canto — só este fica visível */}
+      <button
+        id="tv-menu-button"
+        onClick={() => setMenuOpen((v) => !v)}
+        style={{
+          position: "fixed",
+          bottom: 20,
+          right: 20,
+          width: 48,
+          height: 48,
+          borderRadius: 12,
+          background: menuOpen ? p.accent : p.surface,
+          color: menuOpen ? "#0a0e14" : p.textMuted,
+          border: `1px solid ${menuOpen ? p.accent : p.border}`,
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
+          transition: "all 150ms ease",
+          zIndex: 100,
+        }}
+        title={menuOpen ? "Fechar configurações" : "Abrir configurações"}
+        aria-label="Configurações"
+      >
+        {menuOpen ? <IconX size={20} /> : <IconSettings size={20} />}
+      </button>
 
-        <button onClick={() => setHideNames((v) => !v)} style={btnStyle(p, hideNames)} title="Esconder/mostrar nomes">
-          {hideNames ? (
-            <>
-              <IconEye size={14} /> Mostrar nomes
-            </>
-          ) : (
-            <>
-              <IconEyeOff size={14} /> Esconder nomes
-            </>
-          )}
-        </button>
-
-        <button onClick={() => setHiddenSessions((v) => !v)} style={btnStyle(p, hiddenSessions)} title="Esconder atividades até passarem do tempo limite">
-          <IconFilter size={14} />
-          {hiddenSessions ? "Mostrar todas" : "Só atrasadas"}
-        </button>
-
-        <button onClick={toggleSound} style={btnStyle(p, soundEnabled)} title="Ativar/desativar som de alerta">
-          {soundEnabled ? (
-            <>
-              <IconVolume2 size={14} /> Som ativado
-            </>
-          ) : (
-            <>
-              <IconVolumeX size={14} /> Som desativado
-            </>
-          )}
-        </button>
-
-        {isFullscreen ? (
-          <button onClick={exitFullscreen} style={btnStyle(p, true)} title="Sair da tela cheia (Esc também sai)">
-            <IconMinimize size={14} /> Sair da tela cheia
+      {/* Menu retrátil */}
+      {menuOpen && (
+        <div
+          id="tv-floating-menu"
+          className="tv-menu-enter"
+          style={{
+            position: "fixed",
+            bottom: 80,
+            right: 20,
+            background: p.surface,
+            border: `1px solid ${p.border}`,
+            borderRadius: 14,
+            padding: 10,
+            boxShadow: "0 12px 32px rgba(0,0,0,0.35)",
+            display: "flex",
+            flexDirection: "column",
+            gap: 6,
+            zIndex: 99,
+            minWidth: 220,
+          }}
+        >
+          <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} style={menuBtnStyle(p)}>
+            {theme === "dark" ? (
+              <><IconSun size={14} /> Tema claro</>
+            ) : (
+              <><IconMoon size={14} /> Tema escuro</>
+            )}
           </button>
-        ) : (
-          <button onClick={enterFullscreen} style={btnStyle(p)} title="Entrar em tela cheia">
-            <IconMaximize size={14} /> Tela cheia
+
+          <button onClick={() => setHideNames((v) => !v)} style={menuBtnStyle(p, hideNames)}>
+            {hideNames ? (
+              <><IconEye size={14} /> Mostrar nomes</>
+            ) : (
+              <><IconEyeOff size={14} /> Esconder nomes</>
+            )}
           </button>
-        )}
-      </div>
+
+          <button onClick={() => setHiddenSessions((v) => !v)} style={menuBtnStyle(p, hiddenSessions)}>
+            <IconFilter size={14} />
+            {hiddenSessions ? "Mostrar todas" : "Só atrasadas"}
+          </button>
+
+          <button onClick={toggleSound} style={menuBtnStyle(p, soundEnabled)}>
+            {soundEnabled ? (
+              <><IconVolume2 size={14} /> Som ativado</>
+            ) : (
+              <><IconVolumeX size={14} /> Som desativado</>
+            )}
+          </button>
+
+          {isFullscreen ? (
+            <button onClick={exitFullscreen} style={menuBtnStyle(p)}>
+              <IconMinimize size={14} /> Sair da tela cheia
+            </button>
+          ) : (
+            <button onClick={enterFullscreen} style={menuBtnStyle(p)}>
+              <IconMaximize size={14} /> Tela cheia
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
-function btnStyle(p, active = false) {
+function menuBtnStyle(p, active = false) {
   return {
-    background: active ? p.accent : p.surface,
+    background: active ? p.accent : "transparent",
     color: active ? "#0a0e14" : p.textMuted,
-    border: `1px solid ${active ? p.accent : p.border}`,
-    borderRadius: 10,
-    padding: "10px 16px",
-    fontSize: 12,
+    border: "none",
+    borderRadius: 8,
+    padding: "10px 14px",
+    fontSize: 12.5,
     cursor: "pointer",
     fontWeight: 600,
     fontFamily: "inherit",
     transition: "all 150ms ease",
-    display: "inline-flex",
+    display: "flex",
     alignItems: "center",
-    gap: 6,
+    gap: 8,
+    textAlign: "left",
+    width: "100%",
   };
 }

@@ -4,6 +4,7 @@ import { fmtDuration, fmtClock, fmtDate, shiftFor } from "../lib/format";
 import { getStationName, promptForStationName } from "../lib/station";
 import { playSuccess, playError, playKey } from "../utils/sound";
 import useKeyboardNav from "../hooks/useKeyboardNav";
+import { useTheme } from "../context/ThemeContext";
 import {
   IconActivity,
   IconClipboardCheck,
@@ -19,12 +20,15 @@ import {
   IconTrash,
   IconPlus,
   IconFlag,
+  IconSun,
+  IconMoon,
 } from "./Icons";
 
 const CODE_LENGTH = 3;
 const AUTO_RETURN_MS = 2200;
 const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 const TRANSFER_TYPES = ["AP", "ZN"];
+const KIOSK_THEME_KEY = "aponta_kiosk_theme";
 
 function shouldAskShortage(session, activities) {
   if (!session) return false;
@@ -53,6 +57,8 @@ function activityIcon(name) {
 }
 
 export default function Kiosk({ operators, activities, vehicles = [], refreshEntries }) {
+  const { resolvedTheme, setTheme } = useTheme();
+
   const [codeInput, setCodeInput] = useState("");
   const [loggedOperator, setLoggedOperator] = useState(null);
   const [session, setSession] = useState(null);
@@ -64,6 +70,13 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
   const [shake, setShake] = useState(false);
   const [confirmation, setConfirmation] = useState(null);
   const [noteInput, setNoteInput] = useState("");
+  const [localTheme, setLocalTheme] = useState(() => {
+    try {
+      return localStorage.getItem(KIOSK_THEME_KEY) || "auto";
+    } catch {
+      return "auto";
+    }
+  });
 
   const [orderFormActivity, setOrderFormActivity] = useState(null);
   const [orderFieldType, setOrderFieldType] = useState("pedido");
@@ -91,6 +104,31 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
   const finishModalOpenRef = useRef(false);
   const mainContainerRef = useRef(null);
   const modalRef = useRef(null);
+
+  // Aplica tema local do kiosk
+  useEffect(() => {
+    try {
+      localStorage.setItem(KIOSK_THEME_KEY, localTheme);
+    } catch {}
+
+    if (localTheme === "auto") {
+      // Não mexe, deixa o ThemeProvider cuidar
+      return;
+    }
+    // Força tema no HTML
+    const html = document.documentElement;
+    const previous = html.getAttribute("data-theme");
+    html.setAttribute("data-theme", localTheme === "dark" ? "dark" : "light");
+    return () => {
+      if (previous) html.setAttribute("data-theme", previous);
+      else html.removeAttribute("data-theme");
+    };
+  }, [localTheme]);
+
+  function cycleTheme() {
+    const next = localTheme === "auto" ? "dark" : localTheme === "dark" ? "light" : "auto";
+    setLocalTheme(next);
+  }
 
   function bump() {
     lastInteractionRef.current = Date.now();
@@ -536,6 +574,8 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
 
   const dots = Array.from({ length: CODE_LENGTH }, (_, i) => i < codeInput.length);
 
+  const themeIcon = localTheme === "dark" ? <IconMoon size={14} /> : localTheme === "light" ? <IconSun size={14} /> : <IconActivity size={14} />;
+
   return (
     <div className="kiosk-page" ref={mainContainerRef}>
       <header className="kiosk-header">
@@ -544,6 +584,14 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
         </div>
 
         <div className="kiosk-header-right">
+          <button
+            className="kiosk-header-station"
+            onClick={cycleTheme}
+            title={`Tema: ${localTheme === "auto" ? "automático" : localTheme === "dark" ? "escuro" : "claro"} (clique para alternar)`}
+          >
+            {themeIcon}
+            {localTheme === "auto" ? "Auto" : localTheme === "dark" ? "Escuro" : "Claro"}
+          </button>
           <div className="kiosk-header-clock">
             <div className="kiosk-header-time">{fmtClock(now)}</div>
             <div className="kiosk-header-date">{fmtDate(now)}</div>

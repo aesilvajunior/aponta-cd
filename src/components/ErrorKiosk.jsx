@@ -15,12 +15,16 @@ import {
   IconDelete,
   IconX,
   IconSearch,
+  IconActivity,
+  IconSun,
+  IconMoon,
 } from "./Icons";
 
 const CODE_LENGTH = 3;
 const AUTO_RETURN_MS = 2200;
 const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 const TRANSFER_ZONES = ["AP", "ZN"];
+const KIOSK_THEME_KEY = "aponta_kiosk_theme";
 
 function errorIcon(name) {
   const n = (name || "").toLowerCase();
@@ -42,6 +46,13 @@ export default function ErrorKiosk({ operators, errorTypes }) {
   const [confirmation, setConfirmation] = useState(null);
   const [now, setNow] = useState(Date.now());
   const [stationName, setStationNameState] = useState(getStationName());
+  const [localTheme, setLocalTheme] = useState(() => {
+    try {
+      return localStorage.getItem(KIOSK_THEME_KEY) || "auto";
+    } catch {
+      return "auto";
+    }
+  });
 
   const [orderType, setOrderType] = useState(null);
   const [orderNumber, setOrderNumber] = useState("");
@@ -57,6 +68,26 @@ export default function ErrorKiosk({ operators, errorTypes }) {
   const autoReturnTimeoutRef = useRef(null);
   const mainContainerRef = useRef(null);
   const modalRef = useRef(null);
+
+  // Aplica tema local do kiosk
+  useEffect(() => {
+    try {
+      localStorage.setItem(KIOSK_THEME_KEY, localTheme);
+    } catch {}
+    if (localTheme === "auto") return;
+    const html = document.documentElement;
+    const previous = html.getAttribute("data-theme");
+    html.setAttribute("data-theme", localTheme === "dark" ? "dark" : "light");
+    return () => {
+      if (previous) html.setAttribute("data-theme", previous);
+      else html.removeAttribute("data-theme");
+    };
+  }, [localTheme]);
+
+  function cycleTheme() {
+    const next = localTheme === "auto" ? "dark" : localTheme === "dark" ? "light" : "auto";
+    setLocalTheme(next);
+  }
 
   function bump() {
     lastInteractionRef.current = Date.now();
@@ -248,6 +279,7 @@ export default function ErrorKiosk({ operators, errorTypes }) {
   }
 
   const dots = Array.from({ length: CODE_LENGTH }, (_, i) => i < codeInput.length);
+  const themeIcon = localTheme === "dark" ? <IconMoon size={14} /> : localTheme === "light" ? <IconSun size={14} /> : <IconActivity size={14} />;
 
   return (
     <div className="kiosk-page" ref={mainContainerRef}>
@@ -257,6 +289,14 @@ export default function ErrorKiosk({ operators, errorTypes }) {
         </div>
 
         <div className="kiosk-header-right">
+          <button
+            className="kiosk-header-station"
+            onClick={cycleTheme}
+            title={`Tema: ${localTheme === "auto" ? "automático" : localTheme === "dark" ? "escuro" : "claro"} (clique para alternar)`}
+          >
+            {themeIcon}
+            {localTheme === "auto" ? "Auto" : localTheme === "dark" ? "Escuro" : "Claro"}
+          </button>
           <div className="kiosk-header-clock">
             <div className="kiosk-header-time">{fmtClock(now)}</div>
             <div className="kiosk-header-date">{fmtDate(now)}</div>
@@ -300,7 +340,7 @@ export default function ErrorKiosk({ operators, errorTypes }) {
               {["1", "2", "3", "4", "5", "6", "7", "8", "9"].map((d) => (
                 <button key={d} className="kiosk-key" onClick={() => handleDigit(d)}>{d}</button>
               ))}
-              <button className="kiosk-key kiosk-key-muted" onClick={handleBackspace}>
+              <button className="kiosk-key kiosk-key-muted" onClick={handleBackspace} aria-label="Apagar">
                 <IconDelete size={20} />
               </button>
               <button className="kiosk-key" onClick={() => handleDigit("0")}>0</button>
@@ -506,7 +546,7 @@ export default function ErrorKiosk({ operators, errorTypes }) {
                   </div>
                 ) : (
                   <p className="kiosk-form-empty">
-                    Nenhum tipo de erro cadastrado. Peça ao admin pra adicionar em "Cadastros".
+                    Nenhum tipo de erro cadastrado. Peça ao administrador para adicionar em "Cadastros".
                   </p>
                 )}
               </div>
