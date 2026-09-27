@@ -72,6 +72,7 @@ export default function CdChecklist({ operators, isAdmin }) {
       .on("postgres_changes", { event: "*", schema: "public", table: "cd_checklist_runs" }, loadRuns)
       .subscribe();
     return () => supabase.removeChannel(ch);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const currentItems = useMemo(
@@ -119,7 +120,6 @@ export default function CdChecklist({ operators, isAdmin }) {
     setLoggedOperator(op);
     setLoginError("");
     setCodeInput("");
-    // Cria ou recupera run
     if (!currentRun) {
       const { data, error: err } = await supabase
         .from("cd_checklist_runs")
@@ -178,7 +178,6 @@ export default function CdChecklist({ operators, isAdmin }) {
     await loadRuns();
   }
 
-  // ---- Edição de itens (admin) ----
   async function addItem() {
     const label = newItemLabel.trim();
     if (!label) return;

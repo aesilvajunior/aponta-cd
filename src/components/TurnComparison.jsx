@@ -10,7 +10,7 @@ function isManha(iso) {
   return h >= 6 && h < 14;
 }
 
-export default function TurnComparison({ entries, activities, separationErrors = [], shortagesByEntry = {} }) {
+export default function TurnComparison({ entries = [], activities = [], separationErrors = [], shortagesByEntry = {} }) {
   const [period, setPeriod] = useState("mes");
 
   const filtered = useMemo(() => {
@@ -58,8 +58,8 @@ export default function TurnComparison({ entries, activities, separationErrors =
       const listT = filtered.filter((e) => e.activity === a.name && !isManha(e.start_time));
       const avgM = listM.length > 0 ? Math.round(listM.reduce((s, e) => s + (e.duration_seconds || 0), 0) / listM.length) : 0;
       const avgT = listT.length > 0 ? Math.round(listT.reduce((s, e) => s + (e.duration_seconds || 0), 0) / listT.length) : 0;
-      return { name: a.name, Manhã: avgM, Tarde: avgT };
-    }).filter((x) => x.Manhã > 0 || x.Tarde > 0);
+      return { name: a.name, "Manhã": avgM, "Tarde": avgT };
+    }).filter((x) => x["Manhã"] > 0 || x["Tarde"] > 0);
   }, [filtered, activities]);
 
   function delta(m, t) {

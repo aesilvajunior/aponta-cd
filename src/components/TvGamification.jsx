@@ -2,9 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { supabase } from "../supabaseClient";
 import { fetchEntries } from "../lib/api";
 import { localISODate, todayLocalISODate, fmtDuration } from "../lib/format";
-import { IconTrophy, IconCrown, IconZap } from "./Icons";
-
-const STREAK_KEY = "aponta_streaks";
+import { IconCrown, IconZap } from "./Icons";
 
 export default function TvGamification({ palette: p, hideNames, displayName }) {
   const [entries, setEntries] = useState([]);
@@ -38,7 +36,6 @@ export default function TvGamification({ palette: p, hideNames, displayName }) {
       .map((o) => ({ ...o, avg: o.count > 0 ? o.totalSec / o.count : 0 }))
       .filter((o) => o.count >= 3)
       .sort((a, b) => {
-        // score: volume * peso + velocidade inversa
         const scoreA = a.count * 100 - a.avg * 0.1;
         const scoreB = b.count * 100 - b.avg * 0.1;
         return scoreB - scoreA;
@@ -47,7 +44,6 @@ export default function TvGamification({ palette: p, hideNames, displayName }) {
   }, [entries]);
 
   const streak = useMemo(() => {
-    // Calcula dias consecutivos (até hoje) em que cada operador bateu pelo menos 5 registros
     const byDay = {};
     entries.forEach((e) => {
       const d = localISODate(e.start_time);
@@ -59,7 +55,6 @@ export default function TvGamification({ palette: p, hideNames, displayName }) {
     const streakByOp = {};
 
     days.forEach((d, idx) => {
-      // Considera apenas dias consecutivos a partir do mais recente
       if (idx > 0) {
         const prev = new Date(days[idx - 1] + "T12:00:00");
         const cur = new Date(d + "T12:00:00");
@@ -75,7 +70,6 @@ export default function TvGamification({ palette: p, hideNames, displayName }) {
       });
     });
 
-    // Busca nomes
     const nameByCode = {};
     entries.forEach((e) => { if (!nameByCode[e.operator_code]) nameByCode[e.operator_code] = e.operator_name; });
 
@@ -84,6 +78,8 @@ export default function TvGamification({ palette: p, hideNames, displayName }) {
       .sort((a, b) => b.streak - a.streak)
       .slice(0, 3);
   }, [entries]);
+
+  const display = (name) => hideNames ? displayName(name) : name;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -103,7 +99,7 @@ export default function TvGamification({ palette: p, hideNames, displayName }) {
             <div style={{ fontSize: 40 }}>🏆</div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 18, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                {hideNames ? displayName(operadorDoDia.name) : operadorDoDia.name}
+                {display(operadorDoDia.name)}
               </div>
               <div style={{ fontSize: 12.5, color: p.textMuted, marginTop: 4 }}>
                 {operadorDoDia.count} registros · média {fmtDuration(Math.round(operadorDoDia.avg))}
@@ -123,7 +119,7 @@ export default function TvGamification({ palette: p, hideNames, displayName }) {
               <span style={{ fontSize: 13, width: 20, fontWeight: 700, color: p.accent }}>{i + 1}º</span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 12.5, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {hideNames ? displayName(s.name) : s.name}
+                  {display(s.name)}
                 </div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 4 }}>

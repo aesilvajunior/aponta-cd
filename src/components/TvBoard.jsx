@@ -7,8 +7,10 @@ import {
   fetchConferenceQueue,
   fetchConferenceHistory,
 } from "../lib/api";
+import { playEventSound } from "../lib/sounds";
 import { fmtClock, fmtDate, fmtDuration, todayLocalISODate, localISODate } from "../lib/format";
 import { useTheme } from "../context/ThemeContext";
+import TvGamification from "./TvGamification";
 import {
   IconPackage,
   IconZap,
@@ -285,18 +287,20 @@ export default function TvBoard() {
   const activityAlerts = useMemo(() => {
     return filteredSessions
       .map((s) => {
-        const elapsed = Math.round((now - new Date(s.start_time).getTime()) / 1000);
+        const pausedSecs = s.total_paused_seconds || 0;
+        const elapsed = Math.max(0, Math.round((now - new Date(s.start_time).getTime()) / 1000) - pausedSecs);
         const cfg = activities.find((a) => a.name === s.activity);
         let threshold = alertThreshold || DEFAULT_ALERT_SECONDS;
         if (cfg?.target_seconds) threshold = cfg.target_seconds;
-        return { ...s, elapsed, threshold, isLate: elapsed > threshold };
+        return { ...s, elapsed, threshold, isLate: elapsed > threshold && !s.paused_at };
       })
       .filter((s) => s.isLate);
   }, [filteredSessions, activities, alertThreshold, now]);
 
   const staleSessions = useMemo(() => {
     return filteredSessions.filter((s) => {
-      const elapsed = Math.round((now - new Date(s.start_time).getTime()) / 1000);
+      const pausedSecs = s.total_paused_seconds || 0;
+      const elapsed = Math.max(0, Math.round((now - new Date(s.start_time).getTime()) / 1000) - pausedSecs);
       return elapsed > STALE_OPERATOR_SECONDS;
     });
   }, [filteredSessions, now]);
@@ -304,7 +308,8 @@ export default function TvBoard() {
   const visibleSessions = useMemo(() => {
     if (!hiddenSessions) return filteredSessions;
     return filteredSessions.filter((s) => {
-      const elapsed = Math.round((now - new Date(s.start_time).getTime()) / 1000);
+      const pausedSecs = s.total_paused_seconds || 0;
+      const elapsed = Math.max(0, Math.round((now - new Date(s.start_time).getTime()) / 1000) - pausedSecs);
       const cfg = activities.find((a) => a.name === s.activity);
       let threshold = alertThreshold || DEFAULT_ALERT_SECONDS;
       if (cfg?.target_seconds) threshold = cfg.target_seconds;
@@ -313,27 +318,7 @@ export default function TvBoard() {
   }, [filteredSessions, hiddenSessions, activities, alertThreshold, now]);
 
   function playAlertBeep() {
-    try {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.frequency.value = 880;
-      gain.gain.value = 0.22;
-      osc.start();
-      osc.stop(ctx.currentTime + 0.35);
-      setTimeout(() => {
-        try {
-          const c2 = new (window.AudioContext || window.webkitAudioContext)();
-          const o2 = c2.createOscillator();
-          const g2 = c2.createGain();
-          o2.connect(g2); g2.connect(c2.destination);
-          o2.frequency.value = 880; g2.gain.value = 0.22;
-          o2.start(); o2.stop(c2.currentTime + 0.35);
-        } catch {}
-      }, 400);
-    } catch {}
+    playEventSound("sound_late_activity");
   }
 
   function toggleSound() {
@@ -635,7 +620,10 @@ export default function TvBoard() {
                 const isNew = !seenSessions.current.has(s.operator_code);
                 const isAlert = alertIds.has(s.operator_code);
                 const isStale = staleIds.has(s.operator_code);
-                const accentColor = isStale ? p.warning : isAlert ? p.danger : s.is_encaixe ? p.warning : p.accent;
+                const isPaused = !!s.paused_at;
+                const accentColor = isPaused ? p.textMuted : isStale ? p.warning : isAlert ? p.danger : s.is_encaixe ? p.warning : p.accent;
+                const pausedSecs = s.total_paused_seconds || 0;
+                const elapsedLive = Math.max(0, Math.round((now - new Date(s.start_time).getTime()) / 1000) - pausedSecs);
                 return (
                   <div
                     key={s.operator_code}
@@ -651,11 +639,12 @@ export default function TvBoard() {
                       position: "relative",
                       overflow: "hidden",
                       animationDelay: isNew ? `${i * 0.05}s` : "0s",
+                      opacity: isPaused ? 0.85 : 1,
                     }}
                   >
                     <div style={{ position: "absolute", top: 0, left: 0, bottom: 0, width: 4, background: accentColor }} />
                     <div
-                      className="tv-pulse"
+                      className={isPaused ? "" : "tv-pulse"}
                       style={{
                         width: 10, height: 10, borderRadius: "50%",
                         background: accentColor, flexShrink: 0,
@@ -677,7 +666,12 @@ export default function TvBoard() {
                             <IconZap size={10} /> ENCAIXE
                           </span>
                         )}
-                        {isAlert && (
+                        {isPaused && (
+                          <span style={{ background: `${p.textMuted}33`, color: p.textMuted, padding: "2px 8px", borderRadius: 4, fontSize: 10, fontWeight: 700, letterSpacing: "0.04em" }}>
+                            ⏸ PAUSADO
+                          </span>
+                        )}
+                        {isAlert && !isPaused && (
                           <span style={{ background: `${p.danger}33`, color: p.danger, padding: "2px 8px", borderRadius: 4, fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", display: "inline-flex", alignItems: "center", gap: 3 }}>
                             <IconAlertTriangle size={10} /> DEMORADA
                           </span>
@@ -707,14 +701,15 @@ export default function TvBoard() {
                         style={{
                           fontFamily: "'JetBrains Mono', monospace",
                           fontSize: 20, fontWeight: 600,
-                          color: isAlert ? p.danger : isStale ? p.warning : p.text,
+                          color: isPaused ? p.textMuted : isAlert ? p.danger : isStale ? p.warning : p.text,
                           letterSpacing: "-0.02em",
                         }}
                       >
-                        {timeAgo(s.start_time, now)}
+                        {timeAgo(s.start_time, now - pausedSecs * 1000)}
                       </div>
                       <div style={{ fontSize: 11, color: p.textMuted, marginTop: 3 }}>
                         início {fmtClock(s.start_time)}
+                        {pausedSecs > 0 && ` · pausado ${fmtDuration(pausedSecs)}`}
                       </div>
                     </div>
                   </div>
@@ -836,6 +831,8 @@ export default function TvBoard() {
               </div>
             )}
           </div>
+
+          <TvGamification palette={p} hideNames={hideNames} displayName={displayName} />
 
           {conferenceRanking.length > 0 && (
             <div style={{ background: p.surface, border: `1px solid ${p.border}`, borderRadius: 14, padding: "18px 20px" }}>
@@ -964,7 +961,7 @@ export default function TvBoard() {
         </div>
       )}
 
-      {/* Botão de configurações no canto — só este fica visível */}
+      {/* Botão de configurações no canto */}
       <button
         id="tv-menu-button"
         onClick={() => setMenuOpen((v) => !v)}

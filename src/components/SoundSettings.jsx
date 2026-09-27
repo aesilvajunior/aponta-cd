@@ -37,6 +37,7 @@ export default function SoundSettings() {
       .on("postgres_changes", { event: "*", schema: "public", table: "notification_sounds" }, load)
       .subscribe();
     return () => supabase.removeChannel(ch);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function change(key, value) {
@@ -60,53 +61,53 @@ export default function SoundSettings() {
   }
 
   return (
-    <div className="card" style={{ marginBottom: 20 }}>
-      <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <IconVolume2 size={16} /> Sons do sistema
-      </div>
-      <p style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: -4, marginBottom: 16 }}>
+    <div>
+      <h1 className="page-title">Sons do sistema</h1>
+      <p className="page-sub">
         Cada tipo de evento pode ter um som diferente. Clique no som para ouvir uma prévia.
       </p>
 
-      {loading ? (
-        <div className="schedule-empty">Carregando...</div>
-      ) : (
-        <>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14 }}>
-            {Object.entries(EVENT_LABELS).map(([key, label]) => (
-              <div key={key}>
-                <label className="schedule-modal-label">{label}</label>
-                <select
-                  className="field"
-                  style={{ width: "100%" }}
-                  value={prefs[key] || "beep"}
-                  onChange={(e) => change(key, e.target.value)}
-                  disabled={saving}
-                >
-                  {SOUND_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-              </div>
-            ))}
-          </div>
+      <div className="card" style={{ maxWidth: 720 }}>
+        {loading ? (
+          <div className="schedule-empty">Carregando...</div>
+        ) : (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 14 }}>
+              {Object.entries(EVENT_LABELS).map(([key, label]) => (
+                <div key={key}>
+                  <label className="schedule-modal-label">{label}</label>
+                  <select
+                    className="field"
+                    style={{ width: "100%" }}
+                    value={prefs[key] || "beep"}
+                    onChange={(e) => change(key, e.target.value)}
+                    disabled={saving}
+                  >
+                    {SOUND_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
 
-          {error && (
-            <p style={{ color: "var(--danger)", fontSize: 12.5, marginTop: 14, marginBottom: 0 }}>
-              {error}
-            </p>
-          )}
+            {error && (
+              <p style={{ color: "var(--danger)", fontSize: 12.5, marginTop: 14, marginBottom: 0 }}>
+                {error}
+              </p>
+            )}
 
-          <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
-            <button className="btn-small btn-excel" onClick={save} disabled={saving}>
-              {saved ? <><IconCheck size={14} /> Salvo</> : saving ? "Salvando..." : "Salvar preferências"}
-            </button>
-            <button className="btn-small" onClick={load} disabled={saving}>
-              <IconRefresh size={14} /> Recarregar
-            </button>
-          </div>
-        </>
-      )}
+            <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
+              <button className="btn-small btn-excel" onClick={save} disabled={saving}>
+                {saved ? <><IconCheck size={14} /> Salvo</> : saving ? "Salvando..." : "Salvar preferências"}
+              </button>
+              <button className="btn-small" onClick={load} disabled={saving}>
+                <IconRefresh size={14} /> Recarregar
+              </button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }

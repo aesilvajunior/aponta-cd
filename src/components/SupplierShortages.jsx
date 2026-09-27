@@ -38,6 +38,7 @@ export default function SupplierShortages() {
       .on("postgres_changes", { event: "*", schema: "public", table: "entry_shortages" }, load)
       .subscribe();
     return () => supabase.removeChannel(ch);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const entryById = useMemo(() => {
@@ -46,7 +47,6 @@ export default function SupplierShortages() {
     return m;
   }, [entries]);
 
-  // Mapa: número de NF -> fornecedor (via schedules)
   const supplierByInvoice = useMemo(() => {
     const m = {};
     schedules.forEach((s) => {
