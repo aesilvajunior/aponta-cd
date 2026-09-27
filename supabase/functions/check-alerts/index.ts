@@ -1,0 +1,119 @@
+// @ts-ignore
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+// @ts-ignore
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+const SERVICE_ROLE_KEY = Deno.env.get("SERVICE_ROLE_KEY")!;
+const WHATSAPP_TOKEN = Deno.env.get("WHATSAPP_TOKEN") || "";
+const WHATSAPP_PHONE_ID = Deno.env.get("WHATSAPP_PHONE_ID") || "";
+
+async function sendWhatsApp(to: string, message: string) {
+  if (!WHATSAPP_TOKEN || !WHATSAPP_PHONE_ID) return { ok: false, error: "sem token" };
+  const url = `https://graph.facebook.com/v20.0/${WHATSAPP_PHONE_ID}/messages`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      messaging_product: "whatsapp",
+      to,
+      type: "text",
+      text: { body: message },
+    }),
+  });
+  return { ok: res.ok };
+}
+
+serve(async () => {
+  const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY);
+  const now = Date.now();
+
+  const { data: settings } = await supabase
+    .from("alert_settings")
+    .select("*")
+    .eq("id", 1)
+    .maybeSingle();
+
+  if (!settings?.whatsapp_enabled || !settings?.whatsapp_number) {
+    return new Response(JSON.stringify({ skipped: "alertas desativados" }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const { data: activities } = await supabase
+    .from("activities")
+    .select("name, target_seconds")
+    .eq("active", true);
+
+  const { data: sessions } = await supabase
+    .from("active_sessions")
+    .select("*")
+    .is("paused_at", null);
+
+  const activityMap: Record<string, any> = {};
+  (activities || []).forEach((a: any) => { activityMap[a.name] = a; });
+
+  const alertsToSend: { alertType: string; message: string; payload: any }[] = [];
+
+  // 1) Atividades muito atrasadas
+  (sessions || []).forEach((s: any) => {
+    const pausedSecs = s.total_paused_seconds || 0;
+    const elapsed = Math.max(0, Math.round((now - new Date(s.start_time).getTime()) / 1000) - pausedSecs);
+    const cfg = activityMap[s.activity];
+    const threshold = cfg?.target_seconds || 1800;
+    const multiplier = settings.alert_late_multiplier || 3;
+    if (elapsed > threshold * multiplier) {
+      alertsToSend.push({
+        alertType: "late_activity",
+        message: `⚠️ Atividade muito atrasada\n${s.operator_name} — ${s.activity}\nTempo: ${Math.round(elapsed / 60)} min (meta: ${Math.round(threshold / 60)} min)`,
+        payload: { operator_code: s.operator_code, activity: s.activity, elapsed },
+      });
+    }
+  });
+
+  // 2) Mesa acumulada
+  const { data: waiting } = await supabase
+    .from("conference_queue")
+    .select("id")
+    .eq("status", "aguardando");
+  const waitingCount = (waiting || []).length;
+  const mesaThreshold = settings.alert_mesa_threshold || 10;
+  if (waitingCount >= mesaThreshold) {
+    alertsToSend.push({
+      alertType: "mesa_acumulada",
+      message: `🔴 Mesa de conferência com ${waitingCount} pedidos aguardando. Reforce a equipe!`,
+      payload: { waitingCount },
+    });
+  }
+
+  // 3) Sessões "esquecidas" (abertas há muito tempo)
+  const missingHours = settings.alert_missing_hours || 4;
+  (sessions || []).forEach((s: any) => {
+    const elapsedHours = (now - new Date(s.start_time).getTime()) / (1000 * 60 * 60);
+    if (elapsedHours > missingHours) {
+      alertsToSend.push({
+        alertType: "missing_operator",
+        message: `👻 Sessão esquecida\n${s.operator_name} — ${s.activity}\nAberta há ${elapsedHours.toFixed(1)}h`,
+        payload: { operator_code: s.operator_code, elapsedHours },
+      });
+    }
+  });
+
+  // Envia cada um
+  let sent = 0;
+  for (const alert of alertsToSend) {
+    const res = await sendWhatsApp(settings.whatsapp_number, alert.message);
+    await supabase.from("alert_log").insert({
+      alert_type: alert.alertType,
+      payload: alert.payload,
+      success: res.ok,
+      error_message: res.ok ? null : res.error,
+    });
+    if (res.ok) sent++;
+  }
+
+  return new Response(
+    JSON.stringify({ checked: (sessions || []).length, alertsSent: sent }),
+    { headers: { "Content-Type": "application/json" } }
+  );
+});

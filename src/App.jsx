@@ -45,6 +45,16 @@ import ReportsScheduler from "./components/ReportsScheduler";
 import StockMap from "./components/StockMap";
 import PushSetup from "./components/PushSetup";
 import LoginScreen from "./components/LoginScreen";
+import CdChecklist from "./components/CdChecklist";
+import TurnComparison from "./components/TurnComparison";
+import SupplierShortages from "./components/SupplierShortages";
+import SoundSettings from "./components/SoundSettings";
+import AlertSettings from "./components/AlertSettings";
+import TeamGoals from "./components/TeamGoals";
+import Achievements from "./components/Achievements";
+import EquipmentManager from "./components/EquipmentManager";
+import StockMapHistory from "./components/StockMapHistory";
+import MonthlyReport from "./components/MonthlyReport";
 import {
   DEFAULT_OPERATORS,
   DEFAULT_ACTIVITIES,
@@ -80,7 +90,6 @@ export default function App() {
 
   const alertedRef = useRef(new Set());
 
-  // Registra SW uma vez
   useEffect(() => {
     if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
     navigator.serviceWorker.register("/sw.js").catch(() => {});
@@ -219,7 +228,6 @@ export default function App() {
       supabase.channel("shortages-changes").on("postgres_changes", { event: "*", schema: "public", table: "entry_shortages" }, reloadShortages).subscribe(),
     ];
 
-    // Notificação local pra nova conferência
     const confChannel = supabase
       .channel("notify-conference")
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "conference_queue" }, (payload) => {
@@ -234,13 +242,13 @@ export default function App() {
     };
   }, [session, loadOperators, loadActivities, loadErrorTypes, loadVehicles, loadAdminConfig, loadEntries, loadActiveSessions, loadSeparationErrors, loadShortages, loadAll]);
 
-  // Notificação de atividade demorada
   useEffect(() => {
     if (!isPushEnabled()) return;
     const iv = setInterval(() => {
       const now = Date.now();
       activeSessions.forEach((s) => {
-        const elapsed = Math.round((now - new Date(s.start_time).getTime()) / 1000);
+        const pausedSecs = s.total_paused_seconds || 0;
+        const elapsed = Math.max(0, Math.round((now - new Date(s.start_time).getTime()) / 1000) - pausedSecs);
         const cfg = activities.find((a) => a.name === s.activity);
         const threshold = cfg?.target_seconds || alertThreshold || DEFAULT_ALERT_THRESHOLD;
         if (elapsed > threshold && !alertedRef.current.has(s.operator_code)) {
@@ -251,7 +259,7 @@ export default function App() {
           alertedRef.current.delete(s.operator_code);
         }
       });
-    }, 60 * 1000); // checa a cada minuto
+    }, 60 * 1000);
     return () => clearInterval(iv);
   }, [activeSessions, activities, alertThreshold]);
 
@@ -299,8 +307,20 @@ export default function App() {
 
   const adminTabs = [
     "executive", "panel", "team", "manual", "audit", "sales-team",
-    "admin-master", "goals", "csv-import", "fraud", "reports-scheduler", "stock-map-edit",
+    "admin-master", "goals", "csv-import", "fraud", "reports-scheduler",
+    "stock-map-edit", "turn-comparison", "supplier-shortages", "sound-settings",
+    "alert-settings", "team-goals", "achievements", "equipment",
+    "stock-map-history", "monthly-report",
   ];
+
+  const shortagesByEntry = (() => {
+    const m = {};
+    (shortages || []).forEach((s) => {
+      if (!m[s.entry_id]) m[s.entry_id] = [];
+      m[s.entry_id].push(s);
+    });
+    return m;
+  })();
 
   return (
     <div className="app-shell">
@@ -347,6 +367,12 @@ export default function App() {
           {tab === "shortages" && (
             <ShortagePanel />
           )}
+          {tab === "checklist" && (
+            <CdChecklist operators={operators} isAdmin={isAdmin} />
+          )}
+          {tab === "equipment" && (
+            <EquipmentManager />
+          )}
           {tab === "sales-query" && (
             <SalesTeamQuery />
           )}
@@ -386,6 +412,35 @@ export default function App() {
               onOpenAdminMaster={handleOpenAdminMaster}
             />
           )}
+          {tab === "turn-comparison" && isAdmin && (
+            <TurnComparison
+              entries={entries}
+              activities={activities}
+              separationErrors={separationErrors}
+              shortagesByEntry={shortagesByEntry}
+            />
+          )}
+          {tab === "supplier-shortages" && isAdmin && (
+            <SupplierShortages />
+          )}
+          {tab === "team-goals" && isAdmin && (
+            <TeamGoals />
+          )}
+          {tab === "achievements" && isAdmin && (
+            <Achievements operators={operators} />
+          )}
+          {tab === "equipment" && isAdmin && (
+            <EquipmentManager />
+          )}
+          {tab === "stock-map-history" && isAdmin && (
+            <StockMapHistory />
+          )}
+          {tab === "monthly-report" && isAdmin && (
+            <MonthlyReport />
+          )}
+          {tab === "alert-settings" && isAdmin && (
+            <AlertSettings />
+          )}
           {tab === "manual" && isAdmin && (
             <ManualEntry operators={operators} activities={activities} refreshEntries={loadEntries} />
           )}
@@ -394,6 +449,9 @@ export default function App() {
           )}
           {tab === "team" && isAdmin && (
             <TeamManager operators={operators} activities={activities} errorTypes={errorTypes} vehicles={vehicles} adminPin={adminPin} alertThreshold={alertThreshold} refreshConfig={loadAll} />
+          )}
+          {tab === "sound-settings" && isAdmin && (
+            <SoundSettings />
           )}
           {tab === "audit" && isAdmin && (
             <AuditLog />

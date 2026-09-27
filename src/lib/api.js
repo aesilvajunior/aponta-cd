@@ -259,7 +259,7 @@ export async function fetchActiveSessionFor(operatorCode) {
 export async function startSession({
   operatorCode, operatorName, activity, orderNumber, customerName,
   transferType, transferUrgent, transferNumber, vehicle, plate,
-  station, isEncaixe, supplierName, invoiceNumber,
+  station, isEncaixe, supplierName, invoiceNumber, isDupla = false,
 }) {
   const payload = {
     operator_code: operatorCode,
@@ -277,6 +277,7 @@ export async function startSession({
     is_encaixe: isEncaixe || false,
     supplier_name: supplierName || null,
     invoice_number: invoiceNumber || null,
+    is_dupla: !!isDupla,
   };
 
   const { data, error } = await supabase
@@ -292,8 +293,7 @@ export async function startSession({
   return { data, error };
 }
 
-// NOVA assinatura: aceita pausedSeconds (opcional, default 0)
-export async function finishSession(session, durationSeconds, shift, note, isEncaixe, pausedSeconds = 0) {
+export async function finishSession(session, durationSeconds, shift, note, isEncaixe, pausedSeconds = 0, partner = null) {
   const entryPayload = {
     operator_code: session.operator_code,
     operator_name: session.operator_name,
@@ -316,6 +316,8 @@ export async function finishSession(session, durationSeconds, shift, note, isEnc
     manual_entry: false,
     note: note || null,
     paused_seconds: pausedSeconds || 0,
+    partner_code: partner?.code || null,
+    partner_name: partner?.name || null,
   };
 
   const { data: entry, error } = await supabase
@@ -326,6 +328,8 @@ export async function finishSession(session, durationSeconds, shift, note, isEnc
 
   if (error) return { error };
 
+  // Apaga parceiros da sessão antes de encerrar
+  await supabase.from("session_partners").delete().eq("session_operator_code", session.operator_code);
   await supabase.from("active_sessions").delete().eq("operator_code", session.operator_code);
 
   return { data: entry, error: null };
@@ -378,12 +382,14 @@ export async function forceFinishActiveSession(session, note = "") {
 
   if (error) return { error };
 
+  await supabase.from("session_partners").delete().eq("session_operator_code", session.operator_code);
   await supabase.from("active_sessions").delete().eq("operator_code", session.operator_code);
 
   return { data: entry, error: null };
 }
 
 export async function cancelActiveSession(operatorCode) {
+  await supabase.from("session_partners").delete().eq("session_operator_code", operatorCode);
   return supabase.from("active_sessions").delete().eq("operator_code", operatorCode);
 }
 
@@ -392,6 +398,30 @@ function getShiftFor(iso) {
   const h = d.getHours();
   if (h >= 6 && h < 14) return "Manhã";
   return "Tarde";
+}
+
+// ============================================================
+// SESSION PARTNERS (APONTAMENTO EM DUPLA)
+// ============================================================
+export async function fetchSessionPartners(sessionOperatorCode) {
+  const { data, error } = await supabase
+    .from("session_partners")
+    .select("*")
+    .eq("session_operator_code", sessionOperatorCode)
+    .order("added_at");
+  return { data: data || [], error };
+}
+
+export async function addSessionPartner(sessionOperatorCode, partnerCode, partnerName) {
+  return supabase.from("session_partners").insert({
+    session_operator_code: sessionOperatorCode,
+    partner_code: partnerCode,
+    partner_name: partnerName,
+  });
+}
+
+export async function removeSessionPartner(id) {
+  return supabase.from("session_partners").delete().eq("id", id);
 }
 
 // ============================================================
@@ -406,7 +436,6 @@ export async function fetchShortages({ limit = 5000 } = {}) {
   return { data, error };
 }
 
-// Aceita supplierName opcional
 export async function saveShortages(entryId, shortages) {
   if (!shortages || shortages.length === 0) return { error: null };
   const rows = shortages.map((s) => ({
@@ -815,4 +844,258 @@ export async function resetConferenceItem(id) {
     .eq("id", id)
     .select()
     .maybeSingle();
+}
+
+// ============================================================
+// FASE 2 — ALERT SETTINGS (WhatsApp)
+// ============================================================
+export async function fetchAlertSettings() {
+  const { data, error } = await supabase
+    .from("alert_settings")
+    .select("*")
+    .eq("id", 1)
+    .maybeSingle();
+  return { data, error };
+}
+
+export async function updateAlertSettings(fields) {
+  return supabase
+    .from("alert_settings")
+    .update({ ...fields, updated_at: new Date().toISOString() })
+    .eq("id", 1)
+    .select()
+    .maybeSingle();
+}
+
+export async function fetchAlertLog({ limit = 200 } = {}) {
+  const { data, error } = await supabase
+    .from("alert_log")
+    .select("*")
+    .order("sent_at", { ascending: false })
+    .limit(limit);
+  return { data: data || [], error };
+}
+
+export async function logAlert({ alertType, payload, success = true, errorMessage = null }) {
+  return supabase.from("alert_log").insert({
+    alert_type: alertType,
+    payload: payload || {},
+    success,
+    error_message: errorMessage,
+  });
+}
+
+// ============================================================
+// FASE 3 — TEAM GOALS
+// ============================================================
+export async function fetchTeamGoals({ periodType, periodKey } = {}) {
+  let q = supabase.from("team_goals").select("*");
+  if (periodType) q = q.eq("period_type", periodType);
+  if (periodKey) q = q.eq("period_key", periodKey);
+  const { data, error } = await q.order("team_name");
+  return { data: data || [], error };
+}
+
+export async function upsertTeamGoal({
+  teamName, periodType, periodKey,
+  goalCount, goalAvgSeconds, goalMaxProblemRate, note,
+}) {
+  const { data, error } = await supabase
+    .from("team_goals")
+    .upsert(
+      {
+        team_name: teamName,
+        period_type: periodType,
+        period_key: periodKey,
+        goal_count: goalCount ?? null,
+        goal_avg_seconds: goalAvgSeconds ?? null,
+        goal_max_problem_rate: goalMaxProblemRate ?? null,
+        note: note || null,
+      },
+      { onConflict: "team_name,period_type,period_key" }
+    )
+    .select()
+    .maybeSingle();
+  return { data, error };
+}
+
+export async function deleteTeamGoal(id) {
+  return supabase.from("team_goals").delete().eq("id", id);
+}
+
+// ============================================================
+// FASE 3 — ACHIEVEMENTS
+// ============================================================
+export async function fetchAchievementDefinitions() {
+  const { data, error } = await supabase
+    .from("achievement_definitions")
+    .select("*")
+    .eq("active", true);
+  return { data: data || [], error };
+}
+
+export async function fetchOperatorAchievements(operatorCode) {
+  const { data, error } = await supabase
+    .from("operator_achievements")
+    .select("*")
+    .eq("operator_code", operatorCode)
+    .order("unlocked_at", { ascending: false });
+  return { data: data || [], error };
+}
+
+export async function fetchAllAchievements({ limit = 200 } = {}) {
+  const { data, error } = await supabase
+    .from("operator_achievements")
+    .select("*")
+    .order("unlocked_at", { ascending: false })
+    .limit(limit);
+  return { data: data || [], error };
+}
+
+export async function unlockAchievement(operatorCode, operatorName, achievementId) {
+  const { data, error } = await supabase
+    .from("operator_achievements")
+    .insert({
+      operator_code: operatorCode,
+      operator_name: operatorName,
+      achievement_id: achievementId,
+    })
+    .select()
+    .maybeSingle();
+  // Ignora violação de UNIQUE (já desbloqueado)
+  if (error && (error.message || "").includes("duplicate")) {
+    return { data: null, error: null };
+  }
+  return { data, error };
+}
+
+// ============================================================
+// FASE 3 — MONTHLY REPORTS
+// ============================================================
+export async function fetchMonthlyReports({ limit = 24 } = {}) {
+  const { data, error } = await supabase
+    .from("monthly_reports")
+    .select("*")
+    .order("month_key", { ascending: false })
+    .limit(limit);
+  return { data: data || [], error };
+}
+
+export async function saveMonthlyReport(monthKey, payload) {
+  const { data, error } = await supabase
+    .from("monthly_reports")
+    .upsert(
+      { month_key: monthKey, payload, generated_at: new Date().toISOString() },
+      { onConflict: "month_key" }
+    )
+    .select()
+    .maybeSingle();
+  return { data, error };
+}
+
+// ============================================================
+// FASE 3 — EQUIPMENT
+// ============================================================
+export async function fetchEquipment() {
+  const { data, error } = await supabase
+    .from("equipment")
+    .select("*")
+    .eq("active", true)
+    .order("code");
+  return { data: data || [], error };
+}
+
+export async function addEquipment(payload) {
+  return supabase.from("equipment").insert({
+    code: payload.code,
+    name: payload.name,
+    category: payload.category || "outro",
+    serial_number: payload.serialNumber || null,
+    location: payload.location || null,
+    purchase_date: payload.purchaseDate || null,
+    last_maintenance: payload.lastMaintenance || null,
+    next_maintenance: payload.nextMaintenance || null,
+    maintenance_interval_days: payload.maintenanceIntervalDays || 90,
+    status: payload.status || "ativo",
+    note: payload.note || null,
+  });
+}
+
+export async function updateEquipment(id, fields) {
+  return supabase.from("equipment").update(fields).eq("id", id).select().maybeSingle();
+}
+
+export async function deleteEquipment(id) {
+  return supabase.from("equipment").update({ active: false }).eq("id", id);
+}
+
+export async function fetchEquipmentMaintenance(equipmentId) {
+  const { data, error } = await supabase
+    .from("equipment_maintenance")
+    .select("*")
+    .eq("equipment_id", equipmentId)
+    .order("performed_at", { ascending: false });
+  return { data: data || [], error };
+}
+
+export async function addEquipmentMaintenance(payload) {
+  return supabase.from("equipment_maintenance").insert({
+    equipment_id: payload.equipmentId,
+    maintenance_type: payload.maintenanceType || "preventiva",
+    description: payload.description || null,
+    performed_by: payload.performedBy || null,
+    cost: payload.cost ?? null,
+    performed_at: payload.performedAt || new Date().toISOString(),
+    next_due_at: payload.nextDueAt || null,
+    note: payload.note || null,
+  });
+}
+
+export async function deleteEquipmentMaintenance(id) {
+  return supabase.from("equipment_maintenance").delete().eq("id", id);
+}
+
+// ============================================================
+// FASE 3 — STOCK MAP HISTORY
+// ============================================================
+export async function logStockMapAction({ areaId, areaCode, action, beforeData, afterData, actorCode, actorName }) {
+  return supabase.from("stock_map_history").insert({
+    area_id: areaId,
+    area_code: areaCode,
+    action,
+    before_data: beforeData || null,
+    after_data: afterData || null,
+    actor_code: actorCode || null,
+    actor_name: actorName || null,
+  });
+}
+
+export async function fetchStockMapHistory({ areaId = null, limit = 500 } = {}) {
+  let q = supabase.from("stock_map_history").select("*");
+  if (areaId) q = q.eq("area_id", areaId);
+  const { data, error } = await q.order("created_at", { ascending: false }).limit(limit);
+  return { data: data || [], error };
+}
+
+// ============================================================
+// FASE 2 — PUSH SUBSCRIPTIONS
+// ============================================================
+export async function savePushSubscription(subscription, userEmail = null) {
+  return supabase.from("push_subscriptions").upsert(
+    {
+      endpoint: subscription.endpoint,
+      subscription,
+      user_email: userEmail,
+    },
+    { onConflict: "endpoint" }
+  );
+}
+
+export async function removePushSubscription(endpoint) {
+  return supabase.from("push_subscriptions").delete().eq("endpoint", endpoint);
+}
+
+export async function fetchPushSubscriptions() {
+  const { data, error } = await supabase.from("push_subscriptions").select("*");
+  return { data: data || [], error };
 }

@@ -1,466 +1,202 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import { supabase, missingConfig } from "./supabaseClient";
-import { useAuth } from "./context/AuthContext";
+import React, { useEffect, useState } from "react";
+import ThemeToggle from "./ThemeToggle";
+import { useAuth } from "../context/AuthContext";
 import {
-  fetchOperators,
-  fetchActivities,
-  fetchAdminConfig,
-  fetchEntries,
-  fetchActiveSessions,
-  fetchSeparationErrors,
-  fetchErrorTypes,
-  fetchVehicles,
-  fetchShortages,
-  deleteAllEntries,
-  deleteAllSeparationErrors,
-  deleteAllShortages,
-} from "./lib/api";
-import {
-  isPushEnabled,
-  notifyNewConferenceItem,
-  notifyLateActivity,
-} from "./lib/pushNotifications";
-import Sidebar from "./components/Sidebar";
-import Kiosk from "./components/Kiosk";
-import ErrorKiosk from "./components/ErrorKiosk";
-import AdminGate from "./components/AdminGate";
-import Panel from "./components/Panel";
-import TeamManager from "./components/TeamManager";
-import ManualEntry from "./components/ManualEntry";
-import AuditLog from "./components/AuditLog";
-import CommandPalette from "./components/CommandPalette";
-import ExecutiveView from "./components/ExecutiveView";
-import ScheduleManager from "./components/ScheduleManager";
-import SalesTeamQuery from "./components/SalesTeamQuery";
-import SalesTeamManager from "./components/SalesTeamManager";
-import ShortagePanel from "./components/ShortagePanel";
-import ConferenceTable from "./components/ConferenceTable";
-import AdminMaster from "./components/AdminMaster";
-import RotationManager from "./components/RotationManager";
-import GoalsManager from "./components/GoalsManager";
-import GoalsDashboard from "./components/GoalsDashboard";
-import CsvImport from "./components/CsvImport";
-import FraudPanel from "./components/FraudPanel";
-import ReportsScheduler from "./components/ReportsScheduler";
-import StockMap from "./components/StockMap";
-import PushSetup from "./components/PushSetup";
-import LoginScreen from "./components/LoginScreen";
-import CdChecklist from "./components/CdChecklist";
-import TurnComparison from "./components/TurnComparison";
-import SupplierShortages from "./components/SupplierShortages";
-import SoundSettings from "./components/SoundSettings";
-import {
-  DEFAULT_OPERATORS,
-  DEFAULT_ACTIVITIES,
-  DEFAULT_ERROR_TYPES,
-} from "./constants/defaults";
+  IconActivity,
+  IconAlertTriangle,
+  IconCalendar,
+  IconClipboardCheck,
+  IconBox,
+  IconSearch,
+  IconLayoutDashboard,
+  IconTrendingUp,
+  IconEdit3,
+  IconSettings,
+  IconUsers,
+  IconClock,
+  IconTv,
+  IconStar,
+  IconLogOut,
+  IconChevronLeft,
+  IconChevronRight,
+  IconRotateCcw,
+  IconTarget,
+  IconUpload,
+  IconMapPin,
+  IconShield,
+  IconVolume2,
+  IconPackage,
+  IconAlertCircle,
+  IconAward,
+  IconTruck,
+  IconLayers,
+  IconDownload,
+} from "./Icons";
 
-const DEFAULT_ALERT_THRESHOLD = 1800;
+const STORAGE_KEY = "aponta_sidebar_collapsed";
 
-export default function App() {
-  const { session, loading: authLoading } = useAuth();
+const SECTIONS = [
+  {
+    title: "Operação",
+    items: [
+      { key: "kiosk", label: "Apontar atividade", Icon: IconActivity },
+      { key: "errors-kiosk", label: "Apontar erro", Icon: IconAlertTriangle },
+      { key: "schedules", label: "Agenda", Icon: IconCalendar },
+      { key: "conference", label: "Conferência", Icon: IconClipboardCheck },
+      { key: "shortages", label: "Faltas", Icon: IconBox },
+      { key: "checklist", label: "Checklist do CD", Icon: IconClipboardCheck },
+      { key: "equipment", label: "Equipamentos", Icon: IconTruck },
+      { key: "sales-query", label: "Líder da equipe", Icon: IconSearch },
+      { key: "rotation", label: "Rotação de tarefas", Icon: IconRotateCcw },
+      { key: "goals-dashboard", label: "Dashboard de metas", Icon: IconTrendingUp },
+      { key: "stock-map", label: "Mapa do estoque", Icon: IconMapPin },
+    ],
+  },
+  {
+    title: "Gestão",
+    items: [
+      { key: "executive", label: "Visão geral", Icon: IconTrendingUp },
+      { key: "panel", label: "Indicadores", Icon: IconLayoutDashboard },
+      { key: "turn-comparison", label: "Comparação de turnos", Icon: IconActivity },
+      { key: "supplier-shortages", label: "Faltas por fornecedor", Icon: IconPackage },
+      { key: "team-goals", label: "Metas por equipe", Icon: IconTarget },
+      { key: "achievements", label: "Conquistas", Icon: IconAward },
+      { key: "monthly-report", label: "Relatório mensal", Icon: IconDownload },
+      { key: "stock-map-history", label: "Histórico do mapa", Icon: IconLayers },
+      { key: "manual", label: "Lançamento manual", Icon: IconEdit3 },
+      { key: "goals", label: "Metas individuais", Icon: IconTarget },
+      { key: "admin-master", label: "Central de controle", Icon: IconStar },
+      { key: "csv-import", label: "Importar CSV", Icon: IconUpload },
+      { key: "fraud", label: "Detecção de fraude", Icon: IconShield },
+      { key: "reports-scheduler", label: "Export agendado", Icon: IconVolume2 },
+      { key: "alert-settings", label: "Alertas WhatsApp", Icon: IconAlertCircle },
+      { key: "team", label: "Cadastros", Icon: IconSettings },
+      { key: "sound-settings", label: "Sons do sistema", Icon: IconVolume2 },
+      { key: "sales-team", label: "Equipe comercial", Icon: IconUsers },
+      { key: "audit", label: "Auditoria", Icon: IconClock },
+    ],
+  },
+];
 
-  const [tab, setTab] = useState("kiosk");
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [loaded, setLoaded] = useState(false);
-  const [connectionError, setConnectionError] = useState(null);
-  const [actionError, setActionError] = useState(null);
-  const [usingDefaults, setUsingDefaults] = useState(false);
-
-  const [cmdOpen, setCmdOpen] = useState(false);
-  const [globalFilter, setGlobalFilter] = useState(null);
-  const [profileOperator, setProfileOperator] = useState(null);
-
-  const [operators, setOperators] = useState(DEFAULT_OPERATORS);
-  const [activities, setActivities] = useState(DEFAULT_ACTIVITIES);
-  const [errorTypes, setErrorTypes] = useState(DEFAULT_ERROR_TYPES);
-  const [vehicles, setVehicles] = useState([]);
-  const [shortages, setShortages] = useState([]);
-  const [adminPin, setAdminPin] = useState("2026");
-  const [alertThreshold, setAlertThreshold] = useState(DEFAULT_ALERT_THRESHOLD);
-  const [entries, setEntries] = useState([]);
-  const [activeSessions, setActiveSessions] = useState([]);
-  const [separationErrors, setSeparationErrors] = useState([]);
-
-  const alertedRef = useRef(new Set());
-
-  useEffect(() => {
-    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
-    navigator.serviceWorker.register("/sw.js").catch(() => {});
-  }, []);
-
-  const loadOperators = useCallback(async () => {
-    const { data, error } = await fetchOperators();
-    if (error) return error;
-    setOperators(data && data.length ? data : DEFAULT_OPERATORS);
-    return null;
-  }, []);
-
-  const loadActivities = useCallback(async () => {
-    const { data, error } = await fetchActivities();
-    if (error) return error;
-    setActivities(data && data.length ? data : DEFAULT_ACTIVITIES);
-    return null;
-  }, []);
-
-  const loadErrorTypes = useCallback(async () => {
-    const { data, error } = await fetchErrorTypes();
-    if (error) return error;
-    setErrorTypes(data && data.length ? data : DEFAULT_ERROR_TYPES);
-    return null;
-  }, []);
-
-  const loadVehicles = useCallback(async () => {
-    const { data, error } = await fetchVehicles();
-    if (error) return error;
-    setVehicles(data || []);
-    return null;
-  }, []);
-
-  const loadAdminConfig = useCallback(async () => {
-    const { data, error } = await fetchAdminConfig();
-    if (error) return error;
-    if (data) {
-      setAdminPin(data.pin);
-      if (data.alert_threshold_seconds) setAlertThreshold(data.alert_threshold_seconds);
+export default function Sidebar({ tab, setTab, isAdmin, onLock }) {
+  const { session, signOut } = useAuth();
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(STORAGE_KEY) === "1";
+    } catch {
+      return false;
     }
-    return null;
-  }, []);
-
-  const loadEntries = useCallback(async () => {
-    const { data, error } = await fetchEntries();
-    if (!error && data) setEntries(data);
-  }, []);
-
-  const loadActiveSessions = useCallback(async () => {
-    const { data, error } = await fetchActiveSessions();
-    if (!error && data) setActiveSessions(data);
-  }, []);
-
-  const loadSeparationErrors = useCallback(async () => {
-    const { data, error } = await fetchSeparationErrors();
-    if (!error && data) setSeparationErrors(data);
-  }, []);
-
-  const loadShortages = useCallback(async () => {
-    const { data, error } = await fetchShortages();
-    if (!error && data) setShortages(data);
-  }, []);
-
-  const loadAll = useCallback(async () => {
-    const results = await Promise.all([
-      loadOperators(), loadActivities(), loadErrorTypes(), loadVehicles(), loadAdminConfig(),
-    ]);
-    const firstError = results.find((e) => e);
-    if (firstError) {
-      setConnectionError(firstError.message || "Erro desconhecido ao conectar com o banco.");
-      setUsingDefaults(true);
-    } else {
-      setConnectionError(null);
-      setUsingDefaults(false);
-    }
-    await Promise.all([loadEntries(), loadActiveSessions(), loadSeparationErrors(), loadShortages()]);
-  }, [loadOperators, loadActivities, loadErrorTypes, loadVehicles, loadAdminConfig, loadEntries, loadActiveSessions, loadSeparationErrors, loadShortages]);
-
-  const resetEntries = useCallback(async () => {
-    const { error } = await deleteAllEntries();
-    if (error) { setActionError("Não foi possível apagar o histórico. Tente novamente."); return { error }; }
-    setActionError(null);
-    await Promise.all([loadEntries(), loadShortages()]);
-    return { error: null };
-  }, [loadEntries, loadShortages]);
-
-  const resetSeparationErrors = useCallback(async () => {
-    const { error } = await deleteAllSeparationErrors();
-    if (error) { setActionError("Não foi possível apagar os erros de separação. Tente novamente."); return { error }; }
-    setActionError(null);
-    await loadSeparationErrors();
-    return { error: null };
-  }, [loadSeparationErrors]);
-
-  const resetShortages = useCallback(async () => {
-    const { error } = await deleteAllShortages();
-    if (error) { setActionError("Não foi possível apagar as faltas. Tente novamente."); return { error }; }
-    setActionError(null);
-    await loadShortages();
-    return { error: null };
-  }, [loadShortages]);
+  });
 
   useEffect(() => {
-    if (!session) return;
+    try {
+      localStorage.setItem(STORAGE_KEY, collapsed ? "1" : "0");
+    } catch {}
+  }, [collapsed]);
 
-    (async () => {
-      try { await loadAll(); }
-      catch (err) { setConnectionError(err?.message || "Erro inesperado ao carregar o aplicativo."); }
-      finally { setLoaded(true); }
-    })();
-
-    const debounced = (fn, ms = 250) => {
-      let t = null;
-      return () => { if (t) clearTimeout(t); t = setTimeout(fn, ms); };
-    };
-
-    const reloadOperators = debounced(loadOperators);
-    const reloadActivities = debounced(loadActivities);
-    const reloadErrorTypes = debounced(loadErrorTypes);
-    const reloadVehicles = debounced(loadVehicles);
-    const reloadAdminConfig = debounced(loadAdminConfig);
-    const reloadEntries = debounced(loadEntries);
-    const reloadSessions = debounced(loadActiveSessions);
-    const reloadSepErrors = debounced(loadSeparationErrors);
-    const reloadShortages = debounced(loadShortages);
-
-    const channels = [
-      supabase.channel("entries-changes").on("postgres_changes", { event: "*", schema: "public", table: "entries" }, () => { reloadEntries(); reloadShortages(); }).subscribe(),
-      supabase.channel("sessions-changes").on("postgres_changes", { event: "*", schema: "public", table: "active_sessions" }, reloadSessions).subscribe(),
-      supabase.channel("operators-changes").on("postgres_changes", { event: "*", schema: "public", table: "operators" }, reloadOperators).subscribe(),
-      supabase.channel("activities-changes").on("postgres_changes", { event: "*", schema: "public", table: "activities" }, reloadActivities).subscribe(),
-      supabase.channel("error-types-changes").on("postgres_changes", { event: "*", schema: "public", table: "error_types" }, reloadErrorTypes).subscribe(),
-      supabase.channel("vehicles-changes").on("postgres_changes", { event: "*", schema: "public", table: "vehicles" }, reloadVehicles).subscribe(),
-      supabase.channel("admin-config-changes").on("postgres_changes", { event: "*", schema: "public", table: "admin_config" }, reloadAdminConfig).subscribe(),
-      supabase.channel("separation-errors-changes").on("postgres_changes", { event: "*", schema: "public", table: "separation_errors" }, reloadSepErrors).subscribe(),
-      supabase.channel("shortages-changes").on("postgres_changes", { event: "*", schema: "public", table: "entry_shortages" }, reloadShortages).subscribe(),
-    ];
-
-    const confChannel = supabase
-      .channel("notify-conference")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "conference_queue" }, (payload) => {
-        if (!isPushEnabled()) return;
-        if (payload.new) notifyNewConferenceItem(payload.new);
-      })
-      .subscribe();
-
-    return () => {
-      channels.forEach((ch) => supabase.removeChannel(ch));
-      supabase.removeChannel(confChannel);
-    };
-  }, [session, loadOperators, loadActivities, loadErrorTypes, loadVehicles, loadAdminConfig, loadEntries, loadActiveSessions, loadSeparationErrors, loadShortages, loadAll]);
-
-  useEffect(() => {
-    if (!isPushEnabled()) return;
-    const iv = setInterval(() => {
-      const now = Date.now();
-      activeSessions.forEach((s) => {
-        const elapsed = Math.round((now - new Date(s.start_time).getTime()) / 1000);
-        const cfg = activities.find((a) => a.name === s.activity);
-        const threshold = cfg?.target_seconds || alertThreshold || DEFAULT_ALERT_THRESHOLD;
-        if (elapsed > threshold && !alertedRef.current.has(s.operator_code)) {
-          alertedRef.current.add(s.operator_code);
-          notifyLateActivity(s, elapsed);
-        }
-        if (elapsed <= threshold && alertedRef.current.has(s.operator_code)) {
-          alertedRef.current.delete(s.operator_code);
-        }
-      });
-    }, 60 * 1000);
-    return () => clearInterval(iv);
-  }, [activeSessions, activities, alertThreshold]);
-
-  useEffect(() => {
-    function onKeyDown(e) {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        setCmdOpen((v) => !v);
-      }
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
-
-  function lockAdmin() { setIsAdmin(false); setTab("kiosk"); }
-  function handleViewOperator(op) { setProfileOperator(op); setTab("panel"); }
-  function handleApplyFilter({ type, value }) { setGlobalFilter({ type, value, ts: Date.now() }); }
-  function handleOpenAdminMaster(payload) {
-    setIsAdmin(true);
-    setTab("admin-master");
-    void payload;
+  function toggle() {
+    setCollapsed((v) => !v);
   }
 
-  if (authLoading) {
-    return (
-      <div className="loading-screen">
-        <div className="loading-spinner" />
-        <div>Verificando sessão...</div>
-      </div>
-    );
+  async function handleSignOut() {
+    if (!window.confirm("Sair da sua conta?")) return;
+    await signOut();
   }
 
-  if (!session) {
-    return <LoginScreen />;
-  }
-
-  if (!loaded) {
-    return (
-      <div className="loading-screen">
-        <div className="loading-spinner" />
-        <div>Carregando...</div>
-      </div>
-    );
-  }
-
-  const adminTabs = [
-    "executive", "panel", "team", "manual", "audit", "sales-team",
-    "admin-master", "goals", "csv-import", "fraud", "reports-scheduler",
-    "stock-map-edit", "turn-comparison", "supplier-shortages", "sound-settings",
-  ];
-
-  // Prepara shortagesByEntry para TurnComparison
-  const shortagesByEntry = (() => {
-    const m = {};
-    (shortages || []).forEach((s) => {
-      if (!m[s.entry_id]) m[s.entry_id] = [];
-      m[s.entry_id].push(s);
-    });
-    return m;
-  })();
+  const email = session?.user?.email || "";
 
   return (
-    <div className="app-shell">
-      {missingConfig && (
-        <div className="global-banner">
-          Supabase NÃO está configurado — nenhum dado está sendo salvo.
+    <nav className={`sidebar ${collapsed ? "sidebar-collapsed" : ""}`}>
+      <div className="sidebar-brand-row">
+        <div className="sidebar-brand">
+          {!collapsed && (
+            <div className="sidebar-brand-text">Aponta CD</div>
+          )}
         </div>
-      )}
+        <button
+          className="sidebar-toggle"
+          onClick={toggle}
+          title={collapsed ? "Expandir menu" : "Recolher menu"}
+          aria-label={collapsed ? "Expandir menu" : "Recolher menu"}
+        >
+          {collapsed ? <IconChevronRight size={16} /> : <IconChevronLeft size={16} />}
+        </button>
+      </div>
 
-      <Sidebar tab={tab} setTab={setTab} isAdmin={isAdmin} onLock={lockAdmin} />
+      <div className="sidebar-nav">
+        {SECTIONS.map((section) => (
+          <div key={section.title} className="sidebar-section">
+            {!collapsed ? (
+              <div className="sidebar-section-title">{section.title}</div>
+            ) : (
+              <div className="sidebar-section-divider" />
+            )}
+            {section.items.map(({ key, label, Icon }) => (
+              <div
+                key={key}
+                className={`nav-item ${tab === key ? "active" : ""}`}
+                onClick={() => setTab(key)}
+                title={collapsed ? label : undefined}
+              >
+                <span className="nav-item-icon"><Icon size={18} /></span>
+                {!collapsed && <span className="nav-item-label">{label}</span>}
+              </div>
+            ))}
+          </div>
+        ))}
 
-      <main className="main">
-        {connectionError && (
-          <div className="alert-card alert-danger">
-            <strong>Sem conexão com o banco de dados.</strong>
-            <p className="alert-detail">
-              Detalhe técnico: <code>{connectionError}</code>
-            </p>
-            <button className="btn btn-secondary btn-sm" onClick={loadAll}>Tentar novamente</button>
+        {isAdmin && (
+          <div className="sidebar-section">
+            {!collapsed && <div className="sidebar-section-divider" />}
+            <div
+              className="nav-item nav-item-tv"
+              onClick={() => window.open("/tv", "_blank")}
+              title={collapsed ? "Painel TV" : "Abrir painel de exibição numa nova aba"}
+            >
+              <span className="nav-item-icon"><IconTv size={18} /></span>
+              {!collapsed && (
+                <>
+                  <span className="nav-item-label">Painel TV</span>
+                  <span className="nav-item-badge">↗</span>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="sidebar-footer">
+        {!collapsed && email && (
+          <div className="sidebar-user" title={email}>
+            <div className="sidebar-user-avatar">
+              {email.charAt(0).toUpperCase()}
+            </div>
+            <div className="sidebar-user-email">{email}</div>
           </div>
         )}
 
-        {usingDefaults && !connectionError && (
-          <div className="alert-card alert-warning">
-            Exibindo dados padrão — o banco está vazio.
-          </div>
+        <ThemeToggle compact={collapsed} />
+
+        {isAdmin && (
+          <button
+            className="sidebar-logout"
+            onClick={onLock}
+            title={collapsed ? "Sair do admin" : undefined}
+          >
+            <IconLogOut size={16} />
+            {!collapsed && <span>Sair do admin</span>}
+          </button>
         )}
 
-        {actionError && <div className="alert-card alert-danger">{actionError}</div>}
-
-        <div key={tab}>
-          {tab === "kiosk" && (
-            <Kiosk operators={operators} activities={activities} vehicles={vehicles} refreshEntries={loadEntries} />
-          )}
-          {tab === "errors-kiosk" && (
-            <ErrorKiosk operators={operators} errorTypes={errorTypes} />
-          )}
-          {tab === "schedules" && (
-            <ScheduleManager operators={operators} isAdmin={isAdmin} />
-          )}
-          {tab === "conference" && (
-            <ConferenceTable operators={operators} isAdmin={isAdmin} />
-          )}
-          {tab === "shortages" && (
-            <ShortagePanel />
-          )}
-          {tab === "checklist" && (
-            <CdChecklist operators={operators} isAdmin={isAdmin} />
-          )}
-          {tab === "sales-query" && (
-            <SalesTeamQuery />
-          )}
-          {tab === "rotation" && (
-            <RotationManager operators={operators} isAdmin={isAdmin} />
-          )}
-          {tab === "goals-dashboard" && (
-            <GoalsDashboard />
-          )}
-          {tab === "stock-map" && (
-            <StockMap isAdmin={isAdmin} />
-          )}
-
-          {adminTabs.includes(tab) && !isAdmin && (
-            <AdminGate correctPin={adminPin} onUnlock={() => setIsAdmin(true)} />
-          )}
-
-          {tab === "executive" && isAdmin && (
-            <ExecutiveView entries={entries} activities={activities} operators={operators} activeSessions={activeSessions} separationErrors={separationErrors} shortages={shortages} onViewOperator={handleViewOperator} />
-          )}
-          {tab === "panel" && isAdmin && (
-            <Panel
-              entries={entries}
-              activities={activities}
-              operators={operators}
-              activeSessions={activeSessions}
-              separationErrors={separationErrors}
-              shortages={shortages}
-              alertThreshold={alertThreshold}
-              onResetEntries={resetEntries}
-              onResetSeparationErrors={resetSeparationErrors}
-              onResetShortages={resetShortages}
-              externalProfileOperator={profileOperator}
-              onExternalProfileHandled={() => setProfileOperator(null)}
-              externalFilter={globalFilter}
-              onExternalFilterHandled={() => setGlobalFilter(null)}
-              onOpenAdminMaster={handleOpenAdminMaster}
-            />
-          )}
-          {tab === "turn-comparison" && isAdmin && (
-            <TurnComparison
-              entries={entries}
-              activities={activities}
-              separationErrors={separationErrors}
-              shortagesByEntry={shortagesByEntry}
-            />
-          )}
-          {tab === "supplier-shortages" && isAdmin && (
-            <SupplierShortages />
-          )}
-          {tab === "manual" && isAdmin && (
-            <ManualEntry operators={operators} activities={activities} refreshEntries={loadEntries} />
-          )}
-          {tab === "admin-master" && isAdmin && (
-            <AdminMaster operators={operators} adminPin={adminPin} />
-          )}
-          {tab === "team" && isAdmin && (
-            <TeamManager operators={operators} activities={activities} errorTypes={errorTypes} vehicles={vehicles} adminPin={adminPin} alertThreshold={alertThreshold} refreshConfig={loadAll} />
-          )}
-          {tab === "sound-settings" && isAdmin && (
-            <SoundSettings />
-          )}
-          {tab === "audit" && isAdmin && (
-            <AuditLog />
-          )}
-          {tab === "sales-team" && isAdmin && (
-            <SalesTeamManager />
-          )}
-          {tab === "goals" && isAdmin && (
-            <GoalsManager operators={operators} isAdmin={isAdmin} />
-          )}
-          {tab === "csv-import" && isAdmin && (
-            <CsvImport />
-          )}
-          {tab === "fraud" && isAdmin && (
-            <FraudPanel operators={operators} />
-          )}
-          {tab === "reports-scheduler" && isAdmin && (
-            <ReportsScheduler />
-          )}
-        </div>
-
-        <div className="footer-note">
-          Aponta CD
-        </div>
-      </main>
-
-      <PushSetup />
-
-      <CommandPalette
-        open={cmdOpen}
-        onClose={() => setCmdOpen(false)}
-        operators={operators}
-        entries={entries}
-        activities={activities}
-        onNavigate={setTab}
-        onViewOperator={handleViewOperator}
-        onApplyFilter={handleApplyFilter}
-      />
-    </div>
+        <button
+          className="sidebar-logout sidebar-logout-danger"
+          onClick={handleSignOut}
+          title={collapsed ? "Sair da conta" : undefined}
+        >
+          <IconLogOut size={16} />
+          {!collapsed && <span>Sair da conta</span>}
+        </button>
+      </div>
+    </nav>
   );
 }
