@@ -576,8 +576,6 @@ export function IconDot({ size = 20, strokeWidth = 1.5, className = "" }) {
   );
 }
 
-/* ============ NOVOS — ADICIONADOS ============ */
-
 export function IconBuilding({ size = 20, strokeWidth = 1.5, className = "" }) {
   return (
     <svg {...baseProps(size, strokeWidth, className)}>
@@ -643,6 +641,29 @@ export function IconMinimize({ size = 20, strokeWidth = 1.5, className = "" }) {
   return (
     <svg {...baseProps(size, strokeWidth, className)}>
       <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" />
+    </svg>
+  );
+}
+
+/* ============ MAPA / GRID ============ */
+
+export function IconGrid({ size = 20, strokeWidth = 1.5, className = "" }) {
+  return (
+    <svg {...baseProps(size, strokeWidth, className)}>
+      <rect x="3" y="3" width="7" height="7" rx="1" />
+      <rect x="14" y="3" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+      <rect x="14" y="14" width="7" height="7" rx="1" />
+    </svg>
+  );
+}
+
+export function IconMap({ size = 20, strokeWidth = 1.5, className = "" }) {
+  return (
+    <svg {...baseProps(size, strokeWidth, className)}>
+      <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6" />
+      <line x1="8" y1="2" x2="8" y2="18" />
+      <line x1="16" y1="6" x2="16" y2="22" />
     </svg>
   );
 }
