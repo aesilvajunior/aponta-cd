@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Stage, Layer, Rect, Text, Line, Transformer } from "react-konva";
+import Konva from "konva";
 import {
   fetchMapAreas,
   addMapArea,
@@ -7,7 +9,6 @@ import {
   fetchMapItems,
   deleteMapItem,
   AREA_TYPES,
-  SIDES,
   colorForType,
   labelForType,
   groupItemsBySide,
@@ -18,20 +19,21 @@ import {
   createInitialView,
   zoomIn,
   zoomOut,
-  zoomAt,
   panBy,
   rotateBy,
   rotateTo,
   resetView,
-  screenToWorld,
-  screenDeltaToWorldDelta,
-  hitTest,
-  getTransform,
   clampZoom,
   createTouchState,
   distanceBetween,
   angleBetween,
-  PAN_THRESHOLD_PX,
+  midpointBetween,
+  repositionForTransform,
+  areaToWorld,
+  worldToAreaPct,
+  WORLD_W,
+  WORLD_H,
+  WHEEL_ZOOM_SENSITIVITY,
 } from "../lib/stockMapEngine";
 import { supabase } from "../supabaseClient";
 import StockMapControls from "./StockMapControls";
@@ -57,6 +59,11 @@ function occupancyColor(ratio) {
   return "#7f1d1d";
 }
 
+const MIN_WORLD_W = 0.02 * WORLD_W; // mesmo mínimo de 2% que o formulário sempre respeitou
+const MIN_WORLD_H = 0.02 * WORLD_H;
+const GRID_COLS = 20; // 5% de espaçamento, igual ao grid antigo
+const GRID_ROWS = 15;
+
 export default function StockMap({ isAdmin }) {
   const [areas, setAreas] = useState([]);
   const [items, setItems] = useState([]);
@@ -67,6 +74,7 @@ export default function StockMap({ isAdmin }) {
   const [view, setView] = useState(createInitialView());
   const [selectedArea, setSelectedArea] = useState(null);
   const [hoveredArea, setHoveredArea] = useState(null);
+  const [activeDragId, setActiveDragId] = useState(null);
 
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState("");
@@ -77,6 +85,7 @@ export default function StockMap({ isAdmin }) {
 
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0, show: false });
+  const [size, setSize] = useState({ width: 0, height: 0 });
 
   const [layers, setLayers] = useState({
     grid: true,
@@ -84,8 +93,6 @@ export default function StockMap({ isAdmin }) {
     occupancy: true,
     corridorFlow: true,
   });
-
-  const [dragState, setDragState] = useState(null);
 
   const [newAreaModal, setNewAreaModal] = useState(false);
   const [newAreaForm, setNewAreaForm] = useState({
@@ -95,17 +102,16 @@ export default function StockMap({ isAdmin }) {
   });
   const [areaBusy, setAreaBusy] = useState(false);
 
-  const containerRef = useRef(null);
-  const wrapperRef = useRef(null);
+  const wrapperRef = useRef(null); // caixa com a proporção 4:3 (ou 100vh em fullscreen) — é o que medimos
+  const stageRef = useRef(null);
+  const layerRef = useRef(null);
+  const transformerRef = useRef(null);
+  const shapeRefs = useRef({}); // areaId -> nó Konva.Rect (pro Transformer conseguir "agarrar")
+  const corridorLineRefs = useRef({}); // areaId -> nó Konva.Line (linha animada do corredor)
+
   const viewRef = useRef(view);
   viewRef.current = view;
-
-  const isPanningRef = useRef(false);
-  const panStartRef = useRef({ x: 0, y: 0 });
-  const panMovedRef = useRef(false);
   const touchStateRef = useRef(createTouchState());
-  const dragStateRef = useRef(null);
-  dragStateRef.current = dragState;
 
   async function loadAll() {
     setLoading(true);
@@ -139,6 +145,26 @@ export default function StockMap({ isAdmin }) {
     document.addEventListener("fullscreenchange", onChange);
     return () => document.removeEventListener("fullscreenchange", onChange);
   }, []);
+
+  // Mede o container real em pixels (funciona tanto no modo normal — caixa
+  // com padding-bottom: 75% — quanto em fullscreen — 100vh). getBoundingClientRect
+  // sempre reflete o tamanho renderizado de verdade, mesmo com o truque de padding.
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+    function measure() {
+      const rect = el.getBoundingClientRect();
+      setSize({ width: rect.width, height: rect.height });
+    }
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    window.addEventListener("resize", measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [isFullscreen]);
 
   function toggleFullscreen() {
     if (!wrapperRef.current) return;
@@ -190,199 +216,42 @@ export default function StockMap({ isAdmin }) {
       });
   }, [areas, itemsByArea, items, search, filterType, maxSkus]);
 
-  // -------- Coordenadas --------
-  function getWorldPoint(clientX, clientY) {
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect) return null;
-    const sx = (clientX - rect.left) / rect.width;
-    const sy = (clientY - rect.top) / rect.height;
-    return screenToWorld(viewRef.current, sx, sy);
-  }
+  // Escala que faz o "mundo" (1000x750) caber no container mantendo a
+  // proporção — diferente da versão anterior (que esticava em % por eixo
+  // separado), isso garante que uma prateleira quadrada nunca vira retângulo
+  // só porque a tela não é exatamente 4:3 (ex: em fullscreen).
+  const baseScale = useMemo(() => {
+    if (!size.width || !size.height) return 0;
+    return Math.min(size.width / WORLD_W, size.height / WORLD_H);
+  }, [size]);
 
-  // -------- Hover --------
-  function handleMouseMove(e) {
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    setMousePos({ x: e.clientX, y: e.clientY, show: true });
-
-    if (dragStateRef.current) return;
-    if (isPanningRef.current) return;
-
-    const world = getWorldPoint(e.clientX, e.clientY);
-    const hit = hitTest(decoratedAreas.filter((a) => a.matches), world);
-    setHoveredArea(hit || null);
-  }
-
-  function handleMouseLeave() {
-    setHoveredArea(null);
-    setMousePos((p) => ({ ...p, show: false }));
-  }
-
-  // -------- Pan (só quando não tá editando área) --------
-  function handleContainerMouseDown(e) {
-    if (e.button !== 0) return;
-    if (dragStateRef.current) return; // não inicia pan se já tem drag
-    // Se tá em modo edição e o clique veio de uma área, o handler da área já parou o evento.
-    // Aqui só chega clique no "fundo".
-    isPanningRef.current = true;
-    panMovedRef.current = false;
-    panStartRef.current = { x: e.clientX, y: e.clientY, view: { ...viewRef.current } };
-  }
-
-  async function handleContainerMouseUp(e) {
-    if (dragStateRef.current) {
-      // salva drag
-      const area = areas.find((a) => a.id === dragStateRef.current.areaId);
-      if (area) {
-        await updateMapArea(area.id, {
-          x: Number(area.x),
-          y: Number(area.y),
-          width: Number(area.width),
-          height: Number(area.height),
-        });
-        flashSuccess("Área atualizada");
-      }
-      setDragState(null);
-      return;
-    }
-
-    if (!isPanningRef.current) return;
-    isPanningRef.current = false;
-
-    if (panMovedRef.current) return;
-
-    // Foi click simples — hit test
-    const world = getWorldPoint(e.clientX, e.clientY);
-    if (!world) return;
-
-    const hit = hitTest(decoratedAreas.filter((a) => a.matches), world);
-    if (hit) {
-      setSelectedArea(hit);
-      setPanelView("lista");
-    } else {
-      setSelectedArea(null);
-    }
-  }
-
-  // Window listeners — sempre ativos
+  // -------- Transformer: gruda na área selecionada, some quando ninguém tá selecionado --------
   useEffect(() => {
-    function onMouseMove(e) {
-      const rect = containerRef.current?.getBoundingClientRect();
-      if (!rect) return;
+    const tr = transformerRef.current;
+    if (!tr) return;
+    const node = editMode && selectedArea ? shapeRefs.current[selectedArea.id] : null;
+    if (node) {
+      tr.nodes([node]);
+    } else {
+      tr.nodes([]);
+    }
+    tr.getLayer()?.batchDraw();
+  }, [editMode, selectedArea, decoratedAreas]);
 
-      // 1) Drag de área em modo edição
-      if (dragStateRef.current) {
-        const ds = dragStateRef.current;
-        // Delta em % de tela, cru (sem desfazer zoom/rotação ainda)
-        const rawDxPct = (e.clientX - ds.startMouseX) / rect.width;
-        const rawDyPct = (e.clientY - ds.startMouseY) / rect.height;
-        // O mapa pode estar girado (Shift+scroll, tecla G, slider de rotação);
-        // sem desfazer a rotação aqui, arrastar com o mapa girado move a área
-        // na direção errada. screenDeltaToWorldDelta desfaz zoom + rotação.
-        const { dx: dxPct, dy: dyPct } = screenDeltaToWorldDelta(viewRef.current, rawDxPct, rawDyPct);
-
-        const updated = {
-          x: ds.mode === "move" ? ds.startX + dxPct : ds.startX,
-          y: ds.mode === "move" ? ds.startY + dyPct : ds.startY,
-          width: ds.mode === "resize" ? Math.max(2, ds.startW + dxPct) : ds.startW,
-          height: ds.mode === "resize" ? Math.max(2, ds.startH + dyPct) : ds.startH,
-        };
-
-        setAreas((prev) =>
-          prev.map((a) => (a.id === ds.areaId ? { ...a, ...updated } : a))
-        );
-        return;
-      }
-
-      // 2) Pan
-      if (!isPanningRef.current) return;
-      const dx = e.clientX - panStartRef.current.x;
-      const dy = e.clientY - panStartRef.current.y;
-
-      if (Math.abs(dx) > PAN_THRESHOLD_PX || Math.abs(dy) > PAN_THRESHOLD_PX) {
-        panMovedRef.current = true;
-      }
-
-      const startView = panStartRef.current.view;
-      setView({
-        ...startView,
-        panX: startView.panX + dx / rect.width,
-        panY: startView.panY + dy / rect.height,
+  // -------- Animação do "fluxo" dos corredores (marching ants na linha central) --------
+  useEffect(() => {
+    const layer = layerRef.current;
+    if (!layer) return;
+    const dashPeriod = 24; // soma do padrão de dash usado nas linhas [14,10]
+    const anim = new Konva.Animation((frame) => {
+      const offset = -((frame.time / 35) % dashPeriod);
+      Object.values(corridorLineRefs.current).forEach((node) => {
+        if (node) node.dashOffset(offset);
       });
-    }
-
-    function onMouseUp(e) {
-      handleContainerMouseUp(e);
-    }
-
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
-    return () => {
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", onMouseUp);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [decoratedAreas, areas]);
-
-  function handleWheel(e) {
-    e.preventDefault();
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const sx = (e.clientX - rect.left) / rect.width;
-    const sy = (e.clientY - rect.top) / rect.height;
-
-    if (e.shiftKey) {
-      const delta = e.deltaY > 0 ? -5 : 5;
-      setView((v) => rotateBy(v, delta));
-      return;
-    }
-
-    const delta = -e.deltaY * 0.0015;
-    setView((v) => zoomAt(v, delta, sx, sy));
-  }
-
-  function handleDoubleClick(e) {
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const sx = (e.clientX - rect.left) / rect.width;
-    const sy = (e.clientY - rect.top) / rect.height;
-    setView((v) => zoomAt(v, 0.5, sx, sy));
-  }
-
-  function handleTouchStart(e) {
-    const touches = Array.from(e.touches);
-    touchStateRef.current.touches = touches;
-    if (touches.length === 2) {
-      touchStateRef.current.active = true;
-      touchStateRef.current.initialDistance = distanceBetween(touches[0], touches[1]);
-      touchStateRef.current.initialAngle = angleBetween(touches[0], touches[1]);
-      touchStateRef.current.initialZoom = viewRef.current.zoom;
-      touchStateRef.current.initialRotation = viewRef.current.rotation;
-    }
-  }
-
-  function handleTouchMove(e) {
-    const touches = Array.from(e.touches);
-    if (touches.length === 2 && touchStateRef.current.active) {
-      e.preventDefault();
-      const dist = distanceBetween(touches[0], touches[1]);
-      const angle = angleBetween(touches[0], touches[1]);
-      const scaleFactor = dist / touchStateRef.current.initialDistance;
-      const newZoom = clampZoom(touchStateRef.current.initialZoom * scaleFactor);
-      const angleDelta = angle - touchStateRef.current.initialAngle;
-      const newRotation = touchStateRef.current.initialRotation + angleDelta;
-      setView((v) => ({
-        ...v,
-        zoom: newZoom,
-        rotation: ((newRotation + 540) % 360) - 180,
-      }));
-    }
-  }
-
-  function handleTouchEnd() {
-    touchStateRef.current.active = false;
-    touchStateRef.current.touches = [];
-  }
+    }, layer);
+    if (layers.corridorFlow) anim.start();
+    return () => anim.stop();
+  }, [layers.corridorFlow, decoratedAreas.length]);
 
   // Keyboard
   useEffect(() => {
@@ -412,6 +281,130 @@ export default function StockMap({ isAdmin }) {
     return `${visibleWidthM.toFixed(1)} m × ${visibleHeightM.toFixed(1)} m`;
   }, [view.zoom]);
 
+  // -------- Zoom no cursor (scroll) / rotação (shift+scroll) --------
+  function handleWheel(e) {
+    e.evt.preventDefault();
+    const stage = stageRef.current;
+    const pointer = stage?.getPointerPosition();
+    if (!pointer || !baseScale) return;
+
+    if (e.evt.shiftKey) {
+      const delta = e.evt.deltaY > 0 ? -5 : 5;
+      setView((v) => rotateBy(v, delta));
+      return;
+    }
+
+    const deltaZoom = -e.evt.deltaY * WHEEL_ZOOM_SENSITIVITY;
+    setView((v) => {
+      const newZoom = clampZoom(v.zoom + deltaZoom);
+      return repositionForTransform({
+        view: v,
+        pivotX: pointer.x,
+        pivotY: pointer.y,
+        containerWidth: size.width,
+        containerHeight: size.height,
+        baseScale,
+        newZoom,
+        newRotation: v.rotation,
+      });
+    });
+  }
+
+  function handleDoubleClick() {
+    const stage = stageRef.current;
+    const pointer = stage?.getPointerPosition();
+    if (!pointer || !baseScale) return;
+    setView((v) => {
+      const newZoom = clampZoom(v.zoom + 0.5);
+      return repositionForTransform({
+        view: v,
+        pivotX: pointer.x,
+        pivotY: pointer.y,
+        containerWidth: size.width,
+        containerHeight: size.height,
+        baseScale,
+        newZoom,
+        newRotation: v.rotation,
+      });
+    });
+  }
+
+  // -------- Pinça de 2 dedos: zoom + rotação juntos --------
+  function handleTouchStart(e) {
+    const touches = e.evt.touches;
+    if (touches.length === 2) {
+      stageRef.current?.draggable(false); // evita brigar com o pan de 1 dedo do Konva
+      const rect = wrapperRef.current.getBoundingClientRect();
+      touchStateRef.current = {
+        active: true,
+        initialDistance: distanceBetween(touches[0], touches[1]),
+        initialAngle: angleBetween(touches[0], touches[1]),
+        initialZoom: viewRef.current.zoom,
+        initialRotation: viewRef.current.rotation,
+        midpoint: midpointBetween(touches[0], touches[1], rect),
+      };
+    }
+  }
+
+  function handleTouchMove(e) {
+    const touches = e.evt.touches;
+    const ts = touchStateRef.current;
+    if (touches.length === 2 && ts.active && baseScale) {
+      e.evt.preventDefault();
+      const dist = distanceBetween(touches[0], touches[1]);
+      const angle = angleBetween(touches[0], touches[1]);
+      const newZoom = clampZoom(ts.initialZoom * (dist / ts.initialDistance));
+      const angleDelta = angle - ts.initialAngle;
+      const newRotation = ((ts.initialRotation + angleDelta + 540) % 360) - 180;
+
+      setView((v) =>
+        repositionForTransform({
+          view: v,
+          pivotX: ts.midpoint.x,
+          pivotY: ts.midpoint.y,
+          containerWidth: size.width,
+          containerHeight: size.height,
+          baseScale,
+          newZoom,
+          newRotation,
+        })
+      );
+    }
+  }
+
+  function handleTouchEnd(e) {
+    if (e.evt.touches.length < 2) {
+      touchStateRef.current.active = false;
+      stageRef.current?.draggable(true);
+    }
+  }
+
+  // -------- Pan (o próprio Konva cuida do arraste do fundo) --------
+  function handleStageDragEnd(e) {
+    const stage = e.target;
+    setView((v) => ({
+      ...v,
+      panX: stage.x() / size.width - 0.5,
+      panY: stage.y() / size.height - 0.5,
+    }));
+  }
+
+  // Clique no fundo (fora de qualquer área) limpa a seleção. Clique numa
+  // área é tratado no próprio Rect — como os dois eventos se propagam pro
+  // Stage, só limpamos quando o alvo original do clique é o Stage mesmo.
+  function handleStageClick(e) {
+    if (e.target === e.target.getStage()) setSelectedArea(null);
+  }
+
+  function handleStageMouseMove(e) {
+    setMousePos({ x: e.evt.clientX, y: e.evt.clientY, show: true });
+  }
+
+  function handleStageMouseLeave() {
+    setHoveredArea(null);
+    setMousePos((p) => ({ ...p, show: false }));
+  }
+
   // -------- Ações --------
   async function handleDeleteArea(a) {
     if (!window.confirm(`Remover a área "${a.label}"?`)) return;
@@ -426,20 +419,44 @@ export default function StockMap({ isAdmin }) {
     await loadAll();
   }
 
-  // Iniciar drag da área
-  function startDragArea(e, a, mode) {
-    e.stopPropagation();
-    e.preventDefault();
-    setDragState({
-      areaId: a.id,
-      mode,
-      startX: a.x,
-      startY: a.y,
-      startW: a.width,
-      startH: a.height,
-      startMouseX: e.clientX,
-      startMouseY: e.clientY,
-    });
+  // Mover uma área (drag) — só persiste no Supabase quando solta (onDragEnd);
+  // durante o arraste o próprio Konva move o retângulo na tela sem precisar
+  // de re-render do React a cada frame (bem mais leve que a versão anterior).
+  async function handleAreaDragEnd(a, e) {
+    const node = e.target;
+    const world = areaToWorld(a);
+    const pct = worldToAreaPct({ x: node.x(), y: node.y(), width: world.width, height: world.height });
+    setActiveDragId(null);
+    setAreas((prev) => prev.map((x) => (x.id === a.id ? { ...x, x: pct.x, y: pct.y } : x)));
+    setSelectedArea((prev) => (prev?.id === a.id ? { ...prev, x: pct.x, y: pct.y } : prev));
+    const { error: err } = await updateMapArea(a.id, { x: pct.x, y: pct.y });
+    if (err) setError(err.message);
+    else flashSuccess("Área atualizada");
+  }
+
+  // Redimensionar (Transformer) — ele escala o nó em vez de mudar width/height
+  // direto, então lemos scaleX/scaleY, aplicamos no tamanho real e resetamos
+  // a escala pra 1 (senão o próximo resize "acumula" escala errada).
+  async function handleAreaTransformEnd(a, e) {
+    const node = e.target;
+    const newWorldWidth = Math.max(MIN_WORLD_W, node.width() * node.scaleX());
+    const newWorldHeight = Math.max(MIN_WORLD_H, node.height() * node.scaleY());
+    node.scaleX(1);
+    node.scaleY(1);
+    node.width(newWorldWidth);
+    node.height(newWorldHeight);
+
+    const pct = worldToAreaPct({ x: node.x(), y: node.y(), width: newWorldWidth, height: newWorldHeight });
+    setAreas((prev) => prev.map((x) => (x.id === a.id ? { ...x, ...pct } : x)));
+    setSelectedArea((prev) => (prev?.id === a.id ? { ...prev, ...pct } : prev));
+    const { error: err } = await updateMapArea(a.id, pct);
+    if (err) setError(err.message);
+    else flashSuccess("Área atualizada");
+  }
+
+  function handleTransformerBoundBox(oldBox, newBox) {
+    if (newBox.width < MIN_WORLD_W || newBox.height < MIN_WORLD_H) return oldBox;
+    return newBox;
   }
 
   // Criar nova área
@@ -474,7 +491,28 @@ export default function StockMap({ isAdmin }) {
   const bySide = selectedArea?.has_sides ? groupItemsBySide(selectedAreaItems) : null;
   const byCategory = selectedArea ? groupItemsByCategory(selectedAreaItems) : [];
 
-  const transform = getTransform(view);
+  // ---------- Linhas do grid de fundo ----------
+  const gridLines = useMemo(() => {
+    if (!layers.grid) return [];
+    const lines = [];
+    for (let i = 0; i <= GRID_COLS; i++) {
+      const x = (i / GRID_COLS) * WORLD_W;
+      lines.push({ key: `v${i}`, points: [x, 0, x, WORLD_H] });
+    }
+    for (let j = 0; j <= GRID_ROWS; j++) {
+      const y = (j / GRID_ROWS) * WORLD_H;
+      lines.push({ key: `h${j}`, points: [0, y, WORLD_W, y] });
+    }
+    return lines;
+  }, [layers.grid]);
+
+  const cursor = activeDragId
+    ? "grabbing"
+    : hoveredArea && !editMode
+    ? "pointer"
+    : editMode
+    ? "default"
+    : "grab";
 
   return (
     <div>
@@ -523,7 +561,7 @@ export default function StockMap({ isAdmin }) {
         <div className="alert-card alert-warning" style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
           <IconAlertTriangle size={16} />
           <div style={{ flex: 1 }}>
-            <strong>Modo edição ativo.</strong> Arraste uma área (inclusive corredores) pra mover · Arraste o handle azul no canto pra redimensionar · Clique em qualquer área pra ver o painel e adicionar itens.
+            <strong>Modo edição ativo.</strong> Arraste uma área (inclusive corredores) pra mover · Selecione uma área pra ver as alças de redimensionar em volta dela · Clique em qualquer área pra ver o painel e adicionar itens.
           </div>
         </div>
       )}
@@ -556,226 +594,179 @@ export default function StockMap({ isAdmin }) {
           style={{
             position: "relative",
             width: "100%",
+            paddingBottom: isFullscreen ? undefined : "75%",
+            height: isFullscreen ? "100vh" : undefined,
             borderRadius: isFullscreen ? 0 : 16,
             overflow: "hidden",
             border: isFullscreen ? "none" : "1px solid var(--border)",
             boxShadow: isFullscreen ? "none" : "var(--shadow-lg)",
+            background: "radial-gradient(ellipse at center, #111823 0%, #0a0e14 100%)",
           }}
         >
-          <div
-            ref={containerRef}
-            className="map-container"
-            style={{
-              position: "relative",
-              width: "100%",
-              paddingBottom: isFullscreen ? "100vh" : "75%",
-              background: "radial-gradient(ellipse at center, #111823 0%, #0a0e14 100%)",
-              cursor: dragState ? "grabbing" : isPanningRef.current ? "grabbing" : "grab",
-              userSelect: "none",
-              touchAction: "none",
-            }}
-            onMouseDown={handleContainerMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseLeave={handleMouseLeave}
-            onWheel={handleWheel}
-            onDoubleClick={handleDoubleClick}
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
-          >
-            {layers.grid && (
-              <div
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  backgroundImage: `
-                    linear-gradient(rgba(74, 123, 167, 0.15) 1px, transparent 1px),
-                    linear-gradient(90deg, rgba(74, 123, 167, 0.15) 1px, transparent 1px)
-                  `,
-                  backgroundSize: "5% 5%",
-                  transform,
-                  transformOrigin: "center",
-                  transition: isPanningRef.current || dragState ? "none" : "transform 180ms cubic-bezier(0.22, 1, 0.36, 1)",
-                  pointerEvents: "none",
-                }}
-              />
-            )}
-
-            <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.5) 100%)", pointerEvents: "none", zIndex: 2 }} />
-
-            <div
-              style={{
-                position: "absolute",
-                inset: 0,
-                transform,
-                transformOrigin: "center",
-                transition: isPanningRef.current || dragState ? "none" : "transform 180ms cubic-bezier(0.22, 1, 0.36, 1)",
-              }}
+          {size.width > 0 && baseScale > 0 && (
+            <Stage
+              ref={stageRef}
+              width={size.width}
+              height={size.height}
+              x={size.width * (0.5 + view.panX)}
+              y={size.height * (0.5 + view.panY)}
+              offsetX={WORLD_W / 2}
+              offsetY={WORLD_H / 2}
+              scaleX={baseScale * view.zoom}
+              scaleY={baseScale * view.zoom}
+              rotation={view.rotation}
+              draggable
+              onDragEnd={handleStageDragEnd}
+              onWheel={handleWheel}
+              onDblClick={handleDoubleClick}
+              onDblTap={handleDoubleClick}
+              onClick={handleStageClick}
+              onTap={handleStageClick}
+              onMouseMove={handleStageMouseMove}
+              onMouseLeave={handleStageMouseLeave}
+              onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+              style={{ cursor, touchAction: "none" }}
             >
-              {loading ? (
-                <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                  <div className="loading-spinner" />
-                </div>
-              ) : decoratedAreas.map((a, idx) => {
-                const isSelected = selectedArea?.id === a.id;
-                const isHovered = hoveredArea?.id === a.id;
-                // Corredor agora é um tipo de área de verdade (area_type === "corredor"),
-                // não mais um único código fixo — dá pra ter quantos corredores quiser.
-                const isCorridor = a.area_type === "corredor";
-                const hidden = !a.matches;
-                const occupancy = layers.occupancy ? a.occupancy : 0.5;
-                const baseColor = a.area_type === "conferencia"
-                  ? "#10b981"
-                  : isCorridor
-                  ? "transparent"
-                  : layers.occupancy
-                  ? occupancyColor(occupancy)
-                  : (a.color || colorForType(a.area_type));
-                const isDragging = dragState?.areaId === a.id;
-                const showFlow = isCorridor && layers.corridorFlow && !hidden;
-                // Corredor largo (>= alto) anima na horizontal, estreito anima na vertical —
-                // dá a sensação de "sentido de caminhada" do corredor certo em vez de sempre diagonal.
-                const flowVertical = a.height > a.width;
+              <Layer ref={layerRef} listening={!loading}>
+                {layers.grid &&
+                  gridLines.map((g) => (
+                    <Line
+                      key={g.key}
+                      points={g.points}
+                      stroke="rgba(74, 123, 167, 0.15)"
+                      strokeWidth={1}
+                      strokeScaleEnabled={false}
+                      listening={false}
+                    />
+                  ))}
 
-                return (
-                  <div
-                    key={a.id}
-                    onMouseDown={(e) => {
-                      if (!editMode) return;
-                      startDragArea(e, a, "move");
-                    }}
-                    style={{
-                      position: "absolute",
-                      left: `${a.x}%`,
-                      top: `${a.y}%`,
-                      width: `${a.width}%`,
-                      height: `${a.height}%`,
-                      background: baseColor,
-                      border: isCorridor
-                        ? `1px dashed rgba(0, 212, 255, ${isSelected ? 0.9 : 0.45})`
-                        : `1.5px solid ${isSelected ? "#00d4ff" : "rgba(255,255,255,0.15)"}`,
-                      borderRadius: isCorridor ? 12 : 6,
-                      cursor: editMode
-                        ? isDragging
-                          ? "grabbing"
-                          : "move"
-                        : isCorridor
-                        ? "default"
-                        : "pointer",
-                      transition: isDragging
-                        ? "none"
-                        : "box-shadow 250ms ease, border-color 250ms ease, background 250ms ease",
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 3,
-                      padding: 3,
-                      overflow: "visible",
-                      opacity: hidden ? 0.12 : 1,
-                      transform: isSelected || isDragging
-                        ? "scale(1.05)"
-                        : isHovered && !editMode
-                        ? "scale(1.03)"
-                        : "scale(1)",
-                      boxShadow: isSelected || isDragging
-                        ? "0 0 0 2px #00d4ff, 0 8px 24px rgba(0, 212, 255, 0.4)"
-                        : isHovered && !editMode
-                        ? "0 6px 16px rgba(0,0,0,0.5)"
-                        : "0 2px 6px rgba(0,0,0,0.3)",
-                      zIndex: isSelected || isDragging ? 100 : isHovered ? 50 : idx,
-                    }}
-                  >
-                    {showFlow && (
-                      <div
-                        className={`map-corridor-flow ${flowVertical ? "map-corridor-flow-v" : "map-corridor-flow-h"}`}
-                        style={{ position: "absolute", inset: 0, borderRadius: 12, pointerEvents: "none" }}
-                      />
-                    )}
+                {!loading &&
+                  decoratedAreas.map((a) => {
+                    const isCorridor = a.area_type === "corredor";
+                    const isSelected = selectedArea?.id === a.id;
+                    const world = areaToWorld(a);
+                    const occupancy = layers.occupancy ? a.occupancy : 0.5;
+                    const fill = a.area_type === "conferencia"
+                      ? "#10b981"
+                      : isCorridor
+                      ? "rgba(0, 212, 255, 0.07)"
+                      : layers.occupancy
+                      ? occupancyColor(occupancy)
+                      : (a.color || colorForType(a.area_type));
+                    const stroke = isCorridor
+                      ? `rgba(0, 212, 255, ${isSelected ? 0.9 : 0.45})`
+                      : isSelected
+                      ? "#00d4ff"
+                      : "rgba(255,255,255,0.15)";
+                    const showFlow = isCorridor && layers.corridorFlow && a.matches;
+                    const flowHorizontal = world.width >= world.height;
+                    const canInteract = editMode || a.matches;
 
-                    <div style={{ overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", width: "100%", height: "100%", gap: 3, position: "relative", zIndex: 1 }}>
-                      {isCorridor && layers.labels && a.label && (
-                        <div
-                          style={{
-                            fontSize: 9,
-                            fontWeight: 700,
-                            color: "rgba(0, 212, 255, 0.85)",
-                            textTransform: "uppercase",
-                            letterSpacing: "0.06em",
-                            whiteSpace: "nowrap",
+                    return (
+                      <React.Fragment key={a.id}>
+                        <Rect
+                          ref={(node) => {
+                            if (node) shapeRefs.current[a.id] = node;
+                            else delete shapeRefs.current[a.id];
                           }}
-                        >
-                          {a.label}
-                        </div>
-                      )}
-                      {!isCorridor && layers.labels && (
-                        <>
-                          <div
-                            style={{
-                              fontSize: Math.max(8, Math.min(14, a.width * 0.9)),
-                              fontWeight: 800,
-                              color: "#fff",
-                              textShadow: "0 1px 2px rgba(0,0,0,0.6)",
-                              whiteSpace: "nowrap",
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              maxWidth: "100%",
-                              lineHeight: 1.1,
-                              letterSpacing: "0.02em",
-                            }}
-                          >
-                            {a.code}
-                          </div>
-                          {a.height >= 8 && a.stats.skus > 0 && (
-                            <div
-                              style={{
-                                fontSize: 9,
-                                color: "rgba(255,255,255,0.85)",
-                                fontWeight: 700,
-                                fontFamily: "var(--font-mono)",
-                              }}
-                            >
-                              {a.stats.skus} · {a.stats.totalQty}
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </div>
+                          x={world.x}
+                          y={world.y}
+                          width={world.width}
+                          height={world.height}
+                          fill={fill}
+                          stroke={stroke}
+                          strokeWidth={isSelected ? 2.5 : 1.5}
+                          dash={isCorridor ? [8, 6] : undefined}
+                          cornerRadius={isCorridor ? 14 : 7}
+                          opacity={a.matches ? 1 : 0.12}
+                          listening={canInteract}
+                          draggable={editMode}
+                          onDragStart={() => setActiveDragId(a.id)}
+                          onDragEnd={(e) => handleAreaDragEnd(a, e)}
+                          onTransformEnd={(e) => handleAreaTransformEnd(a, e)}
+                          onClick={() => { setSelectedArea(a); setPanelView("lista"); }}
+                          onTap={() => { setSelectedArea(a); setPanelView("lista"); }}
+                          onMouseEnter={() => setHoveredArea(a)}
+                          onMouseLeave={() => setHoveredArea(null)}
+                          shadowColor="black"
+                          shadowBlur={isSelected ? 18 : 5}
+                          shadowOpacity={isSelected ? 0.5 : 0.3}
+                        />
 
-                    {/* Handle de resize — corredores também são editáveis agora */}
-                    {editMode && (
-                      <div
-                        onMouseDown={(e) => startDragArea(e, a, "resize")}
-                        style={{
-                          position: "absolute",
-                          right: -8,
-                          bottom: -8,
-                          width: 18,
-                          height: 18,
-                          background: "#00d4ff",
-                          border: "2px solid #0a0e14",
-                          borderRadius: 5,
-                          cursor: "nwse-resize",
-                          zIndex: 10,
-                          boxShadow: "0 2px 8px rgba(0,212,255,0.6)",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                        title="Arraste pra redimensionar"
-                      >
-                        <svg width="10" height="10" viewBox="0 0 10 10" fill="#0a0e14">
-                          <rect x="6" y="6" width="3" height="3" />
-                          <rect x="2" y="6" width="2" height="2" opacity="0.5" />
-                          <rect x="6" y="2" width="2" height="2" opacity="0.5" />
-                        </svg>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+                        {showFlow && (
+                          <Line
+                            ref={(node) => {
+                              if (node) corridorLineRefs.current[a.id] = node;
+                              else delete corridorLineRefs.current[a.id];
+                            }}
+                            points={
+                              flowHorizontal
+                                ? [world.x + 8, world.y + world.height / 2, world.x + world.width - 8, world.y + world.height / 2]
+                                : [world.x + world.width / 2, world.y + 8, world.x + world.width / 2, world.y + world.height - 8]
+                            }
+                            stroke="rgba(0, 212, 255, 0.85)"
+                            strokeWidth={3}
+                            dash={[14, 10]}
+                            lineCap="round"
+                            listening={false}
+                          />
+                        )}
+
+                        {layers.labels && world.width > 16 && world.height > 10 && (
+                          <Text
+                            x={world.x}
+                            y={world.y + world.height / 2 - 7}
+                            width={world.width}
+                            align="center"
+                            text={isCorridor ? (a.label || "") : a.code}
+                            fontStyle="700"
+                            fontSize={isCorridor ? 12 : Math.max(10, Math.min(16, world.width * 0.05))}
+                            fill={isCorridor ? "rgba(0, 212, 255, 0.85)" : "#fff"}
+                            listening={false}
+                          />
+                        )}
+
+                        {!isCorridor && layers.labels && world.height > 55 && a.stats.skus > 0 && (
+                          <Text
+                            x={world.x}
+                            y={world.y + world.height / 2 + 9}
+                            width={world.width}
+                            align="center"
+                            text={`${a.stats.skus} · ${a.stats.totalQty}`}
+                            fontSize={10}
+                            fontFamily="var(--font-mono)"
+                            fill="rgba(255,255,255,0.85)"
+                            listening={false}
+                          />
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+
+                {editMode && (
+                  <Transformer
+                    ref={transformerRef}
+                    rotateEnabled={false}
+                    keepRatio={false}
+                    anchorFill="#0a0e14"
+                    anchorStroke="#00d4ff"
+                    anchorSize={9}
+                    borderStroke="#00d4ff"
+                    borderDash={[4, 4]}
+                    boundBoxFunc={handleTransformerBoundBox}
+                  />
+                )}
+              </Layer>
+            </Stage>
+          )}
+
+          {loading && (
+            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <div className="loading-spinner" />
             </div>
-          </div>
+          )}
 
           <div className="map-north">
             <div className="map-north-letter">N</div>

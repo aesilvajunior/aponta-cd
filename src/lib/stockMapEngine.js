@@ -1,24 +1,36 @@
 // ============================================================
-// Motor do mapa — zoom, pan, rotação, touch, teclado
-// Inspirado em Google Maps / Apple Maps
+// Motor do mapa v4 — agora só cuida do "view" (zoom / rotação / pan)
+// do Stage do Konva.
+//
+// Antes desse arquivo tinha handTest, pointInRect, screenToWorld,
+// screenDeltaToWorldDelta etc. — tudo reimplementando na mão o que o
+// Konva já resolve de forma correta e testada: arrastar forma, detectar
+// clique, redimensionar com Transformer. Isso elimina de vez a classe de
+// bug que a versão anterior tinha (mover uma área dava errado quando o
+// mapa estava rotacionado).
+//
+// O que sobra aqui é só matemática pura de câmera: zoom/rotação/pan do
+// Stage como um todo, incluindo "zoom no cursor" e "pinça com 2 dedos"
+// (que precisam saber ONDE na tela o gesto aconteceu pra não fazer o
+// mapa "escapar" debaixo do dedo/cursor).
 // ============================================================
 
 export const MIN_ZOOM = 0.5;
 export const MAX_ZOOM = 6;
 export const ZOOM_STEP = 0.25;
+export const WHEEL_ZOOM_SENSITIVITY = 0.0015;
 
-export const MIN_ROTATION = -360;
-export const MAX_ROTATION = 360;
+// Unidade de "mundo" onde as áreas vivem — 4:3, mesma proporção que o
+// container sempre teve (padding-bottom: 75%). x/y/width/height das áreas
+// continuam gravados em % (0-100) no Supabase; só a camada de desenho
+// converte pra essas unidades.
+export const WORLD_W = 1000;
+export const WORLD_H = 750;
 
 // ---------- Estado inicial ----------
 
 export function createInitialView() {
-  return {
-    zoom: 1,
-    rotation: 0,
-    panX: 0,
-    panY: 0,
-  };
+  return { zoom: 1, rotation: 0, panX: 0, panY: 0 };
 }
 
 // ---------- Zoom ----------
@@ -35,34 +47,10 @@ export function zoomOut(view) {
   return { ...view, zoom: clampZoom(view.zoom - ZOOM_STEP) };
 }
 
-// Zoom centrado no cursor (coordenada 0-1 do container)
-export function zoomAt(view, deltaZoom, pivotX, pivotY) {
-  const newZoom = clampZoom(view.zoom + deltaZoom);
-  const scale = newZoom / view.zoom;
-
-  // ponto de referência no espaço do "mundo"
-  const worldX = (pivotX - 0.5) - view.panX / view.zoom;
-  const worldY = (pivotY - 0.5) - view.panY / view.zoom;
-
-  const newPanX = view.panX + worldX * view.zoom * (1 - scale) * -1;
-  const newPanY = view.panY + worldY * view.zoom * (1 - scale) * -1;
-
-  return {
-    ...view,
-    zoom: newZoom,
-    panX: newPanX,
-    panY: newPanY,
-  };
-}
-
 // ---------- Pan ----------
 
 export function panBy(view, dx, dy) {
-  return {
-    ...view,
-    panX: view.panX + dx,
-    panY: view.panY + dy,
-  };
+  return { ...view, panX: view.panX + dx, panY: view.panY + dy };
 }
 
 // ---------- Rotação ----------
@@ -81,93 +69,84 @@ export function rotateTo(view, deg) {
 // ---------- Reset ----------
 
 export function resetView(view) {
+  return { ...view, zoom: 1, rotation: 0, panX: 0, panY: 0 };
+}
+
+// ---------- Conversão % (Supabase) <-> unidades de mundo (Konva) ----------
+
+export function areaToWorld(a) {
+  return {
+    x: (a.x / 100) * WORLD_W,
+    y: (a.y / 100) * WORLD_H,
+    width: (a.width / 100) * WORLD_W,
+    height: (a.height / 100) * WORLD_H,
+  };
+}
+
+export function worldToAreaPct(rect) {
+  return {
+    x: (rect.x / WORLD_W) * 100,
+    y: (rect.y / WORLD_H) * 100,
+    width: (rect.width / WORLD_W) * 100,
+    height: (rect.height / WORLD_H) * 100,
+  };
+}
+
+// ---------- Zoom/rotação com pivô fixo na tela ----------
+
+function rotateVector(v, deg) {
+  const rad = (deg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  return { x: v.x * cos - v.y * sin, y: v.x * sin + v.y * cos };
+}
+
+// Recalcula panX/panY pra manter um ponto (pivotX, pivotY, em pixels do
+// container) fixo na tela enquanto zoom e/ou rotação mudam. Usado no
+// scroll do mouse (zoom no cursor) e no gesto de pinça com dois dedos
+// (zoom + rotação ao mesmo tempo). Sem isso o mapa "foge" do cursor/dedo
+// a cada zoom.
+export function repositionForTransform({
+  view,
+  pivotX,
+  pivotY,
+  containerWidth,
+  containerHeight,
+  baseScale,
+  newZoom,
+  newRotation,
+}) {
+  const oldScale = baseScale * view.zoom;
+  const newScale = baseScale * newZoom;
+  const oldStageX = containerWidth * (0.5 + view.panX);
+  const oldStageY = containerHeight * (0.5 + view.panY);
+  const angleDelta = newRotation - view.rotation;
+
+  const rel = rotateVector({ x: pivotX - oldStageX, y: pivotY - oldStageY }, angleDelta);
+  const scaleRatio = newScale / oldScale;
+
+  const newStageX = pivotX - scaleRatio * rel.x;
+  const newStageY = pivotY - scaleRatio * rel.y;
+
   return {
     ...view,
-    zoom: 1,
-    rotation: 0,
-    panX: 0,
-    panY: 0,
+    zoom: newZoom,
+    rotation: newRotation,
+    panX: newStageX / containerWidth - 0.5,
+    panY: newStageY / containerHeight - 0.5,
   };
 }
 
-// ---------- CSS Transform ----------
-
-export function getTransform(view) {
-  return `translate(${view.panX * 100}%, ${view.panY * 100}%) scale(${view.zoom}) rotate(${view.rotation}deg)`;
-}
-
-// ---------- Coordenadas ----------
-
-// Converte % do container para coordenada de "mundo" (antes de rotação/escala)
-export function screenToWorld(view, screenX, screenY) {
-  const cx = 0.5;
-  const cy = 0.5;
-  const dx = screenX - cx - view.panX;
-  const dy = screenY - cy - view.panY;
-  const rad = (-view.rotation * Math.PI) / 180;
-  const rx = dx * Math.cos(rad) - dy * Math.sin(rad);
-  const ry = dx * Math.sin(rad) + dy * Math.cos(rad);
-  return {
-    x: rx / view.zoom + cx,
-    y: ry / view.zoom + cy,
-  };
-}
-
-// Converte um deslocamento em % de tela (dx, dy) pra um deslocamento no
-// espaço de "mundo", desfazendo zoom e rotação — usado no arrastar/redimensionar
-// de áreas. Sem isso, mover uma área com o mapa girado (Shift+scroll, G) manda
-// o retângulo pro lado errado, porque o mouse se move em tela mas a área vive
-// em coordenadas do mundo (antes da rotação).
-export function screenDeltaToWorldDelta(view, dxPct, dyPct) {
-  const rad = (-view.rotation * Math.PI) / 180;
-  const rx = dxPct * Math.cos(rad) - dyPct * Math.sin(rad);
-  const ry = dxPct * Math.sin(rad) + dyPct * Math.cos(rad);
-  return { dx: rx / view.zoom, dy: ry / view.zoom };
-}
-
-// Verifica se um ponto (em %) está dentro de um retângulo
-export function pointInRect(x, y, rect) {
-  return (
-    x >= rect.x &&
-    x <= rect.x + rect.width &&
-    y >= rect.y &&
-    y <= rect.y + rect.height
-  );
-}
-
-// Encontra a área clicada (de cima pra baixo)
-export function hitTest(areas, worldPoint) {
-  for (let i = areas.length - 1; i >= 0; i--) {
-    if (pointInRect(worldPoint.x, worldPoint.y, areas[i])) {
-      return areas[i];
-    }
-  }
-  return null;
-}
-
-// ---------- Viewport visível (útil pro minimap) ----------
-
-export function getVisibleBounds(view) {
-  const halfW = 0.5 / view.zoom;
-  const halfH = 0.5 / view.zoom;
-  return {
-    x: 0.5 - halfW - view.panX / view.zoom,
-    y: 0.5 - halfH - view.panY / view.zoom,
-    width: halfW * 2,
-    height: halfH * 2,
-  };
-}
-
-// ---------- Detecção de gesto touch ----------
+// ---------- Touch (pinça de 2 dedos) ----------
 
 export function createTouchState() {
   return {
-    touches: [],
+    active: false,
     initialDistance: 0,
     initialAngle: 0,
     initialZoom: 1,
     initialRotation: 0,
-    active: false,
+    midpoint: { x: 0, y: 0 },
   };
 }
 
@@ -183,8 +162,9 @@ export function angleBetween(t1, t2) {
   return (Math.atan2(dy, dx) * 180) / Math.PI;
 }
 
-// ---------- Constantes de interação ----------
-
-export const DOUBLE_CLICK_DELAY = 260;
-export const PAN_THRESHOLD_PX = 5; // pra diferenciar click de drag
-export const WHEEL_ZOOM_SENSITIVITY = 0.0015;
+export function midpointBetween(t1, t2, containerRect) {
+  return {
+    x: (t1.clientX + t2.clientX) / 2 - containerRect.left,
+    y: (t1.clientY + t2.clientY) / 2 - containerRect.top,
+  };
+}
