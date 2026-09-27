@@ -1,30 +1,32 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchMapAreas,
-  addMapArea,
   updateMapArea,
   deleteMapArea,
   fetchMapItems,
-  addMapItem,
-  updateMapItem,
   deleteMapItem,
   AREA_TYPES,
+  SIDES,
   colorForType,
   labelForType,
+  labelForSide,
+  groupItemsBySide,
+  groupItemsByCategory,
   summarizeArea,
 } from "../lib/stockMap";
 import { supabase } from "../supabaseClient";
+import StockMapItemPicker from "./StockMapItemPicker";
 import {
   IconMapPin,
-  IconPlus,
   IconEdit,
   IconTrash,
   IconX,
-  IconCheck,
-  IconPackage,
   IconSearch,
   IconRefresh,
-  IconAlertTriangle,
+  IconPackage,
+  IconPlus,
+  IconGrid,
+  IconList,
 } from "./Icons";
 
 export default function StockMap({ isAdmin }) {
@@ -34,27 +36,16 @@ export default function StockMap({ isAdmin }) {
   const [error, setError] = useState("");
 
   const [selectedArea, setSelectedArea] = useState(null);
-  const [hoveredAreaId, setHoveredAreaId] = useState(null);
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState("");
-
-  // Modo edição
   const [editMode, setEditMode] = useState(false);
 
-  // Modal criar/editar área
-  const [areaModal, setAreaModal] = useState(null); // { mode: "new"|"edit", data }
-  const [areaForm, setAreaForm] = useState({
-    code: "", label: "", areaType: "rua",
-    x: 5, y: 5, width: 15, height: 15,
-    capacity: "", category: "",
-  });
+  // Painel lateral: "lista" | "categoria"
+  const [panelView, setPanelView] = useState("lista");
 
-  // Modal item
-  const [itemModal, setItemModal] = useState(false);
-  const [itemForm, setItemForm] = useState({
-    productCode: "", productName: "", quantity: "", slot: "", note: "",
-  });
-  const [editingItemId, setEditingItemId] = useState(null);
+  // Picker de item (novo/editar)
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState(null);
 
   async function loadAll() {
     setLoading(true);
@@ -93,138 +84,31 @@ export default function StockMap({ isAdmin }) {
   }, [items]);
 
   const filteredAreas = useMemo(() => {
+    const q = search.trim().toLowerCase();
     return areas
       .filter((a) => !filterType || a.area_type === filterType)
       .map((a) => {
-        const matchesSearch = !search.trim() || (() => {
-          const q = search.trim().toLowerCase();
-          if (a.code.toLowerCase().includes(q)) return true;
-          if (a.label.toLowerCase().includes(q)) return true;
-          const areaItems = itemsByArea[a.id] || [];
-          return areaItems.some(
-            (i) =>
-              i.product_code.toLowerCase().includes(q) ||
-              (i.product_name || "").toLowerCase().includes(q)
-          );
-        })();
-        return { ...a, matchesSearch };
+        let matches = true;
+        if (q) {
+          matches =
+            a.code.toLowerCase().includes(q) ||
+            a.label.toLowerCase().includes(q) ||
+            (itemsByArea[a.id] || []).some(
+              (i) =>
+                i.product_code.toLowerCase().includes(q) ||
+                (i.product_name || "").toLowerCase().includes(q) ||
+                (i.category || "").toLowerCase().includes(q)
+            );
+        }
+        return { ...a, matchesSearch: matches };
       });
   }, [areas, itemsByArea, search, filterType]);
-
-  // ---------- Áreas: salvar / excluir ----------
-
-  function openNewArea() {
-    setAreaForm({
-      code: "", label: "", areaType: "rua",
-      x: 5, y: 5, width: 15, height: 15,
-      capacity: "", category: "",
-    });
-    setAreaModal({ mode: "new" });
-  }
-
-  function openEditArea(a) {
-    setAreaForm({
-      code: a.code,
-      label: a.label,
-      areaType: a.area_type,
-      x: Number(a.x),
-      y: Number(a.y),
-      width: Number(a.width),
-      height: Number(a.height),
-      capacity: a.meta?.capacidade ?? "",
-      category: a.meta?.categoria ?? "",
-    });
-    setAreaModal({ mode: "edit", id: a.id });
-  }
-
-  async function saveArea() {
-    const code = areaForm.code.trim().toUpperCase();
-    const label = areaForm.label.trim();
-    if (!code) return setError("Digite o código da área.");
-    if (!label) return setError("Digite o rótulo da área.");
-
-    const payload = {
-      code,
-      label,
-      area_type: areaForm.areaType,
-      x: Number(areaForm.x) || 0,
-      y: Number(areaForm.y) || 0,
-      width: Number(areaForm.width) || 5,
-      height: Number(areaForm.height) || 5,
-      color: colorForType(areaForm.areaType),
-      meta: {
-        capacidade: areaForm.capacity || null,
-        categoria: areaForm.category || null,
-      },
-    };
-
-    if (areaModal.mode === "new") {
-      const { error: err } = await addMapArea(payload);
-      if (err) return setError(err.message);
-    } else {
-      const { error: err } = await updateMapArea(areaModal.id, payload);
-      if (err) return setError(err.message);
-    }
-    setAreaModal(null);
-    await loadAll();
-  }
 
   async function handleDeleteArea(a) {
     if (!window.confirm(`Remover a área "${a.label}"? Os itens dentro dela também serão removidos.`)) return;
     const { error: err } = await deleteMapArea(a.id);
     if (err) return setError(err.message);
     if (selectedArea?.id === a.id) setSelectedArea(null);
-    await loadAll();
-  }
-
-  // ---------- Itens ----------
-
-  function openNewItem() {
-    setEditingItemId(null);
-    setItemForm({ productCode: "", productName: "", quantity: "", slot: "", note: "" });
-    setItemModal(true);
-  }
-
-  function openEditItem(it) {
-    setEditingItemId(it.id);
-    setItemForm({
-      productCode: it.product_code,
-      productName: it.product_name || "",
-      quantity: String(it.quantity ?? ""),
-      slot: it.slot || "",
-      note: it.note || "",
-    });
-    setItemModal(true);
-  }
-
-  async function saveItem() {
-    if (!selectedArea) return;
-    const code = itemForm.productCode.trim();
-    if (!code) return setError("Digite o código do produto.");
-
-    const payload = {
-      areaId: selectedArea.id,
-      productCode: code,
-      productName: itemForm.productName,
-      quantity: Number(itemForm.quantity) || 0,
-      slot: itemForm.slot,
-      note: itemForm.note,
-    };
-
-    if (editingItemId) {
-      const { error: err } = await updateMapItem(editingItemId, {
-        product_code: code,
-        product_name: itemForm.productName.trim() || null,
-        quantity: Number(itemForm.quantity) || 0,
-        slot: itemForm.slot.trim() || null,
-        note: itemForm.note.trim() || null,
-      });
-      if (err) return setError(err.message);
-    } else {
-      const { error: err } = await addMapItem(payload);
-      if (err) return setError(err.message);
-    }
-    setItemModal(false);
     await loadAll();
   }
 
@@ -235,9 +119,20 @@ export default function StockMap({ isAdmin }) {
     await loadAll();
   }
 
-  // ---------- Render ----------
+  function openNewItem() {
+    setEditingItem(null);
+    setPickerOpen(true);
+  }
+
+  function openEditItem(it) {
+    setEditingItem(it);
+    setPickerOpen(true);
+  }
 
   const selectedAreaItems = selectedArea ? (itemsByArea[selectedArea.id] || []) : [];
+  const selectedAreaStats = selectedArea ? summarizeArea(selectedArea, items) : null;
+  const bySide = selectedArea?.has_sides ? groupItemsBySide(selectedAreaItems) : null;
+  const byCategory = selectedArea ? groupItemsByCategory(selectedAreaItems) : [];
 
   return (
     <div>
@@ -245,7 +140,7 @@ export default function StockMap({ isAdmin }) {
         <div>
           <h1 className="page-title">Mapa do estoque</h1>
           <p className="page-sub" style={{ marginBottom: 0 }}>
-            Layout interativo do galpão — clique em qualquer área pra ver o que tem dentro
+            Layout do galpão térreo — clique em qualquer área pra ver o que tem dentro
           </p>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -253,17 +148,12 @@ export default function StockMap({ isAdmin }) {
             <IconRefresh size={14} /> Atualizar
           </button>
           {isAdmin && (
-            <>
-              <button
-                className={`btn-small ${editMode ? "btn-excel" : ""}`}
-                onClick={() => setEditMode((v) => !v)}
-              >
-                <IconEdit size={14} /> {editMode ? "Sair do modo edição" : "Modo edição"}
-              </button>
-              <button className="btn-small btn-excel" onClick={openNewArea}>
-                <IconPlus size={14} /> Nova área
-              </button>
-            </>
+            <button
+              className={`btn-small ${editMode ? "btn-excel" : ""}`}
+              onClick={() => setEditMode((v) => !v)}
+            >
+              <IconEdit size={14} /> {editMode ? "Sair do modo edição" : "Modo edição"}
+            </button>
           )}
         </div>
       </div>
@@ -285,7 +175,7 @@ export default function StockMap({ isAdmin }) {
             <input
               className="field"
               style={{ paddingLeft: 38 }}
-              placeholder="Buscar por código de área ou produto..."
+              placeholder="Buscar por área, código, nome ou categoria..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -297,16 +187,38 @@ export default function StockMap({ isAdmin }) {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: selectedArea ? "1fr 380px" : "1fr", gap: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: selectedArea ? "1fr 420px" : "1fr", gap: 20 }}>
         {/* Mapa */}
         <div className="card" style={{ padding: 0, overflow: "hidden" }}>
           <div style={{
             position: "relative",
             width: "100%",
-            paddingBottom: "75%", // aspecto 4:3
+            paddingBottom: "75%",
             background: "var(--surface-sunken)",
             borderBottom: "1px solid var(--border)",
           }}>
+            {/* Norte */}
+            <div style={{
+              position: "absolute",
+              top: 12,
+              right: 12,
+              background: "var(--bg-elevated)",
+              border: "1px solid var(--border)",
+              borderRadius: 8,
+              padding: "6px 12px",
+              fontSize: 11,
+              fontWeight: 700,
+              color: "var(--text-muted)",
+              letterSpacing: "0.06em",
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              zIndex: 10,
+            }}>
+              <IconMapPin size={12} /> NORTE (fundo)
+            </div>
+
+            {/* Grid */}
             <div style={{
               position: "absolute",
               inset: 0,
@@ -315,14 +227,15 @@ export default function StockMap({ isAdmin }) {
                 linear-gradient(90deg, var(--border) 1px, transparent 1px)
               `,
               backgroundSize: "5% 5%",
-              opacity: 0.4,
+              opacity: 0.3,
             }} />
 
+            {/* Blocos */}
             {loading ? (
               <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <div className="loading-spinner" />
               </div>
-            ) : areas.length === 0 ? (
+            ) : filteredAreas.length === 0 ? (
               <div style={{
                 position: "absolute",
                 inset: 0,
@@ -337,17 +250,15 @@ export default function StockMap({ isAdmin }) {
               }}>
                 <IconMapPin size={48} strokeWidth={1} />
                 <div style={{ fontWeight: 600, fontSize: 15 }}>Nenhuma área cadastrada</div>
-                {isAdmin && (
-                  <button className="btn-small btn-excel" onClick={openNewArea}>
-                    <IconPlus size={14} /> Criar primeira área
-                  </button>
-                )}
+                <div style={{ fontSize: 12.5 }}>
+                  Rode o SQL de seed no Supabase pra pré-cadastrar o layout do galpão.
+                </div>
               </div>
             ) : (
               filteredAreas.map((a) => {
                 const hidden = search && !a.matchesSearch;
                 const isSelected = selectedArea?.id === a.id;
-                const isHovered = hoveredAreaId === a.id;
+                const isCorridor = a.code === "CORREDOR-CENTRAL";
                 const stats = summarizeArea(a, items);
                 const baseColor = a.color || colorForType(a.area_type);
 
@@ -355,72 +266,65 @@ export default function StockMap({ isAdmin }) {
                   <div
                     key={a.id}
                     onClick={() => {
-                      if (editMode) { openEditArea(a); return; }
+                      if (isCorridor && !editMode) return;
+                      if (editMode) return; // edição só via botão no painel
                       setSelectedArea(a);
                     }}
-                    onMouseEnter={() => setHoveredAreaId(a.id)}
-                    onMouseLeave={() => setHoveredAreaId(null)}
                     style={{
                       position: "absolute",
                       left: `${a.x}%`,
                       top: `${a.y}%`,
                       width: `${a.width}%`,
                       height: `${a.height}%`,
-                      background: isSelected ? baseColor : `${baseColor}${hidden ? "0A" : isHovered ? "DD" : "AA"}`,
-                      border: `2px solid ${isSelected ? "var(--accent)" : baseColor}`,
-                      borderRadius: 8,
-                      cursor: "pointer",
+                      background: isCorridor
+                        ? "transparent"
+                        : isSelected
+                        ? baseColor
+                        : `${baseColor}${hidden ? "0A" : "CC"}`,
+                      border: isCorridor
+                        ? `1px dashed ${baseColor}66`
+                        : `1.5px solid ${isSelected ? "var(--accent)" : baseColor}`,
+                      borderRadius: 6,
+                      cursor: isCorridor ? "default" : "pointer",
                       transition: "all 150ms ease",
                       display: "flex",
                       flexDirection: "column",
                       alignItems: "center",
                       justifyContent: "center",
-                      gap: 3,
-                      padding: 4,
+                      gap: 2,
+                      padding: 2,
                       overflow: "hidden",
-                      boxShadow: isSelected ? "0 4px 16px rgba(0,0,0,0.25)" : isHovered ? "0 2px 8px rgba(0,0,0,0.15)" : "none",
-                      transform: isHovered && !isSelected ? "scale(1.015)" : "scale(1)",
-                      opacity: hidden ? 0.25 : 1,
+                      boxShadow: isSelected ? "0 4px 16px rgba(0,0,0,0.3)" : "none",
+                      opacity: hidden ? 0.2 : 1,
                     }}
-                    title={`${a.label} · ${stats.skus} SKUs · ${stats.totalQty} un`}
+                    title={`${a.label}${stats.skus > 0 ? ` · ${stats.skus} SKUs · ${stats.totalQty} un` : ""}`}
                   >
-                    <div style={{
-                      fontSize: Math.max(10, Math.min(14, a.width * 0.8)),
-                      fontWeight: 800,
-                      color: "#fff",
-                      textShadow: "0 1px 2px rgba(0,0,0,0.3)",
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      maxWidth: "100%",
-                    }}>
-                      {a.code}
-                    </div>
-                    {a.width >= 10 && (
-                      <div style={{
-                        fontSize: Math.max(9, Math.min(11, a.width * 0.6)),
-                        color: "rgba(255,255,255,0.9)",
-                        fontWeight: 600,
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        maxWidth: "100%",
-                      }}>
-                        {stats.skus} SKU{stats.skus !== 1 ? "s" : ""}
-                      </div>
-                    )}
-                    {a.height >= 12 && (
-                      <div style={{
-                        fontSize: 9.5,
-                        color: "rgba(255,255,255,0.75)",
-                        fontWeight: 500,
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        maxWidth: "100%",
-                      }}>
-                        {labelForType(a.area_type)}
-                      </div>
+                    {!isCorridor && (
+                      <>
+                        <div style={{
+                          fontSize: Math.max(9, Math.min(13, a.width * 0.9)),
+                          fontWeight: 800,
+                          color: "#fff",
+                          textShadow: "0 1px 2px rgba(0,0,0,0.4)",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          maxWidth: "100%",
+                          lineHeight: 1.1,
+                        }}>
+                          {a.code}
+                        </div>
+                        {a.height >= 8 && stats.skus > 0 && (
+                          <div style={{
+                            fontSize: 9,
+                            color: "rgba(255,255,255,0.9)",
+                            fontWeight: 700,
+                            whiteSpace: "nowrap",
+                          }}>
+                            {stats.skus}
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 );
@@ -446,10 +350,10 @@ export default function StockMap({ isAdmin }) {
           </div>
         </div>
 
-        {/* Painel lateral da área selecionada */}
+        {/* Painel lateral */}
         {selectedArea && (
           <div className="card" style={{ position: "sticky", top: 20, alignSelf: "flex-start", maxHeight: "calc(100vh - 80px)", overflowY: "auto" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 12 }}>
               <div>
                 <div style={{ fontSize: 11, color: "var(--text-faint)", fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 4 }}>
                   {labelForType(selectedArea.area_type)}
@@ -478,234 +382,245 @@ export default function StockMap({ isAdmin }) {
               </button>
             </div>
 
+            {/* KPIs */}
             <div style={{
               display: "grid",
               gridTemplateColumns: "1fr 1fr",
               gap: 8,
-              marginBottom: 16,
-              paddingBottom: 16,
+              marginBottom: 14,
+              paddingBottom: 14,
               borderBottom: "1px solid var(--border)",
             }}>
               <div>
                 <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 3 }}>SKUs</div>
-                <div style={{ fontSize: 18, fontWeight: 700 }}>{selectedAreaItems.length}</div>
+                <div style={{ fontSize: 18, fontWeight: 700 }}>{selectedAreaStats.skus}</div>
               </div>
               <div>
                 <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 3 }}>Qtd. total</div>
-                <div style={{ fontSize: 18, fontWeight: 700, color: "var(--accent)" }}>
-                  {selectedAreaItems.reduce((s, i) => s + (i.quantity || 0), 0)}
-                </div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: "var(--accent)" }}>{selectedAreaStats.totalQty}</div>
               </div>
-              {selectedArea.meta?.capacidade && (
-                <div>
-                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 3 }}>Capacidade</div>
-                  <div style={{ fontSize: 14, fontWeight: 600 }}>{selectedArea.meta.capacidade}</div>
-                </div>
-              )}
-              {selectedArea.meta?.categoria && (
-                <div>
-                  <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 3 }}>Categoria</div>
-                  <div style={{ fontSize: 14, fontWeight: 600 }}>{selectedArea.meta.categoria}</div>
-                </div>
-              )}
             </div>
 
             {isAdmin && (
-              <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
-                <button className="btn-small" style={{ flex: 1 }} onClick={() => openEditArea(selectedArea)}>
-                  <IconEdit size={13} /> Editar área
-                </button>
-                <button className="btn-small" style={{ padding: "6px 10px", color: "var(--danger)", borderColor: "var(--danger)" }} onClick={() => handleDeleteArea(selectedArea)}>
-                  <IconTrash size={13} />
+              <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+                <button className="btn-small" style={{ flex: 1, color: "var(--danger)", borderColor: "var(--danger)" }} onClick={() => handleDeleteArea(selectedArea)}>
+                  <IconTrash size={13} /> Remover área
                 </button>
               </div>
             )}
 
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
-                <IconPackage size={14} /> Itens
-              </div>
-              {isAdmin && (
-                <button className="btn-small btn-excel" style={{ padding: "5px 10px", fontSize: 11.5 }} onClick={openNewItem}>
-                  <IconPlus size={12} /> Item
-                </button>
-              )}
+            {/* Abas: lista / categoria */}
+            <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+              <button
+                className={`quick-filter-btn ${panelView === "lista" ? "active" : ""}`}
+                onClick={() => setPanelView("lista")}
+                style={{ flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 5 }}
+              >
+                <IconList size={12} /> Lista
+              </button>
+              <button
+                className={`quick-filter-btn ${panelView === "categoria" ? "active" : ""}`}
+                onClick={() => setPanelView("categoria")}
+                style={{ flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 5 }}
+              >
+                <IconGrid size={12} /> Categoria
+              </button>
             </div>
+
+            {isAdmin && (
+              <button className="btn-small btn-excel" style={{ width: "100%", marginBottom: 14 }} onClick={openNewItem}>
+                <IconPlus size={14} /> Adicionar item
+              </button>
+            )}
 
             {selectedAreaItems.length === 0 ? (
               <div style={{ fontSize: 13, color: "var(--text-faint)", textAlign: "center", padding: "20px 0" }}>
                 Nenhum item cadastrado nesta área.
               </div>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {selectedAreaItems.map((it) => (
-                  <div
-                    key={it.id}
-                    style={{
-                      background: "var(--surface-raised)",
-                      border: "1px solid var(--border)",
-                      borderRadius: 10,
-                      padding: "10px 12px",
-                    }}
-                  >
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-                      <div style={{ minWidth: 0, flex: 1 }}>
-                        <div style={{ fontFamily: "var(--font-mono)", fontSize: 13, fontWeight: 700 }}>
-                          {it.product_code}
-                        </div>
-                        {it.product_name && (
-                          <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
-                            {it.product_name}
-                          </div>
-                        )}
-                        <div style={{ display: "flex", gap: 8, fontSize: 11, color: "var(--text-faint)", marginTop: 4 }}>
-                          {it.slot && <span>Slot {it.slot}</span>}
-                          <span>{it.quantity} un</span>
-                        </div>
-                        {it.note && (
-                          <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 4, fontStyle: "italic" }}>
-                            {it.note}
-                          </div>
-                        )}
+              <>
+                {/* Vista: Lista (com PAR/ÍMPAR se tiver lados) */}
+                {panelView === "lista" && (
+                  <>
+                    {selectedArea.has_sides && bySide ? (
+                      <>
+                        {/* PAR */}
+                        <SideSection
+                          title="PAR · lado direito"
+                          items={bySide.par.filter((i) => i.side === "par")}
+                          isAdmin={isAdmin}
+                          onEdit={openEditItem}
+                          onDelete={handleDeleteItem}
+                        />
+
+                        {/* ÍMPAR */}
+                        <SideSection
+                          title="ÍMPAR · lado esquerdo"
+                          items={bySide.impar}
+                          isAdmin={isAdmin}
+                          onEdit={openEditItem}
+                          onDelete={handleDeleteItem}
+                        />
+                      </>
+                    ) : (
+                      <SimpleItemList
+                        items={selectedAreaItems}
+                        isAdmin={isAdmin}
+                        onEdit={openEditItem}
+                        onDelete={handleDeleteItem}
+                      />
+                    )}
+                  </>
+                )}
+
+                {/* Vista: Categoria */}
+                {panelView === "categoria" && (
+                  <>
+                    {byCategory.length === 0 ? (
+                      <div style={{ fontSize: 13, color: "var(--text-faint)", textAlign: "center", padding: "20px 0" }}>
+                        Nenhum item com categoria.
                       </div>
-                      {isAdmin && (
-                        <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-                          <button className="btn-small" style={{ padding: "5px 8px" }} onClick={() => openEditItem(it)} title="Editar">
-                            <IconEdit size={11} />
-                          </button>
-                          <button className="btn-small" style={{ padding: "5px 8px", color: "var(--danger)", borderColor: "var(--danger)" }} onClick={() => handleDeleteItem(it)} title="Remover">
-                            <IconTrash size={11} />
-                          </button>
+                    ) : (
+                      byCategory.map((cat) => (
+                        <div key={cat.category} style={{ marginBottom: 14 }}>
+                          <div style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            padding: "8px 10px",
+                            background: "var(--surface-raised)",
+                            border: "1px solid var(--border)",
+                            borderRadius: 8,
+                            marginBottom: 8,
+                          }}>
+                            <div style={{ fontSize: 13, fontWeight: 700 }}>{cat.category}</div>
+                            <div style={{ fontSize: 11.5, color: "var(--text-muted)", fontFamily: "var(--font-mono)" }}>
+                              {cat.skus} SKU · {cat.totalQty} un
+                            </div>
+                          </div>
+                          <SimpleItemList
+                            items={cat.items}
+                            isAdmin={isAdmin}
+                            onEdit={openEditItem}
+                            onDelete={handleDeleteItem}
+                            compact
+                          />
                         </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
+                      ))
+                    )}
+                  </>
+                )}
+              </>
             )}
           </div>
         )}
       </div>
 
-      {/* Modal área */}
-      {areaModal && (
-        <div className="kiosk-modal-backdrop" onClick={() => setAreaModal(null)}>
-          <div className="kiosk-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 640 }}>
-            <div className="kiosk-modal-header">
-              <div>
-                <div className="kiosk-modal-title">
-                  {areaModal.mode === "new" ? "Nova área" : "Editar área"}
-                </div>
-                <div className="kiosk-modal-sub">Posição e tamanho em % do mapa (0-100)</div>
-              </div>
-              <button className="kiosk-modal-close" onClick={() => setAreaModal(null)}>
-                <IconX size={18} />
-              </button>
-            </div>
+      {/* Picker de item */}
+      {pickerOpen && selectedArea && (
+        <StockMapItemPicker
+          area={selectedArea}
+          item={editingItem}
+          onClose={() => setPickerOpen(false)}
+          onSaved={loadAll}
+        />
+      )}
+    </div>
+  );
+}
 
-            <div className="kiosk-modal-body">
-              <div className="schedule-modal-grid">
-                <div>
-                  <label className="schedule-modal-label">Código *</label>
-                  <input className="schedule-modal-field" placeholder="Ex: RUA-A1" value={areaForm.code} onChange={(e) => setAreaForm({ ...areaForm, code: e.target.value.toUpperCase() })} />
-                </div>
-                <div>
-                  <label className="schedule-modal-label">Tipo *</label>
-                  <select className="schedule-modal-field" value={areaForm.areaType} onChange={(e) => setAreaForm({ ...areaForm, areaType: e.target.value })}>
-                    {AREA_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-                  </select>
-                </div>
-                <div className="schedule-modal-full">
-                  <label className="schedule-modal-label">Rótulo *</label>
-                  <input className="schedule-modal-field" placeholder="Ex: Rua A · Corredor 1" value={areaForm.label} onChange={(e) => setAreaForm({ ...areaForm, label: e.target.value })} />
-                </div>
-                <div>
-                  <label className="schedule-modal-label">X (%)</label>
-                  <input type="number" min="0" max="99" className="schedule-modal-field" value={areaForm.x} onChange={(e) => setAreaForm({ ...areaForm, x: e.target.value })} />
-                </div>
-                <div>
-                  <label className="schedule-modal-label">Y (%)</label>
-                  <input type="number" min="0" max="99" className="schedule-modal-field" value={areaForm.y} onChange={(e) => setAreaForm({ ...areaForm, y: e.target.value })} />
-                </div>
-                <div>
-                  <label className="schedule-modal-label">Largura (%)</label>
-                  <input type="number" min="2" max="100" className="schedule-modal-field" value={areaForm.width} onChange={(e) => setAreaForm({ ...areaForm, width: e.target.value })} />
-                </div>
-                <div>
-                  <label className="schedule-modal-label">Altura (%)</label>
-                  <input type="number" min="2" max="100" className="schedule-modal-field" value={areaForm.height} onChange={(e) => setAreaForm({ ...areaForm, height: e.target.value })} />
-                </div>
-                <div>
-                  <label className="schedule-modal-label">Capacidade (opc.)</label>
-                  <input className="schedule-modal-field" placeholder="Ex: 40 pallets" value={areaForm.capacity} onChange={(e) => setAreaForm({ ...areaForm, capacity: e.target.value })} />
-                </div>
-                <div>
-                  <label className="schedule-modal-label">Categoria (opc.)</label>
-                  <input className="schedule-modal-field" placeholder="Ex: hidráulica" value={areaForm.category} onChange={(e) => setAreaForm({ ...areaForm, category: e.target.value })} />
-                </div>
-              </div>
-            </div>
+// Sub-componente: seção por lado (PAR / ÍMPAR)
+function SideSection({ title, items, isAdmin, onEdit, onDelete }) {
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        padding: "6px 10px",
+        background: "var(--accent-soft)",
+        color: "var(--accent)",
+        borderRadius: 6,
+        marginBottom: 8,
+        fontSize: 12,
+        fontWeight: 700,
+        textTransform: "uppercase",
+        letterSpacing: "0.05em",
+      }}>
+        {title}
+        <span style={{ fontWeight: 600, fontSize: 11.5 }}>
+          {items.length} {items.length === 1 ? "item" : "itens"}
+        </span>
+      </div>
 
-            <div className="kiosk-modal-footer">
-              <button className="kiosk-btn kiosk-btn-secondary" onClick={() => setAreaModal(null)}>Cancelar</button>
-              <button className="kiosk-btn kiosk-btn-primary" onClick={saveArea}>
-                <IconCheck size={14} /> Salvar
-              </button>
+      {items.length === 0 ? (
+        <div style={{ fontSize: 12.5, color: "var(--text-faint)", padding: "8px 0 12px 0" }}>
+          Nenhum item neste lado.
+        </div>
+      ) : (
+        <SimpleItemList items={items} isAdmin={isAdmin} onEdit={onEdit} onDelete={onDelete} />
+      )}
+    </div>
+  );
+}
+
+// Sub-componente: lista simples de itens
+function SimpleItemList({ items, isAdmin, onEdit, onDelete, compact = false }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      {items.map((it) => (
+        <div
+          key={it.id}
+          style={{
+            background: "var(--surface-raised)",
+            border: "1px solid var(--border)",
+            borderRadius: 8,
+            padding: compact ? "8px 10px" : "10px 12px",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: 12.5, fontWeight: 700 }}>
+                  {it.product_code}
+                </span>
+                {it.quantity > 0 && (
+                  <span style={{
+                    background: "var(--accent-soft)",
+                    color: "var(--accent)",
+                    padding: "1px 7px",
+                    borderRadius: 4,
+                    fontSize: 10.5,
+                    fontWeight: 700,
+                  }}>
+                    {it.quantity} un
+                  </span>
+                )}
+              </div>
+              {it.product_name && (
+                <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>
+                  {it.product_name}
+                </div>
+              )}
+              {it.slot && (
+                <div style={{ fontSize: 10.5, color: "var(--text-faint)", marginTop: 3 }}>
+                  Slot {it.slot}
+                </div>
+              )}
             </div>
+            {isAdmin && (
+              <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                <button className="btn-small" style={{ padding: "4px 7px" }} onClick={() => onEdit(it)} title="Editar">
+                  <IconEdit size={11} />
+                </button>
+                <button className="btn-small" style={{ padding: "4px 7px", color: "var(--danger)", borderColor: "var(--danger)" }} onClick={() => onDelete(it)} title="Remover">
+                  <IconTrash size={11} />
+                </button>
+              </div>
+            )}
           </div>
         </div>
-      )}
-
-      {/* Modal item */}
-      {itemModal && selectedArea && (
-        <div className="kiosk-modal-backdrop" onClick={() => setItemModal(false)}>
-          <div className="kiosk-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 560 }}>
-            <div className="kiosk-modal-header">
-              <div>
-                <div className="kiosk-modal-title">
-                  {editingItemId ? "Editar item" : "Novo item"}
-                </div>
-                <div className="kiosk-modal-sub">{selectedArea.code} · {selectedArea.label}</div>
-              </div>
-              <button className="kiosk-modal-close" onClick={() => setItemModal(false)}>
-                <IconX size={18} />
-              </button>
-            </div>
-
-            <div className="kiosk-modal-body">
-              <div className="schedule-modal-grid">
-                <div className="schedule-modal-full">
-                  <label className="schedule-modal-label">Código do produto *</label>
-                  <input className="schedule-modal-field" style={{ fontFamily: "var(--font-mono)" }} placeholder="Ex: TRO-1234" value={itemForm.productCode} onChange={(e) => setItemForm({ ...itemForm, productCode: e.target.value })} autoFocus />
-                </div>
-                <div className="schedule-modal-full">
-                  <label className="schedule-modal-label">Nome do produto</label>
-                  <input className="schedule-modal-field" placeholder="Opcional" value={itemForm.productName} onChange={(e) => setItemForm({ ...itemForm, productName: e.target.value })} />
-                </div>
-                <div>
-                  <label className="schedule-modal-label">Quantidade</label>
-                  <input type="number" min="0" className="schedule-modal-field" value={itemForm.quantity} onChange={(e) => setItemForm({ ...itemForm, quantity: e.target.value })} />
-                </div>
-                <div>
-                  <label className="schedule-modal-label">Slot</label>
-                  <input className="schedule-modal-field" placeholder="Ex: A1-P2-N3" value={itemForm.slot} onChange={(e) => setItemForm({ ...itemForm, slot: e.target.value })} />
-                </div>
-                <div className="schedule-modal-full">
-                  <label className="schedule-modal-label">Observação</label>
-                  <textarea className="schedule-modal-field" rows={2} style={{ resize: "none" }} value={itemForm.note} onChange={(e) => setItemForm({ ...itemForm, note: e.target.value })} />
-                </div>
-              </div>
-            </div>
-
-            <div className="kiosk-modal-footer">
-              <button className="kiosk-btn kiosk-btn-secondary" onClick={() => setItemModal(false)}>Cancelar</button>
-              <button className="kiosk-btn kiosk-btn-primary" onClick={saveItem}>
-                <IconCheck size={14} /> Salvar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      ))}
     </div>
   );
 }
