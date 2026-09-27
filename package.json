@@ -10,11 +10,11 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
-    "konva": "^9.3.22",
+    "konva": "^9.3.16",
     "papaparse": "^5.7.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-konva": "^18.2.16",
+    "react-konva": "^18.2.10",
     "recharts": "^2.12.7",
     "xlsx": "https://cdn.sheetjs.com/xlsx-latest/xlsx-latest.tgz"
   },

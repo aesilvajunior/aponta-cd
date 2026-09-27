@@ -603,170 +603,172 @@ export default function StockMap({ isAdmin }) {
             background: "radial-gradient(ellipse at center, #111823 0%, #0a0e14 100%)",
           }}
         >
-          {size.width > 0 && baseScale > 0 && (
-            <Stage
-              ref={stageRef}
-              width={size.width}
-              height={size.height}
-              x={size.width * (0.5 + view.panX)}
-              y={size.height * (0.5 + view.panY)}
-              offsetX={WORLD_W / 2}
-              offsetY={WORLD_H / 2}
-              scaleX={baseScale * view.zoom}
-              scaleY={baseScale * view.zoom}
-              rotation={view.rotation}
-              draggable
-              onDragEnd={handleStageDragEnd}
-              onWheel={handleWheel}
-              onDblClick={handleDoubleClick}
-              onDblTap={handleDoubleClick}
-              onClick={handleStageClick}
-              onTap={handleStageClick}
-              onMouseMove={handleStageMouseMove}
-              onMouseLeave={handleStageMouseLeave}
-              onTouchStart={handleTouchStart}
-              onTouchMove={handleTouchMove}
-              onTouchEnd={handleTouchEnd}
-              style={{ cursor, touchAction: "none" }}
-            >
-              <Layer ref={layerRef} listening={!loading}>
-                {layers.grid &&
-                  gridLines.map((g) => (
-                    <Line
-                      key={g.key}
-                      points={g.points}
-                      stroke="rgba(74, 123, 167, 0.15)"
-                      strokeWidth={1}
-                      strokeScaleEnabled={false}
-                      listening={false}
-                    />
-                  ))}
+          <div style={{ position: "absolute", inset: 0 }}>
+            {size.width > 0 && baseScale > 0 && (
+              <Stage
+                ref={stageRef}
+                width={size.width}
+                height={size.height}
+                x={size.width * (0.5 + view.panX)}
+                y={size.height * (0.5 + view.panY)}
+                offsetX={WORLD_W / 2}
+                offsetY={WORLD_H / 2}
+                scaleX={baseScale * view.zoom}
+                scaleY={baseScale * view.zoom}
+                rotation={view.rotation}
+                draggable
+                onDragEnd={handleStageDragEnd}
+                onWheel={handleWheel}
+                onDblClick={handleDoubleClick}
+                onDblTap={handleDoubleClick}
+                onClick={handleStageClick}
+                onTap={handleStageClick}
+                onMouseMove={handleStageMouseMove}
+                onMouseLeave={handleStageMouseLeave}
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+                style={{ cursor, touchAction: "none" }}
+              >
+                <Layer ref={layerRef} listening={!loading}>
+                  {layers.grid &&
+                    gridLines.map((g) => (
+                      <Line
+                        key={g.key}
+                        points={g.points}
+                        stroke="rgba(74, 123, 167, 0.15)"
+                        strokeWidth={1}
+                        strokeScaleEnabled={false}
+                        listening={false}
+                      />
+                    ))}
 
-                {!loading &&
-                  decoratedAreas.map((a) => {
-                    const isCorridor = a.area_type === "corredor";
-                    const isSelected = selectedArea?.id === a.id;
-                    const world = areaToWorld(a);
-                    const occupancy = layers.occupancy ? a.occupancy : 0.5;
-                    const fill = a.area_type === "conferencia"
-                      ? "#10b981"
-                      : isCorridor
-                      ? "rgba(0, 212, 255, 0.07)"
-                      : layers.occupancy
-                      ? occupancyColor(occupancy)
-                      : (a.color || colorForType(a.area_type));
-                    const stroke = isCorridor
-                      ? `rgba(0, 212, 255, ${isSelected ? 0.9 : 0.45})`
-                      : isSelected
-                      ? "#00d4ff"
-                      : "rgba(255,255,255,0.15)";
-                    const showFlow = isCorridor && layers.corridorFlow && a.matches;
-                    const flowHorizontal = world.width >= world.height;
-                    const canInteract = editMode || a.matches;
+                  {!loading &&
+                    decoratedAreas.map((a) => {
+                      const isCorridor = a.area_type === "corredor";
+                      const isSelected = selectedArea?.id === a.id;
+                      const world = areaToWorld(a);
+                      const occupancy = layers.occupancy ? a.occupancy : 0.5;
+                      const fill = a.area_type === "conferencia"
+                        ? "#10b981"
+                        : isCorridor
+                        ? "rgba(0, 212, 255, 0.07)"
+                        : layers.occupancy
+                        ? occupancyColor(occupancy)
+                        : (a.color || colorForType(a.area_type));
+                      const stroke = isCorridor
+                        ? `rgba(0, 212, 255, ${isSelected ? 0.9 : 0.45})`
+                        : isSelected
+                        ? "#00d4ff"
+                        : "rgba(255,255,255,0.15)";
+                      const showFlow = isCorridor && layers.corridorFlow && a.matches;
+                      const flowHorizontal = world.width >= world.height;
+                      const canInteract = editMode || a.matches;
 
-                    return (
-                      <React.Fragment key={a.id}>
-                        <Rect
-                          ref={(node) => {
-                            if (node) shapeRefs.current[a.id] = node;
-                            else delete shapeRefs.current[a.id];
-                          }}
-                          x={world.x}
-                          y={world.y}
-                          width={world.width}
-                          height={world.height}
-                          fill={fill}
-                          stroke={stroke}
-                          strokeWidth={isSelected ? 2.5 : 1.5}
-                          dash={isCorridor ? [8, 6] : undefined}
-                          cornerRadius={isCorridor ? 14 : 7}
-                          opacity={a.matches ? 1 : 0.12}
-                          listening={canInteract}
-                          draggable={editMode}
-                          onDragStart={() => setActiveDragId(a.id)}
-                          onDragEnd={(e) => handleAreaDragEnd(a, e)}
-                          onTransformEnd={(e) => handleAreaTransformEnd(a, e)}
-                          onClick={() => { setSelectedArea(a); setPanelView("lista"); }}
-                          onTap={() => { setSelectedArea(a); setPanelView("lista"); }}
-                          onMouseEnter={() => setHoveredArea(a)}
-                          onMouseLeave={() => setHoveredArea(null)}
-                          shadowColor="black"
-                          shadowBlur={isSelected ? 18 : 5}
-                          shadowOpacity={isSelected ? 0.5 : 0.3}
-                        />
-
-                        {showFlow && (
-                          <Line
+                      return (
+                        <React.Fragment key={a.id}>
+                          <Rect
                             ref={(node) => {
-                              if (node) corridorLineRefs.current[a.id] = node;
-                              else delete corridorLineRefs.current[a.id];
+                              if (node) shapeRefs.current[a.id] = node;
+                              else delete shapeRefs.current[a.id];
                             }}
-                            points={
-                              flowHorizontal
-                                ? [world.x + 8, world.y + world.height / 2, world.x + world.width - 8, world.y + world.height / 2]
-                                : [world.x + world.width / 2, world.y + 8, world.x + world.width / 2, world.y + world.height - 8]
-                            }
-                            stroke="rgba(0, 212, 255, 0.85)"
-                            strokeWidth={3}
-                            dash={[14, 10]}
-                            lineCap="round"
-                            listening={false}
-                          />
-                        )}
-
-                        {layers.labels && world.width > 16 && world.height > 10 && (
-                          <Text
                             x={world.x}
-                            y={world.y + world.height / 2 - 7}
+                            y={world.y}
                             width={world.width}
-                            align="center"
-                            text={isCorridor ? (a.label || "") : a.code}
-                            fontStyle="700"
-                            fontSize={isCorridor ? 12 : Math.max(10, Math.min(16, world.width * 0.05))}
-                            fill={isCorridor ? "rgba(0, 212, 255, 0.85)" : "#fff"}
-                            listening={false}
+                            height={world.height}
+                            fill={fill}
+                            stroke={stroke}
+                            strokeWidth={isSelected ? 2.5 : 1.5}
+                            dash={isCorridor ? [8, 6] : undefined}
+                            cornerRadius={isCorridor ? 14 : 7}
+                            opacity={a.matches ? 1 : 0.12}
+                            listening={canInteract}
+                            draggable={editMode}
+                            onDragStart={() => setActiveDragId(a.id)}
+                            onDragEnd={(e) => handleAreaDragEnd(a, e)}
+                            onTransformEnd={(e) => handleAreaTransformEnd(a, e)}
+                            onClick={() => { setSelectedArea(a); setPanelView("lista"); }}
+                            onTap={() => { setSelectedArea(a); setPanelView("lista"); }}
+                            onMouseEnter={() => setHoveredArea(a)}
+                            onMouseLeave={() => setHoveredArea(null)}
+                            shadowColor="black"
+                            shadowBlur={isSelected ? 18 : 5}
+                            shadowOpacity={isSelected ? 0.5 : 0.3}
                           />
-                        )}
 
-                        {!isCorridor && layers.labels && world.height > 55 && a.stats.skus > 0 && (
-                          <Text
-                            x={world.x}
-                            y={world.y + world.height / 2 + 9}
-                            width={world.width}
-                            align="center"
-                            text={`${a.stats.skus} · ${a.stats.totalQty}`}
-                            fontSize={10}
-                            fontFamily="var(--font-mono)"
-                            fill="rgba(255,255,255,0.85)"
-                            listening={false}
-                          />
-                        )}
-                      </React.Fragment>
-                    );
-                  })}
+                          {showFlow && (
+                            <Line
+                              ref={(node) => {
+                                if (node) corridorLineRefs.current[a.id] = node;
+                                else delete corridorLineRefs.current[a.id];
+                              }}
+                              points={
+                                flowHorizontal
+                                  ? [world.x + 8, world.y + world.height / 2, world.x + world.width - 8, world.y + world.height / 2]
+                                  : [world.x + world.width / 2, world.y + 8, world.x + world.width / 2, world.y + world.height - 8]
+                              }
+                              stroke="rgba(0, 212, 255, 0.85)"
+                              strokeWidth={3}
+                              dash={[14, 10]}
+                              lineCap="round"
+                              listening={false}
+                            />
+                          )}
 
-                {editMode && (
-                  <Transformer
-                    ref={transformerRef}
-                    rotateEnabled={false}
-                    keepRatio={false}
-                    anchorFill="#0a0e14"
-                    anchorStroke="#00d4ff"
-                    anchorSize={9}
-                    borderStroke="#00d4ff"
-                    borderDash={[4, 4]}
-                    boundBoxFunc={handleTransformerBoundBox}
-                  />
-                )}
-              </Layer>
-            </Stage>
-          )}
+                          {layers.labels && world.width > 16 && world.height > 10 && (
+                            <Text
+                              x={world.x}
+                              y={world.y + world.height / 2 - 7}
+                              width={world.width}
+                              align="center"
+                              text={isCorridor ? (a.label || "") : a.code}
+                              fontStyle="700"
+                              fontSize={isCorridor ? 12 : Math.max(10, Math.min(16, world.width * 0.05))}
+                              fill={isCorridor ? "rgba(0, 212, 255, 0.85)" : "#fff"}
+                              listening={false}
+                            />
+                          )}
 
-          {loading && (
-            <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <div className="loading-spinner" />
-            </div>
-          )}
+                          {!isCorridor && layers.labels && world.height > 55 && a.stats.skus > 0 && (
+                            <Text
+                              x={world.x}
+                              y={world.y + world.height / 2 + 9}
+                              width={world.width}
+                              align="center"
+                              text={`${a.stats.skus} · ${a.stats.totalQty}`}
+                              fontSize={10}
+                              fontFamily="var(--font-mono)"
+                              fill="rgba(255,255,255,0.85)"
+                              listening={false}
+                            />
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+
+                  {editMode && (
+                    <Transformer
+                      ref={transformerRef}
+                      rotateEnabled={false}
+                      keepRatio={false}
+                      anchorFill="#0a0e14"
+                      anchorStroke="#00d4ff"
+                      anchorSize={9}
+                      borderStroke="#00d4ff"
+                      borderDash={[4, 4]}
+                      boundBoxFunc={handleTransformerBoundBox}
+                    />
+                  )}
+                </Layer>
+              </Stage>
+            )}
+
+            {loading && (
+              <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <div className="loading-spinner" />
+              </div>
+            )}
+          </div>
 
           <div className="map-north">
             <div className="map-north-letter">N</div>
