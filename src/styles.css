@@ -3948,6 +3948,43 @@ textarea.field::placeholder {
   font-family: var(--font-mono);
 }
 
+/* Corredores — listras animadas indicando sentido de circulação */
+.map-corridor-flow {
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgba(0, 212, 255, 0.22) 0px,
+    rgba(0, 212, 255, 0.22) 6px,
+    transparent 6px,
+    transparent 16px
+  );
+  background-size: 200% 200%;
+}
+
+.map-corridor-flow-h {
+  animation: corridor-flow-h 1.8s linear infinite;
+}
+
+.map-corridor-flow-v {
+  animation: corridor-flow-v 1.8s linear infinite;
+}
+
+@keyframes corridor-flow-h {
+  from { background-position: 0 0; }
+  to { background-position: 32px 0; }
+}
+
+@keyframes corridor-flow-v {
+  from { background-position: 0 0; }
+  to { background-position: 0 32px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .map-corridor-flow-h,
+  .map-corridor-flow-v {
+    animation: none;
+  }
+}
+
 /* Tooltip */
 .map-tooltip {
   position: fixed;

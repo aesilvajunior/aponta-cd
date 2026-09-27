@@ -10,6 +10,7 @@ export const AREA_TYPES = [
   { value: "recebimento", label: "Recebimento", color: "#f59e0b" },
   { value: "escritorio", label: "Escritório", color: "#6b7280" },
   { value: "infra", label: "Infraestrutura", color: "#8b5cf6" },
+  { value: "corredor", label: "Corredor", color: "#00d4ff" },
   { value: "outro", label: "Outro", color: "#1e3a5f" },
 ];
 

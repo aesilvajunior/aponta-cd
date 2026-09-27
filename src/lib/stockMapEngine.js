@@ -113,6 +113,18 @@ export function screenToWorld(view, screenX, screenY) {
   };
 }
 
+// Converte um deslocamento em % de tela (dx, dy) pra um deslocamento no
+// espaço de "mundo", desfazendo zoom e rotação — usado no arrastar/redimensionar
+// de áreas. Sem isso, mover uma área com o mapa girado (Shift+scroll, G) manda
+// o retângulo pro lado errado, porque o mouse se move em tela mas a área vive
+// em coordenadas do mundo (antes da rotação).
+export function screenDeltaToWorldDelta(view, dxPct, dyPct) {
+  const rad = (-view.rotation * Math.PI) / 180;
+  const rx = dxPct * Math.cos(rad) - dyPct * Math.sin(rad);
+  const ry = dxPct * Math.sin(rad) + dyPct * Math.cos(rad);
+  return { dx: rx / view.zoom, dy: ry / view.zoom };
+}
+
 // Verifica se um ponto (em %) está dentro de um retângulo
 export function pointInRect(x, y, rect) {
   return (

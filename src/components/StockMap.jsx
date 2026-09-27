@@ -24,6 +24,7 @@ import {
   rotateTo,
   resetView,
   screenToWorld,
+  screenDeltaToWorldDelta,
   hitTest,
   getTransform,
   clampZoom,
@@ -81,6 +82,7 @@ export default function StockMap({ isAdmin }) {
     grid: true,
     labels: true,
     occupancy: true,
+    corridorFlow: true,
   });
 
   const [dragState, setDragState] = useState(null);
@@ -271,8 +273,13 @@ export default function StockMap({ isAdmin }) {
       // 1) Drag de área em modo edição
       if (dragStateRef.current) {
         const ds = dragStateRef.current;
-        const dxPct = ((e.clientX - ds.startMouseX) / rect.width) / viewRef.current.zoom;
-        const dyPct = ((e.clientY - ds.startMouseY) / rect.height) / viewRef.current.zoom;
+        // Delta em % de tela, cru (sem desfazer zoom/rotação ainda)
+        const rawDxPct = (e.clientX - ds.startMouseX) / rect.width;
+        const rawDyPct = (e.clientY - ds.startMouseY) / rect.height;
+        // O mapa pode estar girado (Shift+scroll, tecla G, slider de rotação);
+        // sem desfazer a rotação aqui, arrastar com o mapa girado move a área
+        // na direção errada. screenDeltaToWorldDelta desfaz zoom + rotação.
+        const { dx: dxPct, dy: dyPct } = screenDeltaToWorldDelta(viewRef.current, rawDxPct, rawDyPct);
 
         const updated = {
           x: ds.mode === "move" ? ds.startX + dxPct : ds.startX,
@@ -516,7 +523,7 @@ export default function StockMap({ isAdmin }) {
         <div className="alert-card alert-warning" style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
           <IconAlertTriangle size={16} />
           <div style={{ flex: 1 }}>
-            <strong>Modo edição ativo.</strong> Arraste uma prateleira pra mover · Arraste o handle azul no canto pra redimensionar · Clique em qualquer área pra ver o painel e adicionar itens.
+            <strong>Modo edição ativo.</strong> Arraste uma área (inclusive corredores) pra mover · Arraste o handle azul no canto pra redimensionar · Clique em qualquer área pra ver o painel e adicionar itens.
           </div>
         </div>
       )}
@@ -612,22 +619,29 @@ export default function StockMap({ isAdmin }) {
               ) : decoratedAreas.map((a, idx) => {
                 const isSelected = selectedArea?.id === a.id;
                 const isHovered = hoveredArea?.id === a.id;
-                const isCorridor = a.code === "CORREDOR-CENTRAL";
+                // Corredor agora é um tipo de área de verdade (area_type === "corredor"),
+                // não mais um único código fixo — dá pra ter quantos corredores quiser.
+                const isCorridor = a.area_type === "corredor";
                 const hidden = !a.matches;
                 const occupancy = layers.occupancy ? a.occupancy : 0.5;
                 const baseColor = a.area_type === "conferencia"
                   ? "#10b981"
+                  : isCorridor
+                  ? "transparent"
                   : layers.occupancy
                   ? occupancyColor(occupancy)
                   : (a.color || colorForType(a.area_type));
                 const isDragging = dragState?.areaId === a.id;
+                const showFlow = isCorridor && layers.corridorFlow && !hidden;
+                // Corredor largo (>= alto) anima na horizontal, estreito anima na vertical —
+                // dá a sensação de "sentido de caminhada" do corredor certo em vez de sempre diagonal.
+                const flowVertical = a.height > a.width;
 
                 return (
                   <div
                     key={a.id}
                     onMouseDown={(e) => {
                       if (!editMode) return;
-                      if (isCorridor) return;
                       startDragArea(e, a, "move");
                     }}
                     style={{
@@ -636,9 +650,9 @@ export default function StockMap({ isAdmin }) {
                       top: `${a.y}%`,
                       width: `${a.width}%`,
                       height: `${a.height}%`,
-                      background: isCorridor ? "transparent" : baseColor,
+                      background: baseColor,
                       border: isCorridor
-                        ? `1px dashed rgba(74, 123, 167, 0.3)`
+                        ? `1px dashed rgba(0, 212, 255, ${isSelected ? 0.9 : 0.45})`
                         : `1.5px solid ${isSelected ? "#00d4ff" : "rgba(255,255,255,0.15)"}`,
                       borderRadius: isCorridor ? 12 : 6,
                       cursor: editMode
@@ -672,7 +686,28 @@ export default function StockMap({ isAdmin }) {
                       zIndex: isSelected || isDragging ? 100 : isHovered ? 50 : idx,
                     }}
                   >
-                    <div style={{ overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", width: "100%", height: "100%", gap: 3 }}>
+                    {showFlow && (
+                      <div
+                        className={`map-corridor-flow ${flowVertical ? "map-corridor-flow-v" : "map-corridor-flow-h"}`}
+                        style={{ position: "absolute", inset: 0, borderRadius: 12, pointerEvents: "none" }}
+                      />
+                    )}
+
+                    <div style={{ overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", width: "100%", height: "100%", gap: 3, position: "relative", zIndex: 1 }}>
+                      {isCorridor && layers.labels && a.label && (
+                        <div
+                          style={{
+                            fontSize: 9,
+                            fontWeight: 700,
+                            color: "rgba(0, 212, 255, 0.85)",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.06em",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {a.label}
+                        </div>
+                      )}
                       {!isCorridor && layers.labels && (
                         <>
                           <div
@@ -707,8 +742,8 @@ export default function StockMap({ isAdmin }) {
                       )}
                     </div>
 
-                    {/* Handle de resize */}
-                    {editMode && !isCorridor && (
+                    {/* Handle de resize — corredores também são editáveis agora */}
+                    {editMode && (
                       <div
                         onMouseDown={(e) => startDragArea(e, a, "resize")}
                         style={{
@@ -924,16 +959,18 @@ export default function StockMap({ isAdmin }) {
                   <label className="schedule-modal-label">Altura (%)</label>
                   <input type="number" min="2" max="100" className="schedule-modal-field" value={newAreaForm.height} onChange={(e) => setNewAreaForm({ ...newAreaForm, height: e.target.value })} />
                 </div>
-                <div className="schedule-modal-full">
-                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, cursor: "pointer" }}>
-                    <input
-                      type="checkbox"
-                      checked={newAreaForm.hasSides}
-                      onChange={(e) => setNewAreaForm({ ...newAreaForm, hasSides: e.target.checked })}
-                    />
-                    Tem lado PAR e ÍMPAR (prateleira de dupla face)
-                  </label>
-                </div>
+                {newAreaForm.areaType === "prateleira" && (
+                  <div className="schedule-modal-full">
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        checked={newAreaForm.hasSides}
+                        onChange={(e) => setNewAreaForm({ ...newAreaForm, hasSides: e.target.checked })}
+                      />
+                      Tem lado PAR e ÍMPAR (prateleira de dupla face)
+                    </label>
+                  </div>
+                )}
               </div>
             </div>
 

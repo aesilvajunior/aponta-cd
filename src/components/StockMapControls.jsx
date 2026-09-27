@@ -9,6 +9,7 @@ import {
   IconMapPin,
   IconLayers,
   IconActivity,
+  IconArrowLeftRight,
 } from "./Icons";
 
 export default function StockMapControls({
@@ -179,6 +180,11 @@ export default function StockMapControls({
             <input type="checkbox" checked={layers.occupancy} onChange={() => onToggleLayer("occupancy")} />
             <IconActivity size={14} />
             <span>Ocupação</span>
+          </label>
+          <label className="map-layers-item">
+            <input type="checkbox" checked={layers.corridorFlow} onChange={() => onToggleLayer("corridorFlow")} />
+            <IconArrowLeftRight size={14} />
+            <span>Fluxo dos corredores</span>
           </label>
         </div>
       )}
