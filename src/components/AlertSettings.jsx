@@ -38,7 +38,7 @@ export default function AlertSettings() {
       fetchAlertSettings(),
       fetchAlertLog({ limit: 100 }),
     ]);
-    if (s) setSettings({ ...settings, ...s });
+    if (s) setSettings((prev) => ({ ...prev, ...s }));
     if (l) setLog(l);
     setLoading(false);
   }
@@ -76,12 +76,11 @@ export default function AlertSettings() {
   }
 
   async function sendTest() {
-    if (!settings.whatsapp_number) return;
     setTestSending(true);
     setTestResult(null);
     try {
       const res = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-whatsapp`,
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-telegram`,
         {
           method: "POST",
           headers: {
@@ -89,15 +88,16 @@ export default function AlertSettings() {
             Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           },
           body: JSON.stringify({
-            to: settings.whatsapp_number,
-            message: "🔔 Teste do Aponta CD — alertas WhatsApp configurados com sucesso.",
+            text: "🔔 <b>Teste do Aponta CD</b>\nAlertas Telegram configurados com sucesso.",
             alertType: "test",
           }),
         }
       );
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Erro ao enviar");
-      setTestResult({ ok: true, message: "Mensagem enviada!" });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json.ok === false) {
+        throw new Error(json.error || `Erro HTTP ${res.status}`);
+      }
+      setTestResult({ ok: true, message: "Mensagem enviada! Verifica no Telegram." });
     } catch (e) {
       setTestResult({ ok: false, message: e.message });
     } finally {
@@ -109,9 +109,9 @@ export default function AlertSettings() {
     <div>
       <div className="page-header-row" style={{ marginBottom: 22 }}>
         <div>
-          <h1 className="page-title">Alertas WhatsApp</h1>
+          <h1 className="page-title">Alertas Telegram</h1>
           <p className="page-sub" style={{ marginBottom: 0 }}>
-            Receba notificações críticas no WhatsApp do gestor
+            Receba notificações críticas no Telegram do gestor
           </p>
         </div>
         <button className="btn-small" onClick={loadAll}>
@@ -126,9 +126,9 @@ export default function AlertSettings() {
           <IconAlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
           <div>
             <strong>Requer configuração de Edge Function.</strong> Os alertas são enviados pela função
-            <code style={{ margin: "0 6px" }}>send-whatsapp</code> que roda no Supabase. Configure os secrets
-            <code style={{ margin: "0 6px" }}>WHATSAPP_TOKEN</code> e
-            <code style={{ margin: "0 6px" }}>WHATSAPP_PHONE_ID</code> antes de ativar.
+            <code style={{ margin: "0 6px" }}>send-telegram</code> que roda no Supabase. Configure os secrets
+            <code style={{ margin: "0 6px" }}>TELEGRAM_BOT_TOKEN</code> e
+            <code style={{ margin: "0 6px" }}>TELEGRAM_CHAT_ID</code> antes de ativar.
           </div>
         </div>
       </div>
@@ -148,27 +148,12 @@ export default function AlertSettings() {
                 checked={settings.whatsapp_enabled}
                 onChange={(e) => set("whatsapp_enabled", e.target.checked)}
                 disabled={saving}
-                id="wa-enabled"
+                id="tg-enabled"
                 style={{ width: 18, height: 18, cursor: "pointer" }}
               />
-              <label htmlFor="wa-enabled" style={{ flex: 1, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
-                Alertas WhatsApp {settings.whatsapp_enabled ? "ativados" : "desativados"}
+              <label htmlFor="tg-enabled" style={{ flex: 1, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>
+                Alertas Telegram {settings.whatsapp_enabled ? "ativados" : "desativados"}
               </label>
-            </div>
-
-            <div style={{ marginBottom: 16 }}>
-              <label className="schedule-modal-label">Número do WhatsApp (com DDI)</label>
-              <input
-                className="field"
-                style={{ width: "100%", fontFamily: "var(--font-mono)" }}
-                placeholder="Ex: 5511999998888"
-                value={settings.whatsapp_number || ""}
-                onChange={(e) => set("whatsapp_number", e.target.value.replace(/\D/g, ""))}
-                disabled={saving}
-              />
-              <p style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: 6 }}>
-                Formato: 55 (Brasil) + DDD + número. Ex: 5511987654321
-              </p>
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14, marginBottom: 16 }}>
@@ -238,7 +223,7 @@ export default function AlertSettings() {
               <button
                 className="btn-small"
                 onClick={sendTest}
-                disabled={testSending || !settings.whatsapp_number}
+                disabled={testSending}
               >
                 {testSending ? "Enviando..." : "Enviar mensagem de teste"}
               </button>
@@ -254,6 +239,9 @@ export default function AlertSettings() {
                   border: `1px solid ${testResult.ok ? "var(--ok)" : "var(--danger)"}`,
                   color: testResult.ok ? "var(--ok)" : "var(--danger)",
                   fontSize: 13,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
                 }}
               >
                 {testResult.ok ? <IconCheck size={14} /> : <IconX size={14} />} {testResult.message}
@@ -293,7 +281,7 @@ export default function AlertSettings() {
                           )}
                         </td>
                         <td style={{ color: "var(--text-muted)", fontSize: 12 }}>
-                          {l.error_message || (l.payload?.summary || JSON.stringify(l.payload).slice(0, 80))}
+                          {l.error_message || (l.payload?.text || JSON.stringify(l.payload).slice(0, 80))}
                         </td>
                       </tr>
                     ))}

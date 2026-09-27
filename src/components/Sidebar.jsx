@@ -69,7 +69,7 @@ const SECTIONS = [
       { key: "csv-import", label: "Importar CSV", Icon: IconUpload },
       { key: "fraud", label: "Detecção de fraude", Icon: IconShield },
       { key: "reports-scheduler", label: "Export agendado", Icon: IconVolume2 },
-      { key: "alert-settings", label: "Alertas WhatsApp", Icon: IconAlertCircle },
+      { key: "alert-settings", label: "Alertas Telegram", Icon: IconAlertCircle },
       { key: "team", label: "Cadastros", Icon: IconSettings },
       { key: "sound-settings", label: "Sons do sistema", Icon: IconVolume2 },
       { key: "sales-team", label: "Equipe comercial", Icon: IconUsers },
