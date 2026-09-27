@@ -328,7 +328,6 @@ export async function finishSession(session, durationSeconds, shift, note, isEnc
 
   if (error) return { error };
 
-  // Apaga parceiros da sessão antes de encerrar
   await supabase.from("session_partners").delete().eq("session_operator_code", session.operator_code);
   await supabase.from("active_sessions").delete().eq("operator_code", session.operator_code);
 
@@ -401,7 +400,7 @@ function getShiftFor(iso) {
 }
 
 // ============================================================
-// SESSION PARTNERS (APONTAMENTO EM DUPLA)
+// SESSION PARTNERS (DUPLA)
 // ============================================================
 export async function fetchSessionPartners(sessionOperatorCode) {
   const { data, error } = await supabase
@@ -962,7 +961,6 @@ export async function unlockAchievement(operatorCode, operatorName, achievementI
     })
     .select()
     .maybeSingle();
-  // Ignora violação de UNIQUE (já desbloqueado)
   if (error && (error.message || "").includes("duplicate")) {
     return { data: null, error: null };
   }

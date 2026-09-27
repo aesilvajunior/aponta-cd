@@ -1,6 +1,5 @@
 // ============================================================
 // Aponta CD — Biblioteca de ícones SVG
-// Estilo Lucide: traço fino 1.5px, viewBox 24x24, currentColor
 // ============================================================
 
 const baseProps = (size, strokeWidth, className) => ({
@@ -113,22 +112,6 @@ export function IconSettings({ size = 20, strokeWidth = 1.5, className = "" }) {
     <svg {...baseProps(size, strokeWidth, className)}>
       <circle cx="12" cy="12" r="3" />
       <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-    </svg>
-  );
-}
-
-export function IconSliders({ size = 20, strokeWidth = 1.5, className = "" }) {
-  return (
-    <svg {...baseProps(size, strokeWidth, className)}>
-      <line x1="4" y1="21" x2="4" y2="14" />
-      <line x1="4" y1="10" x2="4" y2="3" />
-      <line x1="12" y1="21" x2="12" y2="12" />
-      <line x1="12" y1="8" x2="12" y2="3" />
-      <line x1="20" y1="21" x2="20" y2="16" />
-      <line x1="20" y1="12" x2="20" y2="3" />
-      <line x1="1" y1="14" x2="7" y2="14" />
-      <line x1="9" y1="8" x2="15" y2="8" />
-      <line x1="17" y1="16" x2="23" y2="16" />
     </svg>
   );
 }
@@ -618,7 +601,21 @@ export function IconLayers({ size = 20, strokeWidth = 1.5, className = "" }) {
   );
 }
 
-/* ============ NOVOS — FASE 1 ============ */
+export function IconSliders({ size = 20, strokeWidth = 1.5, className = "" }) {
+  return (
+    <svg {...baseProps(size, strokeWidth, className)}>
+      <line x1="4" y1="21" x2="4" y2="14" />
+      <line x1="4" y1="10" x2="4" y2="3" />
+      <line x1="12" y1="21" x2="12" y2="12" />
+      <line x1="12" y1="8" x2="12" y2="3" />
+      <line x1="20" y1="21" x2="20" y2="16" />
+      <line x1="20" y1="12" x2="20" y2="3" />
+      <line x1="1" y1="14" x2="7" y2="14" />
+      <line x1="9" y1="8" x2="15" y2="8" />
+      <line x1="17" y1="16" x2="23" y2="16" />
+    </svg>
+  );
+}
 
 export function IconPause({ size = 20, strokeWidth = 1.5, className = "" }) {
   return (
@@ -631,4 +628,14 @@ export function IconPause({ size = 20, strokeWidth = 1.5, className = "" }) {
 
 export function IconPlay({ size = 20, strokeWidth = 1.5, className = "" }) {
   return <svg {...baseProps(size, strokeWidth, className)}><polygon points="5 3 19 12 5 21 5 3" /></svg>;
+}
+
+export function IconHistory({ size = 20, strokeWidth = 1.5, className = "" }) {
+  return (
+    <svg {...baseProps(size, strokeWidth, className)}>
+      <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+      <polyline points="3 3 3 8 8 8" />
+      <polyline points="12 7 12 12 16 14" />
+    </svg>
+  );
 }
