@@ -7,7 +7,7 @@ import {
   fetchConferenceQueue,
   fetchConferenceHistory,
 } from "../lib/api";
-import { fmtClock, fmtDate, fmtDuration } from "../lib/format";
+import { fmtClock, fmtDate, fmtDuration, todayLocalISODate, localISODate } from "../lib/format";
 import { useTheme } from "../context/ThemeContext";
 import {
   IconPackage,
@@ -238,8 +238,8 @@ export default function TvBoard() {
     ]);
     if (s) setSessions(s);
     if (e) {
-      const today = new Date().toISOString().slice(0, 10);
-      setTodayEntries(e.filter((x) => x.start_time.slice(0, 10) === today));
+      const today = todayLocalISODate();
+      setTodayEntries(e.filter((x) => localISODate(x.start_time) === today));
 
       const { monday, sunday } = getWeekRange();
       setWeekEntries(
@@ -250,8 +250,8 @@ export default function TvBoard() {
       );
     }
     if (sh) {
-      const today = new Date().toISOString().slice(0, 10);
-      setTodayShortages(sh.filter((x) => x.created_at.slice(0, 10) === today));
+      const today = todayLocalISODate();
+      setTodayShortages(sh.filter((x) => localISODate(x.created_at) === today));
     }
     if (cq) setConferenceQueue(cq);
     if (ch) setConferenceHistory(ch);
@@ -384,9 +384,9 @@ export default function TvBoard() {
   }, [todayEntries]);
 
   const conferenceRanking = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayLocalISODate();
     const todayConf = conferenceHistory.filter(
-      (h) => h.conference_finished_at?.slice(0, 10) === today && h.status === "conferido"
+      (h) => h.conference_finished_at && localISODate(h.conference_finished_at) === today && h.status === "conferido"
     );
     const byOp = {};
     todayConf.forEach((h) => {

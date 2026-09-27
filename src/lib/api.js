@@ -23,16 +23,29 @@ export async function updateOperator(code, fields) {
 }
 
 export async function renameOperatorCode(oldCode, newCode, fields) {
-  const { error: insertError } = await supabase.from("operators").insert({
-    code: newCode,
-    name: fields.name,
-    role: fields.role,
-    can_schedule_delivery: fields.can_schedule_delivery,
-    can_conference: fields.can_conference ?? false,
-  });
-  if (insertError) return { error: insertError };
-  const { error: delError } = await supabase.from("operators").delete().eq("code", oldCode);
-  return { error: delError };
+  // Antes fazia insert(novo) + delete(antigo), o que deixava órfão todo
+  // histórico em entries/active_sessions/separation_errors que ainda
+  // apontava pro código antigo. Agora atualiza a chave em operators e
+  // cascateia manualmente pras tabelas que guardam operator_code como
+  // texto solto (não há FK real no schema).
+  const { error: updError } = await supabase
+    .from("operators")
+    .update({
+      code: newCode,
+      name: fields.name,
+      role: fields.role,
+      can_schedule_delivery: fields.can_schedule_delivery,
+      can_conference: fields.can_conference ?? false,
+    })
+    .eq("code", oldCode);
+  if (updError) return { error: updError };
+
+  const [{ error: entriesError }, { error: sessionsError }, { error: errorsError }] = await Promise.all([
+    supabase.from("entries").update({ operator_code: newCode }).eq("operator_code", oldCode),
+    supabase.from("active_sessions").update({ operator_code: newCode }).eq("operator_code", oldCode),
+    supabase.from("separation_errors").update({ operator_code: newCode }).eq("operator_code", oldCode),
+  ]);
+  return { error: entriesError || sessionsError || errorsError || null };
 }
 
 export async function deleteOperator(code) {
@@ -76,18 +89,21 @@ export async function updateActivity(name, fields) {
 }
 
 export async function renameActivity(oldName, newName) {
-  const { error: insertError } = await supabase.from("activities").insert({
-    name: newName,
-    target_seconds: null,
-    requires_order_info: false,
-    extra_field_type: "pedido",
-    asks_shortage: null,
-    sort_order: 9999,
-    active: true,
-  });
-  if (insertError) return { error: insertError };
-  const { error: delError } = await supabase.from("activities").delete().eq("name", oldName);
-  return { error: delError };
+  // Mesmo problema do renameOperatorCode: insert+delete deixava órfãos
+  // os registros de entries/active_sessions que guardam o nome antigo
+  // da atividade (activities.name é o identificador usado em todo lugar,
+  // não há FK real). Agora faz update na própria linha e cascateia.
+  const { error: updError } = await supabase
+    .from("activities")
+    .update({ name: newName })
+    .eq("name", oldName);
+  if (updError) return { error: updError };
+
+  const [{ error: entriesError }, { error: sessionsError }] = await Promise.all([
+    supabase.from("entries").update({ activity: newName }).eq("activity", oldName),
+    supabase.from("active_sessions").update({ activity: newName }).eq("activity", oldName),
+  ]);
+  return { error: entriesError || sessionsError || null };
 }
 
 export async function swapActivityOrder(nameA, orderA, nameB, orderB) {

@@ -3,6 +3,7 @@
 // ============================================================
 
 import { supabase } from "../supabaseClient";
+import { todayLocalISODate, localISODate } from "./format";
 
 // ------------------------------------------------------------
 // Buscar a fila da mesa (por padrão, só os ativos)
@@ -160,9 +161,9 @@ export function computeConferenceStats(queue, history) {
   const waiting = queue.filter((q) => q.status === "aguardando");
   const inProgress = queue.filter((q) => q.status === "em_conferencia");
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocalISODate();
   const todayFinished = history.filter(
-    (h) => h.conference_finished_at && h.conference_finished_at.slice(0, 10) === today
+    (h) => h.conference_finished_at && localISODate(h.conference_finished_at) === today
   );
 
   const finishedOk = todayFinished.filter((h) => h.status === "conferido");

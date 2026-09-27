@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   BarChart, Bar, LineChart, Line, Legend, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
-import { fmtClock, fmtDate, fmtDuration } from "../lib/format";
+import { fmtClock, fmtDate, fmtDuration, todayLocalISODate, localISODate } from "../lib/format";
 import { computeMetrics, computeWeeklyTrend, computeMonthlyBuckets, monthLabel, mean as meanM } from "../lib/metrics";
 import { exportHistoricoExcel, exportShortagesExcel, exportErrorsExcel } from "../utils/excel";
 import OperatorProfile from "./OperatorProfile";
@@ -28,12 +28,6 @@ import {
 const COLORS = ["#1e3a5f", "#4a7ba7", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444", "#06b6d4", "#6b7280"];
 const DEFAULT_ALERT_SECONDS = 1800;
 
-function todayLocalISODate() {
-  const d = new Date();
-  const tz = d.getTimezoneOffset() * 60000;
-  return new Date(d - tz).toISOString().slice(0, 10);
-}
-
 function fmtDateTime(iso) {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return "—";
@@ -54,8 +48,8 @@ function periodFilename(prefix, ext, dateFrom, dateTo, fallbackEntries) {
   if (!fromStr || !toStr) {
     if (fallbackEntries && fallbackEntries.length > 0) {
       const sorted = [...fallbackEntries].sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
-      if (!fromStr) fromStr = sorted[0].start_time.slice(0, 10);
-      if (!toStr) toStr = sorted[sorted.length - 1].start_time.slice(0, 10);
+      if (!fromStr) fromStr = localISODate(sorted[0].start_time);
+      if (!toStr) toStr = localISODate(sorted[sorted.length - 1].start_time);
     } else {
       const today = todayLocalISODate();
       if (!fromStr) fromStr = today;
@@ -92,10 +86,7 @@ function downloadCsv(lines, filename) {
 function quickRange(type) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const toISO = (d) => {
-    const tz = d.getTimezoneOffset() * 60000;
-    return new Date(d - tz).toISOString().slice(0, 10);
-  };
+  const toISO = (d) => localISODate(d);
   if (type === "hoje") return { from: toISO(today), to: toISO(today) };
   if (type === "ontem") {
     const y = new Date(today);
@@ -310,7 +301,7 @@ export default function Panel({
     dateFilteredEntries.forEach((e) => {
       const list = shortagesByEntry[e.id] || [];
       if (list.length === 0) return;
-      const day = e.start_time.slice(0, 10);
+      const day = localISODate(e.start_time);
       if (!byDay[day]) byDay[day] = { day, entries: 0, totalFaltas: 0, totalQty: 0 };
       byDay[day].entries += 1;
       byDay[day].totalFaltas += list.length;
@@ -1012,9 +1003,9 @@ export default function Panel({
 
   async function copyDailySummary() {
     const today = todayLocalISODate();
-    const todayEntries = entries.filter((e) => e.start_time.slice(0, 10) === today);
+    const todayEntries = entries.filter((e) => localISODate(e.start_time) === today);
     const todayMetrics = computeMetrics(todayEntries, activities);
-    const todayErrors = separationErrors.filter((e) => e.created_at.slice(0, 10) === today);
+    const todayErrors = separationErrors.filter((e) => localISODate(e.created_at) === today);
 
     const lines = [];
     lines.push(`RESUMO DO DIA`);

@@ -1,4 +1,5 @@
 import { supabase } from "../supabaseClient";
+import { localISODate } from "./format";
 
 // ============================================================
 // Detecção de fraude / padrões suspeitos
@@ -53,7 +54,7 @@ export function analyzeEntriesForFraud(entries, operators) {
     // 3) Muitos encaixes num único dia
     const byDay = {};
     list.forEach((e) => {
-      const day = e.start_time.slice(0, 10);
+      const day = localISODate(e.start_time);
       if (!byDay[day]) byDay[day] = { total: 0, encaixes: 0 };
       byDay[day].total += 1;
       if (e.is_encaixe) byDay[day].encaixes += 1;

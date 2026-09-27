@@ -2,7 +2,7 @@ import React, { useMemo } from "react";
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
-import { fmtDate, fmtDuration } from "../lib/format";
+import { fmtDate, fmtDuration, localISODate } from "../lib/format";
 import { mean } from "../lib/metrics";
 import {
   IconTrendingUp,
@@ -130,13 +130,13 @@ export default function OperatorProfile({
       const d = new Date(today);
       d.setDate(d.getDate() - i);
       d.setHours(0, 0, 0, 0);
-      const key = d.toISOString().slice(0, 10);
+      const key = localISODate(d);
       map[key] = { date: key, count: 0, seconds: 0 };
       days.push(key);
     }
 
     opEntries.forEach((e) => {
-      const key = e.start_time.slice(0, 10);
+      const key = localISODate(e.start_time);
       if (map[key]) {
         map[key].count += 1;
         map[key].seconds += e.duration_seconds || 0;

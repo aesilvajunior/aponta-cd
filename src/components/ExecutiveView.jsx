@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend, LineChart, Line,
 } from "recharts";
-import { fmtDate, fmtDuration } from "../lib/format";
+import { fmtDate, fmtDuration, todayLocalISODate, localISODate } from "../lib/format";
 import {
   IconTrendingUp,
   IconAlertTriangle,
@@ -29,20 +29,10 @@ function monthLabel(key) {
   return `${names[parseInt(month, 10) - 1]}/${year.slice(2)}`;
 }
 
-function todayISO() {
-  const d = new Date();
-  const tz = d.getTimezoneOffset() * 60000;
-  return new Date(d - tz).toISOString().slice(0, 10);
-}
-
 function getMonthRange(date = new Date()) {
   const first = new Date(date.getFullYear(), date.getMonth(), 1);
   const last = new Date(date.getFullYear(), date.getMonth() + 1, 0);
-  const toISO = (d) => {
-    const tz = d.getTimezoneOffset() * 60000;
-    return new Date(d - tz).toISOString().slice(0, 10);
-  };
-  return { from: toISO(first), to: toISO(last) };
+  return { from: localISODate(first), to: localISODate(last) };
 }
 
 function getPrevMonthRange() {
@@ -59,11 +49,7 @@ function getWeekRange() {
   monday.setDate(today.getDate() + diffToMonday);
   const sunday = new Date(monday);
   sunday.setDate(monday.getDate() + 6);
-  const toISO = (d) => {
-    const tz = d.getTimezoneOffset() * 60000;
-    return new Date(d - tz).toISOString().slice(0, 10);
-  };
-  return { from: toISO(monday), to: toISO(sunday) };
+  return { from: localISODate(monday), to: localISODate(sunday) };
 }
 
 export default function ExecutiveView({
@@ -79,7 +65,7 @@ export default function ExecutiveView({
 
   const range = useMemo(() => {
     if (period === "hoje") {
-      const t = todayISO();
+      const t = todayLocalISODate();
       return { from: t, to: t };
     }
     if (period === "semana") return getWeekRange();
@@ -90,8 +76,7 @@ export default function ExecutiveView({
     if (period === "hoje") {
       const y = new Date();
       y.setDate(y.getDate() - 1);
-      const tz = y.getTimezoneOffset() * 60000;
-      const iso = new Date(y - tz).toISOString().slice(0, 10);
+      const iso = localISODate(y);
       return { from: iso, to: iso };
     }
     if (period === "semana") {
@@ -100,18 +85,14 @@ export default function ExecutiveView({
       d.setDate(d.getDate() - 7);
       const d2 = new Date(d);
       d2.setDate(d.getDate() + 6);
-      const toISO = (x) => {
-        const tz = x.getTimezoneOffset() * 60000;
-        return new Date(x - tz).toISOString().slice(0, 10);
-      };
-      return { from: toISO(d), to: toISO(d2) };
+      return { from: localISODate(d), to: localISODate(d2) };
     }
     return getPrevMonthRange();
   }, [period]);
 
-  const filterByRange = (list, r) => {
+  const filterByRange = (list, r, field = "start_time") => {
     return list.filter((e) => {
-      const d = e.start_time.slice(0, 10);
+      const d = localISODate(e[field]);
       return d >= r.from && d <= r.to;
     });
   };
@@ -119,19 +100,15 @@ export default function ExecutiveView({
   const currentEntries = useMemo(() => filterByRange(entries, range), [entries, range]);
   const prevEntries = useMemo(() => filterByRange(entries, prevRange), [entries, prevRange]);
 
-  const currentErrors = useMemo(() => {
-    return separationErrors.filter((e) => {
-      const d = e.created_at.slice(0, 10);
-      return d >= range.from && d <= range.to;
-    });
-  }, [separationErrors, range]);
+  const currentErrors = useMemo(
+    () => filterByRange(separationErrors, range, "created_at"),
+    [separationErrors, range]
+  );
 
-  const prevErrors = useMemo(() => {
-    return separationErrors.filter((e) => {
-      const d = e.created_at.slice(0, 10);
-      return d >= prevRange.from && d <= prevRange.to;
-    });
-  }, [separationErrors, prevRange]);
+  const prevErrors = useMemo(
+    () => filterByRange(separationErrors, prevRange, "created_at"),
+    [separationErrors, prevRange]
+  );
 
   const shortagesByEntry = useMemo(() => {
     const map = {};
@@ -257,7 +234,7 @@ export default function ExecutiveView({
   const dailyEvolution = useMemo(() => {
     const byDay = {};
     currentEntries.forEach((e) => {
-      const day = e.start_time.slice(0, 10);
+      const day = localISODate(e.start_time);
       if (!byDay[day]) byDay[day] = { day, count: 0, seconds: 0 };
       byDay[day].count += 1;
       byDay[day].seconds += e.duration_seconds || 0;

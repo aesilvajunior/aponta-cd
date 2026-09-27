@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { fetchShortages, fetchEntries, fetchOperators, fetchActivities } from "../lib/api";
-import { fmtClock, fmtDate } from "../lib/format";
+import { fmtClock, fmtDate, localISODate } from "../lib/format";
 import { exportShortagesCsv } from "../utils/csv";
 import { supabase } from "../supabaseClient";
 import {
@@ -102,7 +102,7 @@ export default function ShortagePanel() {
   const filteredRows = useMemo(() => {
     return rows
       .filter((r) => {
-        const d = r.date.slice(0, 10);
+        const d = localISODate(r.date);
         if (dateFrom && d < dateFrom) return false;
         if (dateTo && d > dateTo) return false;
         return true;

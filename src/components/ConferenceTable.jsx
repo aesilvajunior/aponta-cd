@@ -14,7 +14,7 @@ import {
   resetConferenceItem,
   logAudit,
 } from "../lib/api";
-import { fmtClock, fmtDate, fmtDuration } from "../lib/format";
+import { fmtClock, fmtDate, fmtDuration, todayLocalISODate, localISODate } from "../lib/format";
 import { supabase } from "../supabaseClient";
 import useKeyboardNav from "../hooks/useKeyboardNav";
 import {
@@ -227,8 +227,8 @@ export default function ConferenceTable({ operators, isAdmin = false }) {
   );
 
   const historyToday = useMemo(() => {
-    const today = new Date().toISOString().slice(0, 10);
-    return history.filter((h) => h.conference_finished_at?.slice(0, 10) === today).slice(0, 30);
+    const today = todayLocalISODate();
+    return history.filter((h) => h.conference_finished_at && localISODate(h.conference_finished_at) === today).slice(0, 30);
   }, [history]);
 
   async function handleAssume(item) {
