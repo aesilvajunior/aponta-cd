@@ -4,9 +4,13 @@ import { fmtDuration, fmtClock, fmtDate, shiftFor } from "../lib/format";
 import { getStationName, promptForStationName } from "../lib/station";
 import { playSuccess, playError, playKey } from "../utils/sound";
 import { playEventSound } from "../lib/sounds";
+import { fetchOperatorPrefs, saveOperatorPrefs, shouldShowWelcome, markWelcomeShown } from "../lib/operatorPrefs";
 import useKeyboardNav from "../hooks/useKeyboardNav";
 import { useTheme } from "../context/ThemeContext";
 import { supabase } from "../supabaseClient";
+import ConfettiBurst from "./ConfettiBurst";
+import WelcomeScreen from "./WelcomeScreen";
+import KioskPrefsModal from "./KioskPrefsModal";
 import {
   IconActivity,
   IconClipboardCheck,
@@ -26,6 +30,8 @@ import {
   IconMoon,
   IconPause,
   IconPlay,
+  IconSettings,
+  IconStar,
 } from "./Icons";
 
 const CODE_LENGTH = 3;
@@ -105,14 +111,22 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
   const [shortages, setShortages] = useState([]);
   const [finishNote, setFinishNote] = useState("");
 
+  // Fase 4 — boas-vindas, preferências e confete
+  const [showWelcome, setShowWelcome] = useState(false);
+  const [prefs, setPrefs] = useState({ theme: "auto", font_scale: 1.0, favorite_activities: [] });
+  const [showPrefsModal, setShowPrefsModal] = useState(false);
+  const [confettiActive, setConfettiActive] = useState(false);
+
   const codeInputRef = useRef(codeInput);
   codeInputRef.current = codeInput;
   const lastInteractionRef = useRef(Date.now());
   const autoReturnTimeoutRef = useRef(null);
+  const confettiTimeoutRef = useRef(null);
   const finishModalOpenRef = useRef(false);
   const mainContainerRef = useRef(null);
   const modalRef = useRef(null);
 
+  // Aplica tema local do kiosk
   useEffect(() => {
     try {
       localStorage.setItem(KIOSK_THEME_KEY, localTheme);
@@ -128,6 +142,23 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
     };
   }, [localTheme]);
 
+  // Aplica preferências do operador (tema, fonte) quando logado
+  useEffect(() => {
+    if (!loggedOperator) return;
+    if (prefs.theme && prefs.theme !== "auto") {
+      const html = document.documentElement;
+      html.setAttribute("data-theme", prefs.theme);
+    }
+    if (prefs.font_scale && prefs.font_scale !== 1.0) {
+      document.documentElement.style.fontSize = `${16 * prefs.font_scale}px`;
+    } else {
+      document.documentElement.style.fontSize = "";
+    }
+    return () => {
+      document.documentElement.style.fontSize = "";
+    };
+  }, [loggedOperator, prefs]);
+
   function cycleTheme() {
     const next = localTheme === "auto" ? "dark" : localTheme === "dark" ? "light" : "auto";
     setLocalTheme(next);
@@ -137,9 +168,15 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
     lastInteractionRef.current = Date.now();
   }
 
+  function triggerConfetti() {
+    if (confettiTimeoutRef.current) clearTimeout(confettiTimeoutRef.current);
+    setConfettiActive(true);
+    confettiTimeoutRef.current = setTimeout(() => setConfettiActive(false), 2500);
+  }
+
   useKeyboardNav({
     containerRef: mainContainerRef,
-    enabled: !showFinishModal,
+    enabled: !showFinishModal && !showPrefsModal && !showWelcome,
     onEscape: () => {
       if (orderFormActivity) {
         cancelOrderForm();
@@ -167,12 +204,14 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
     if (!loggedOperator) return;
     const iv = setInterval(() => {
       if (finishModalOpenRef.current) return;
+      if (showPrefsModal) return;
+      if (showWelcome) return;
       if (paused) return;
       if (Date.now() - lastInteractionRef.current > IDLE_TIMEOUT_MS) reset();
     }, 1000);
     return () => clearInterval(iv);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loggedOperator, paused]);
+  }, [loggedOperator, paused, showPrefsModal, showWelcome]);
 
   useEffect(() => {
     finishModalOpenRef.current = showFinishModal;
@@ -182,6 +221,7 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
   useEffect(() => {
     return () => {
       if (autoReturnTimeoutRef.current) clearTimeout(autoReturnTimeoutRef.current);
+      if (confettiTimeoutRef.current) clearTimeout(confettiTimeoutRef.current);
     };
   }, []);
 
@@ -219,6 +259,9 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
     setPaused(false);
     setPausedAt(null);
     setTotalPausedSeconds(0);
+    setShowWelcome(false);
+    setShowPrefsModal(false);
+    setConfettiActive(false);
     cancelOrderForm();
   }
 
@@ -253,7 +296,13 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
     bump();
     setMsg("");
     setCheckingLogin(true);
-    const { data, error } = await fetchActiveSessionFor(op.code);
+
+    const [{ data, error }, { data: prefsData }, welcomeNeeded] = await Promise.all([
+      fetchActiveSessionFor(op.code),
+      fetchOperatorPrefs(op.code),
+      shouldShowWelcome(op.code),
+    ]);
+
     if (error) {
       playError();
       setMsgType("error");
@@ -261,7 +310,9 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
       setCheckingLogin(false);
       return;
     }
+
     playSuccess();
+    playEventSound("sound_activity_start");
     setSession(data || null);
     if (data) {
       setPaused(!!data.paused_at);
@@ -272,8 +323,26 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
       setPausedAt(null);
       setTotalPausedSeconds(0);
     }
+    setPrefs({
+      theme: prefsData?.theme || "auto",
+      font_scale: Number(prefsData?.font_scale) || 1.0,
+      favorite_activities: prefsData?.favorite_activities || [],
+    });
     setLoggedOperator(op);
     setCheckingLogin(false);
+
+    if (welcomeNeeded) {
+      setShowWelcome(true);
+    }
+  }
+
+  function handleWelcomeContinue() {
+    if (loggedOperator) markWelcomeShown(loggedOperator.code);
+    setShowWelcome(false);
+  }
+
+  function handlePrefsSaved(newPrefs) {
+    setPrefs(newPrefs);
   }
 
   async function startActivity(activityName, extra = {}) {
@@ -301,6 +370,7 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
 
     if (!error) {
       playSuccess();
+      playEventSound("sound_activity_start");
       const detailParts = [];
       if (extra.isEncaixe) detailParts.push("ENCAIXE");
       if (extra.transferType) {
@@ -495,17 +565,30 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
     setSession((s) => s ? { ...s, paused_at: null, total_paused_seconds: newTotal } : s);
   }
 
+  // Verifica se essa finalização bateu meta (tempo médio <= target) → confete
+  function didHitGoal(durationSec) {
+    if (!session) return false;
+    const cfg = activities.find((a) => a.name === session.activity);
+    if (!cfg?.target_seconds) return false;
+    return durationSec <= cfg.target_seconds;
+  }
+
   async function finishDirectly() {
     if (!session || busy) return;
     bump();
     setBusy(true);
     const pausedSecs = session.total_paused_seconds || 0;
     const duration = Math.max(0, Math.round((Date.now() - new Date(session.start_time).getTime()) / 1000) - pausedSecs);
+    const hitGoal = didHitGoal(duration);
     const { data: newEntry, error } = await finishSession(session, duration, shiftFor(session.start_time), noteInput.trim(), !!session.is_encaixe, pausedSecs);
     setBusy(false);
     if (!error) {
       playSuccess();
-      playEventSound("sound_goal");
+      playEventSound("sound_activity_finish");
+      if (hitGoal) {
+        playEventSound("sound_goal_hit");
+        triggerConfetti();
+      }
       if (newEntry && isSeparationEntry(newEntry)) {
         await addToConferenceQueue(newEntry);
       }
@@ -582,6 +665,7 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
     const duration = Math.max(0, Math.round((Date.now() - new Date(session.start_time).getTime()) / 1000) - pausedSecs);
     const shift = shiftFor(session.start_time);
     const finalNote = finishNote.trim();
+    const hitGoal = didHitGoal(duration);
 
     const { data: newEntry, error } = await finishSession(
       session,
@@ -629,7 +713,11 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
 
     setBusy(false);
     playSuccess();
-    playEventSound("sound_goal");
+    playEventSound("sound_activity_finish");
+    if (hitGoal) {
+      playEventSound("sound_goal_hit");
+      triggerConfetti();
+    }
     refreshEntries?.();
     setSession(null);
     setNoteInput("");
@@ -649,11 +737,38 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
     setStationNameState(promptForStationName());
   }
 
+  // Ordena atividades: favoritas primeiro
+  const orderedActivities = (() => {
+    if (!prefs.favorite_activities || prefs.favorite_activities.length === 0) return activities;
+    const fav = new Set(prefs.favorite_activities);
+    const favList = activities.filter((a) => fav.has(a.name));
+    const rest = activities.filter((a) => !fav.has(a.name));
+    return [...favList, ...rest];
+  })();
+
   const dots = Array.from({ length: CODE_LENGTH }, (_, i) => i < codeInput.length);
   const themeIcon = localTheme === "dark" ? <IconMoon size={14} /> : localTheme === "light" ? <IconSun size={14} /> : <IconActivity size={14} />;
 
   return (
     <div className="kiosk-page" ref={mainContainerRef}>
+      <ConfettiBurst active={confettiActive} />
+
+      {showWelcome && loggedOperator && (
+        <WelcomeScreen
+          operator={loggedOperator}
+          onContinue={handleWelcomeContinue}
+        />
+      )}
+
+      {showPrefsModal && loggedOperator && (
+        <KioskPrefsModal
+          operator={loggedOperator}
+          activities={activities}
+          onClose={() => setShowPrefsModal(false)}
+          onSaved={handlePrefsSaved}
+        />
+      )}
+
       <header className="kiosk-header">
         <div className="kiosk-header-left">
           <div className="kiosk-header-title">Aponta CD</div>
@@ -684,6 +799,15 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
             <IconMapPin size={14} />
             {stationName || "Nomear estação"}
           </button>
+          {loggedOperator && (
+            <button
+              className="kiosk-header-station"
+              onClick={() => setShowPrefsModal(true)}
+              title="Minhas preferências"
+            >
+              <IconSettings size={14} />
+            </button>
+          )}
         </div>
       </header>
 
@@ -742,7 +866,7 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
           </div>
         )}
 
-        {loggedOperator && !confirmation && (
+        {loggedOperator && !confirmation && !showWelcome && (
           <div className="kiosk-logged">
             <div className="kiosk-operator-bar">
               <div className="kiosk-operator-info">
@@ -765,17 +889,26 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
               <div className="kiosk-activities">
                 <div className="kiosk-section-title">Escolha uma atividade</div>
                 <div className="kiosk-activities-grid">
-                  {activities.map((a) => (
-                    <button
-                      key={a.name}
-                      className="kiosk-activity-card"
-                      onClick={() => handleActivityClick(a)}
-                      disabled={busy}
-                    >
-                      <span className="kiosk-activity-icon">{activityIcon(a.name)}</span>
-                      <span className="kiosk-activity-name">{a.name}</span>
-                    </button>
-                  ))}
+                  {orderedActivities.map((a) => {
+                    const isFav = prefs.favorite_activities?.includes(a.name);
+                    return (
+                      <button
+                        key={a.name}
+                        className="kiosk-activity-card"
+                        onClick={() => handleActivityClick(a)}
+                        disabled={busy}
+                        style={isFav ? { borderColor: "var(--accent)" } : undefined}
+                      >
+                        <span className="kiosk-activity-icon">{activityIcon(a.name)}</span>
+                        <span className="kiosk-activity-name">{a.name}</span>
+                        {isFav && (
+                          <span style={{ position: "absolute", top: 8, right: 8, color: "var(--accent)" }}>
+                            <IconStar size={14} />
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -996,26 +1129,26 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
                   disabled={paused}
                 />
 
-          {paused && (
-  <div style={{
-    padding: "12px 16px",
-    background: "var(--warning-soft)",
-    border: "1px solid var(--warning)",
-    borderRadius: 10,
-    color: "var(--warning)",
-    fontSize: 13,
-    fontWeight: 600,
-    textAlign: "center",
-    marginBottom: 12,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    width: "100%",
-  }}>
-    <IconPause size={14} /> Em pausa desde {fmtClock(pausedAt)}
-  </div>
-)}
+                {paused && (
+                  <div style={{
+                    padding: "12px 16px",
+                    background: "var(--warning-soft)",
+                    border: "1px solid var(--warning)",
+                    borderRadius: 10,
+                    color: "var(--warning)",
+                    fontSize: 13,
+                    fontWeight: 600,
+                    textAlign: "center",
+                    marginBottom: 12,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                    width: "100%",
+                  }}>
+                    <IconPause size={14} /> Em pausa desde {fmtClock(pausedAt)}
+                  </div>
+                )}
 
                 <div style={{ display: "flex", gap: 10 }}>
                   {!paused ? (

@@ -25,6 +25,16 @@ const SOUND_PATTERNS = {
     { freq: 900, dur: 0.12, gap: 0.04 },
   ],
   soft: [{ freq: 520, dur: 0.35, gap: 0 }],
+  goal: [
+    { freq: 660, dur: 0.12, gap: 0 },
+    { freq: 880, dur: 0.12, gap: 0.04 },
+    { freq: 1320, dur: 0.12, gap: 0.04 },
+    { freq: 1760, dur: 0.3, gap: 0.05 },
+  ],
+  error: [
+    { freq: 400, dur: 0.18, gap: 0 },
+    { freq: 320, dur: 0.28, gap: 0.05 },
+  ],
 };
 
 let cachedPrefs = null;
@@ -37,6 +47,10 @@ export function defaultPrefs() {
     sound_new_conference: "chime",
     sound_shortage: "urgent",
     sound_goal: "success",
+    sound_activity_start: "beep",
+    sound_activity_finish: "success",
+    sound_error_registered: "error",
+    sound_goal_hit: "goal",
   };
 }
 
@@ -106,6 +120,8 @@ export const SOUND_OPTIONS = [
   { value: "success", label: "Sucesso (3 notas)" },
   { value: "urgent", label: "Urgente (rápido)" },
   { value: "soft", label: "Suave" },
+  { value: "goal", label: "Meta batida (fanfarra)" },
+  { value: "error", label: "Erro (grave)" },
 ];
 
 export function previewSound(name) {

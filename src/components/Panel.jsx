@@ -23,10 +23,20 @@ import {
   IconRefresh,
   IconActivity,
   IconEdit3,
+  IconLayoutDashboard,
+  IconList,
 } from "./Icons";
 
 const COLORS = ["#1e3a5f", "#4a7ba7", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444", "#06b6d4", "#6b7280"];
 const DEFAULT_ALERT_SECONDS = 1800;
+
+const TABS = [
+  { key: "resumo", label: "Resumo", Icon: IconLayoutDashboard },
+  { key: "analises", label: "Análises", Icon: IconTrendingUp },
+  { key: "erros", label: "Erros", Icon: IconAlertTriangle },
+  { key: "faltas", label: "Faltas", Icon: IconPackage },
+  { key: "historico", label: "Histórico", Icon: IconList },
+];
 
 function fmtDateTime(iso) {
   const d = new Date(iso);
@@ -123,6 +133,7 @@ export default function Panel({
   onOpenAdminMaster = null,
 }) {
   const [viewOperator, setViewOperator] = useState(null);
+  const [activeTab, setActiveTab] = useState("resumo");
 
   const [filterOperator, setFilterOperator] = useState("");
   const [filterActivity, setFilterActivity] = useState("");
@@ -137,6 +148,7 @@ export default function Panel({
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [activeQuickFilter, setActiveQuickFilter] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const [confirmingReset, setConfirmingReset] = useState(false);
   const [resetPhrase, setResetPhrase] = useState("");
@@ -339,11 +351,12 @@ export default function Panel({
   const activityAlerts = useMemo(() => {
     return activeSessions
       .map((s) => {
-        const elapsed = Math.round((now - new Date(s.start_time).getTime()) / 1000);
+        const pausedSecs = s.total_paused_seconds || 0;
+        const elapsed = Math.max(0, Math.round((now - new Date(s.start_time).getTime()) / 1000) - pausedSecs);
         const activityConfig = activities.find((a) => a.name === s.activity);
         let threshold = alertThreshold || DEFAULT_ALERT_SECONDS;
         if (activityConfig?.target_seconds) threshold = activityConfig.target_seconds;
-        return { ...s, elapsed, threshold, isLate: elapsed > threshold };
+        return { ...s, elapsed, threshold, isLate: elapsed > threshold && !s.paused_at };
       })
       .filter((s) => s.isLate)
       .sort((a, b) => b.elapsed - a.elapsed);
@@ -1091,10 +1104,10 @@ export default function Panel({
           <button className="btn-small" onClick={copyDailySummary}>{copyLabel}</button>
           <button className="btn-small" onClick={openPrintableReport}>Gerar relatório (PDF)</button>
           <button className="btn-small" onClick={exportHistoricoCSV}>
-            <IconDownload size={14} /> Exportar CSV
+            <IconDownload size={14} /> CSV
           </button>
           <button className="btn-small btn-excel" onClick={exportHistoricoXLSX}>
-            <IconDownload size={14} /> Exportar Excel
+            <IconDownload size={14} /> Excel
           </button>
           <button className="btn-danger-outline" onClick={() => setConfirmingReset((v) => !v)}>
             <IconTrash size={14} /> Zerar resultados
@@ -1154,7 +1167,7 @@ export default function Panel({
         </div>
       )}
 
-      <div className="stat-strip">
+      <div className="stat-strip" style={{ marginBottom: 20 }}>
         <div className="stat-cell">
           <div className="stat-num">{filteredEntries.length}</div>
           <div className="stat-label">Registros no período</div>
@@ -1173,581 +1186,599 @@ export default function Panel({
         </div>
       </div>
 
-      <div className="card" style={{ marginBottom: 20 }}>
-        <div className="card-title">Filtros</div>
-        <div className="quick-filters">
-          <span className="quick-filters-label">Período rápido:</span>
-          <button className={`quick-filter-btn ${activeQuickFilter === "hoje" ? "active" : ""}`} onClick={() => applyQuickFilter("hoje")}>Hoje</button>
-          <button className={`quick-filter-btn ${activeQuickFilter === "ontem" ? "active" : ""}`} onClick={() => applyQuickFilter("ontem")}>Ontem</button>
-          <button className={`quick-filter-btn ${activeQuickFilter === "7dias" ? "active" : ""}`} onClick={() => applyQuickFilter("7dias")}>Últimos 7 dias</button>
-          <button className={`quick-filter-btn ${activeQuickFilter === "mes" ? "active" : ""}`} onClick={() => applyQuickFilter("mes")}>Este mês</button>
-          {(dateFrom || dateTo) && (
-            <button className="quick-filter-clear" onClick={() => applyQuickFilter("")}>
-              <IconX size={12} /> Limpar período
-            </button>
-          )}
-        </div>
-
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-          <select className="field" style={{ width: "auto" }} value={filterOperator} onChange={(e) => setFilterOperator(e.target.value)}>
-            <option value="">Todos operadores (apontaram)</option>
-            {operators.map((o) => <option key={o.code} value={o.code}>{o.name}</option>)}
-          </select>
-          <select className="field" style={{ width: "auto" }} value={filterActivity} onChange={(e) => setFilterActivity(e.target.value)}>
-            <option value="">Todas atividades</option>
-            {activities.map((a) => <option key={a.name} value={a.name}>{a.name}</option>)}
-          </select>
-          <select className="field" style={{ width: "auto" }} value={filterShift} onChange={(e) => setFilterShift(e.target.value)}>
-            <option value="">Ambos turnos</option>
-            <option value="Manhã">Manhã</option>
-            <option value="Tarde">Tarde</option>
-          </select>
-          {knownStations.length > 0 && (
-            <select className="field" style={{ width: "auto" }} value={filterStation} onChange={(e) => setFilterStation(e.target.value)}>
-              <option value="">Todas estações</option>
-              {knownStations.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-          )}
-          <select className="field" style={{ width: "auto" }} value={filterEncaixe} onChange={(e) => setFilterEncaixe(e.target.value)}>
-            <option value="">Todos (encaixe)</option>
-            <option value="yes">Só encaixes</option>
-            <option value="no">Sem encaixe</option>
-          </select>
-          <select className="field" style={{ width: "auto" }} value={filterShortage} onChange={(e) => setFilterShortage(e.target.value)}>
-            <option value="">Todos (falta)</option>
-            <option value="yes">Só com falta</option>
-            <option value="no">Sem falta</option>
-          </select>
-          {errorOperatorsList.length > 0 && (
-            <select className="field" style={{ width: "auto" }} value={filterErrorOperator} onChange={(e) => setFilterErrorOperator(e.target.value)}>
-              <option value="">Todos (quem errou)</option>
-              {errorOperatorsList.map((o) => <option key={o.code} value={o.code}>{o.name}</option>)}
-            </select>
-          )}
-          <input className="field" style={{ width: 180, fontFamily: "var(--font-mono)" }} placeholder="Código produto" value={filterProductCode} onChange={(e) => setFilterProductCode(e.target.value)} />
-          <input className="field" style={{ width: 200 }} placeholder="Cliente" value={filterCustomer} onChange={(e) => setFilterCustomer(e.target.value)} />
-          <input
-            className="field"
-            style={{ width: 160, fontFamily: "var(--font-mono)" }}
-            placeholder="Nº pedido"
-            value={filterOrderNumber}
-            onChange={(e) => setFilterOrderNumber(e.target.value.replace(/\D/g, ""))}
-          />
-          <span style={{ color: "var(--text-faint)", fontSize: 12 }}>de</span>
-          <input type="date" className="field" style={{ width: "auto" }} value={dateFrom} onChange={(e) => handleDateFromChange(e.target.value)} />
-          <span style={{ color: "var(--text-faint)", fontSize: 12 }}>até</span>
-          <input type="date" className="field" style={{ width: "auto" }} value={dateTo} onChange={(e) => handleDateToChange(e.target.value)} />
-          {hasFilters && <button className="btn-small" onClick={clearFilters}>Limpar todos os filtros</button>}
-        </div>
+      <div className="quick-filters" style={{ marginBottom: 16 }}>
+        <span className="quick-filters-label">Período rápido:</span>
+        <button className={`quick-filter-btn ${activeQuickFilter === "hoje" ? "active" : ""}`} onClick={() => applyQuickFilter("hoje")}>Hoje</button>
+        <button className={`quick-filter-btn ${activeQuickFilter === "ontem" ? "active" : ""}`} onClick={() => applyQuickFilter("ontem")}>Ontem</button>
+        <button className={`quick-filter-btn ${activeQuickFilter === "7dias" ? "active" : ""}`} onClick={() => applyQuickFilter("7dias")}>Últimos 7 dias</button>
+        <button className={`quick-filter-btn ${activeQuickFilter === "mes" ? "active" : ""}`} onClick={() => applyQuickFilter("mes")}>Este mês</button>
+        {(dateFrom || dateTo) && (
+          <button className="quick-filter-clear" onClick={() => applyQuickFilter("")}>
+            <IconX size={12} /> Limpar período
+          </button>
+        )}
+        <button
+          className={`quick-filter-btn ${filtersOpen ? "active" : ""}`}
+          onClick={() => setFiltersOpen((v) => !v)}
+          style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 6 }}
+        >
+          {filtersOpen ? <IconX size={12} /> : <IconActivity size={12} />}
+          {filtersOpen ? "Esconder filtros" : "Mais filtros"}
+        </button>
       </div>
 
-      {conferenceStats.total > 0 && (
+      {filtersOpen && (
         <div className="card" style={{ marginBottom: 20 }}>
-          <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <IconCheckCircle size={16} /> Mesa de conferência
+          <div className="card-title">Filtros detalhados</div>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+            <select className="field" style={{ width: "auto" }} value={filterOperator} onChange={(e) => setFilterOperator(e.target.value)}>
+              <option value="">Todos operadores (apontaram)</option>
+              {operators.map((o) => <option key={o.code} value={o.code}>{o.name}</option>)}
+            </select>
+            <select className="field" style={{ width: "auto" }} value={filterActivity} onChange={(e) => setFilterActivity(e.target.value)}>
+              <option value="">Todas atividades</option>
+              {activities.map((a) => <option key={a.name} value={a.name}>{a.name}</option>)}
+            </select>
+            <select className="field" style={{ width: "auto" }} value={filterShift} onChange={(e) => setFilterShift(e.target.value)}>
+              <option value="">Ambos turnos</option>
+              <option value="Manhã">Manhã</option>
+              <option value="Tarde">Tarde</option>
+            </select>
+            {knownStations.length > 0 && (
+              <select className="field" style={{ width: "auto" }} value={filterStation} onChange={(e) => setFilterStation(e.target.value)}>
+                <option value="">Todas estações</option>
+                {knownStations.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            )}
+            <select className="field" style={{ width: "auto" }} value={filterEncaixe} onChange={(e) => setFilterEncaixe(e.target.value)}>
+              <option value="">Todos (encaixe)</option>
+              <option value="yes">Só encaixes</option>
+              <option value="no">Sem encaixe</option>
+            </select>
+            <select className="field" style={{ width: "auto" }} value={filterShortage} onChange={(e) => setFilterShortage(e.target.value)}>
+              <option value="">Todos (falta)</option>
+              <option value="yes">Só com falta</option>
+              <option value="no">Sem falta</option>
+            </select>
+            {errorOperatorsList.length > 0 && (
+              <select className="field" style={{ width: "auto" }} value={filterErrorOperator} onChange={(e) => setFilterErrorOperator(e.target.value)}>
+                <option value="">Todos (quem errou)</option>
+                {errorOperatorsList.map((o) => <option key={o.code} value={o.code}>{o.name}</option>)}
+              </select>
+            )}
+            <input className="field" style={{ width: 180, fontFamily: "var(--font-mono)" }} placeholder="Código produto" value={filterProductCode} onChange={(e) => setFilterProductCode(e.target.value)} />
+            <input className="field" style={{ width: 200 }} placeholder="Cliente" value={filterCustomer} onChange={(e) => setFilterCustomer(e.target.value)} />
+            <input
+              className="field"
+              style={{ width: 160, fontFamily: "var(--font-mono)" }}
+              placeholder="Nº pedido"
+              value={filterOrderNumber}
+              onChange={(e) => setFilterOrderNumber(e.target.value.replace(/\D/g, ""))}
+            />
+            <span style={{ color: "var(--text-faint)", fontSize: 12 }}>de</span>
+            <input type="date" className="field" style={{ width: "auto" }} value={dateFrom} onChange={(e) => handleDateFromChange(e.target.value)} />
+            <span style={{ color: "var(--text-faint)", fontSize: 12 }}>até</span>
+            <input type="date" className="field" style={{ width: "auto" }} value={dateTo} onChange={(e) => handleDateToChange(e.target.value)} />
+            {hasFilters && <button className="btn-small" onClick={clearFilters}>Limpar todos os filtros</button>}
+          </div>
+        </div>
+      )}
+
+      {/* TABS */}
+      <div className="quick-filters" style={{ marginBottom: 20 }}>
+        {TABS.map((t) => {
+          const TabIcon = t.Icon;
+          return (
+            <button
+              key={t.key}
+              className={`quick-filter-btn ${activeTab === t.key ? "active" : ""}`}
+              onClick={() => setActiveTab(t.key)}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+            >
+              <TabIcon size={13} /> {t.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ================= ABA RESUMO ================= */}
+      {activeTab === "resumo" && (
+        <>
+          {conferenceStats.total > 0 && (
+            <div className="card" style={{ marginBottom: 20 }}>
+              <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <IconCheckCircle size={16} /> Mesa de conferência
+              </div>
+              <div className="stat-strip" style={{ marginBottom: 16 }}>
+                <div className="stat-cell">
+                  <div className="stat-num accent">{conferenceStats.total}</div>
+                  <div className="stat-label">Total conferido</div>
+                </div>
+                <div className="stat-cell">
+                  <div className="stat-num" style={{ color: "var(--ok)" }}>{conferenceStats.ok}</div>
+                  <div className="stat-label">Sem problema</div>
+                </div>
+                <div className="stat-cell">
+                  <div className="stat-num danger">{conferenceStats.problems}</div>
+                  <div className="stat-label">Com problema ({conferenceStats.problemRate}%)</div>
+                </div>
+                <div className="stat-cell">
+                  <div className="stat-num">{fmtDuration(conferenceStats.avgDuration)}</div>
+                  <div className="stat-label">Tempo médio</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="card" style={{ marginBottom: 20 }}>
+            <div className="card-title">Tempo médio por atividade (segundos)</div>
+            <ResponsiveContainer width="100%" height={240}>
+              <BarChart data={metrics.avgByActivity}>
+                <CartesianGrid stroke="var(--border)" vertical={false} />
+                <XAxis dataKey="name" tick={{ fill: "var(--text-muted)", fontSize: 11 }} />
+                <YAxis tick={{ fill: "var(--text-muted)", fontSize: 11 }} />
+                <Tooltip contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", fontSize: 12, borderRadius: 10 }} labelStyle={{ color: "var(--text)" }} />
+                <Bar dataKey="media" radius={[4, 4, 0, 0]}>
+                  {metrics.avgByActivity.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
           </div>
 
-          <div className="stat-strip" style={{ marginBottom: 16 }}>
-            <div className="stat-cell">
-              <div className="stat-num accent">{conferenceStats.total}</div>
-              <div className="stat-label">Total conferido</div>
+          <div className="card" style={{ marginBottom: 20 }}>
+            <div className="card-title">Produtividade por operador</div>
+            <p style={{ fontSize: 12, color: "var(--text-faint)", marginTop: -6, marginBottom: 14 }}>
+              Clique no nome de um operador para ver o perfil completo.
+            </p>
+            <table className="data-table">
+              <thead><tr><th>Operador</th><th>Registros</th><th>Tempo médio</th><th>Tempo total</th></tr></thead>
+              <tbody>
+                {metrics.opStats.map((o) => {
+                  const op = operators.find((x) => x.name === o.name);
+                  return (
+                    <tr key={o.name}>
+                      <td
+                        className={op ? "clickable-name" : ""}
+                        onClick={op ? () => setViewOperator(op) : undefined}
+                        title={op ? `Ver perfil de ${o.name}` : ""}
+                      >
+                        {o.name}
+                      </td>
+                      <td>{o.registros}</td>
+                      <td>{fmtDuration(o.media)}</td>
+                      <td>{fmtDuration(o.total)}</td>
+                    </tr>
+                  );
+                })}
+                {metrics.opStats.length === 0 && <tr><td colSpan={4} style={{ color: "var(--text-muted)" }}>Nenhum registro no período.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
+      {/* ================= ABA ANÁLISES ================= */}
+      {activeTab === "analises" && (
+        <>
+          <div className="card" style={{ marginBottom: 20 }}>
+            <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <IconTrendingUp size={16} /> Tendência semanal por atividade
             </div>
-            <div className="stat-cell">
-              <div className="stat-num" style={{ color: "var(--ok)" }}>{conferenceStats.ok}</div>
-              <div className="stat-label">Sem problema</div>
-            </div>
-            <div className="stat-cell">
-              <div className="stat-num danger">{conferenceStats.problems}</div>
-              <div className="stat-label">Com problema ({conferenceStats.problemRate}%)</div>
-            </div>
-            <div className="stat-cell">
-              <div className="stat-num">{fmtDuration(conferenceStats.avgDuration)}</div>
-              <div className="stat-label">Tempo médio de conferência</div>
-            </div>
+            {weeklyTrend.length > 1 ? (
+              <ResponsiveContainer width="100%" height={240}>
+                <LineChart data={weeklyTrend}>
+                  <CartesianGrid stroke="var(--border)" vertical={false} />
+                  <XAxis dataKey="label" tick={{ fill: "var(--text-muted)", fontSize: 11 }} />
+                  <YAxis tick={{ fill: "var(--text-muted)", fontSize: 11 }} />
+                  <Tooltip contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", fontSize: 12, borderRadius: 10 }} labelStyle={{ color: "var(--text)" }} />
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  {activities.map((a, i) => (
+                    <Line key={a.name} type="monotone" dataKey={a.name} stroke={COLORS[i % COLORS.length]} strokeWidth={2} dot={{ r: 3 }} connectNulls />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              <p style={{ fontSize: 12.5, color: "var(--text-faint)" }}>Ainda não há dados de mais de uma semana no período filtrado.</p>
+            )}
           </div>
 
-          {conferenceRanking.length > 0 && (
-            <div style={{ marginBottom: 20 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>
-                Ranking de conferentes
+          <div className="card" style={{ marginBottom: 20 }}>
+            <div className="page-header-row" style={{ marginBottom: 16 }}>
+              <div className="card-title" style={{ marginBottom: 0 }}>Comparação mês a mês</div>
+              {availableMonths.length > 1 && (
+                <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                  <select className="field" style={{ width: "auto" }} value={monthA} onChange={(e) => setMonthA(e.target.value)}>
+                    {availableMonths.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}
+                  </select>
+                  <span style={{ color: "var(--text-faint)", fontSize: 12 }}>vs</span>
+                  <select className="field" style={{ width: "auto" }} value={monthB} onChange={(e) => setMonthB(e.target.value)}>
+                    {availableMonths.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}
+                  </select>
+                </div>
+              )}
+            </div>
+            {availableMonths.length > 1 ? (
+              <table className="data-table">
+                <thead><tr><th>Atividade</th><th>{monthLabel(monthA)}</th><th>{monthLabel(monthB)}</th><th>Diferença</th></tr></thead>
+                <tbody>
+                  {monthComparisonRows.map((r) => (
+                    <tr key={r.name}>
+                      <td style={{ fontFamily: "var(--font-display)" }}>{r.name}</td>
+                      <td>{r.registrosA > 0 ? fmtDuration(r.mediaA) : "sem registros"}</td>
+                      <td>{r.registrosB > 0 ? fmtDuration(r.mediaB) : "sem registros"}</td>
+                      <td style={{ color: r.deltaPct === null ? "var(--text-faint)" : r.deltaPct < 0 ? "var(--ok)" : "var(--danger)" }}>
+                        {r.deltaPct === null ? "—" : `${r.deltaPct > 0 ? "+" : ""}${r.deltaPct}%`}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p style={{ fontSize: 12.5, color: "var(--text-faint)" }}>Ainda não há registros de mais de um mês para comparar.</p>
+            )}
+          </div>
+
+          {targetComparison.length > 0 && (
+            <div className="card" style={{ marginBottom: 20 }}>
+              <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <IconTarget size={16} /> Meta vs. real por atividade
               </div>
               <table className="data-table">
-                <thead>
-                  <tr><th>Posição</th><th>Conferente</th><th>Conferências</th><th>Tempo médio</th></tr>
-                </thead>
+                <thead><tr><th>Atividade</th><th>Meta</th><th>Real (média)</th><th>Diferença</th></tr></thead>
                 <tbody>
-                  {conferenceRanking.map((r, i) => (
-                    <tr key={r.code}>
-                      <td style={{ fontWeight: 700, color: i < 3 ? "var(--accent)" : "var(--text-muted)" }}>{i + 1}º</td>
-                      <td style={{ fontFamily: "var(--font-display)", fontWeight: 600 }}>{r.name}</td>
-                      <td>{r.count}</td>
-                      <td>{fmtDuration(r.avg)}</td>
+                  {targetComparison.map((t) => (
+                    <tr key={t.name}>
+                      <td style={{ fontFamily: "var(--font-display)" }}>{t.name}</td>
+                      <td>{fmtDuration(t.target)}</td>
+                      <td>{t.registros > 0 ? fmtDuration(t.media) : "sem registros"}</td>
+                      <td style={{ color: t.deltaPct === null ? "var(--text-faint)" : t.deltaPct > 0 ? "var(--danger)" : "var(--ok)" }}>
+                        {t.deltaPct === null ? "—" : `${t.deltaPct > 0 ? "+" : ""}${t.deltaPct}%`}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           )}
+        </>
+      )}
 
-          {conferenceProblems.length > 0 && (
-            <div style={{ marginBottom: 20 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>
-                Problemas por motivo
+      {/* ================= ABA ERROS ================= */}
+      {activeTab === "erros" && (
+        <>
+          <div className="card" style={{ marginBottom: 20 }}>
+            <div className="page-header-row" style={{ marginBottom: 16 }}>
+              <div className="card-title" style={{ marginBottom: 0, display: "flex", alignItems: "center", gap: 8 }}>
+                <IconAlertTriangle size={16} /> Erros no período
               </div>
-              <ResponsiveContainer width="100%" height={Math.max(140, conferenceProblems.length * 34)}>
-                <BarChart data={conferenceProblems} layout="vertical">
-                  <CartesianGrid stroke="var(--border)" horizontal={false} />
-                  <XAxis type="number" tick={{ fill: "var(--text-muted)", fontSize: 11 }} allowDecimals={false} />
-                  <YAxis type="category" dataKey="name" tick={{ fill: "var(--text-muted)", fontSize: 11 }} width={150} />
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button className="btn-small" onClick={exportErrorsCSV}><IconDownload size={14} /> CSV</button>
+                <button className="btn-small btn-excel" onClick={exportErrorsXLSX}><IconDownload size={14} /> Excel</button>
+                <button className="btn-danger-outline" onClick={() => setConfirmingResetErrors((v) => !v)}>
+                  <IconTrash size={14} /> Zerar erros
+                </button>
+              </div>
+            </div>
+
+            {confirmingResetErrors && (
+              <div className="confirm-box" style={{ marginBottom: 16 }}>
+                <strong style={{ color: "var(--danger)", fontSize: 14 }}>Isso apaga todo o histórico de erros de separação, permanentemente.</strong>
+                <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+                  <input
+                    className="field"
+                    style={{ flex: 1 }}
+                    placeholder="Digite ZERAR"
+                    value={resetErrorsPhrase}
+                    onChange={(e) => setResetErrorsPhrase(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && confirmResetErrors()}
+                  />
+                  <button className="btn-danger-outline" onClick={confirmResetErrors} disabled={resetErrorsPhrase.trim().toUpperCase() !== "ZERAR" || resettingErrors}>
+                    {resettingErrors ? "Apagando..." : "Confirmar"}
+                  </button>
+                  <button className="btn-small" onClick={() => { setConfirmingResetErrors(false); setResetErrorsPhrase(""); }}>Cancelar</button>
+                </div>
+              </div>
+            )}
+
+            {errorRanking.length > 0 && (
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>
+                  Operadores que mais erraram
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {errorRanking.map((r, i) => {
+                    const pct = (r.count / maxErrorCount) * 100;
+                    const op = operators.find((x) => x.code === r.code);
+                    return (
+                      <div key={r.code} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        <div
+                          style={{
+                            width: 28, height: 28, borderRadius: "50%",
+                            background: i === 0 ? "#ef4444" : i === 1 ? "#f97316" : i === 2 ? "#f59e0b" : "var(--surface-raised)",
+                            color: i < 3 ? "#fff" : "var(--text-muted)",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            fontWeight: 700, fontSize: 12, flexShrink: 0,
+                          }}
+                        >
+                          {i + 1}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 }}>
+                            <span
+                              className={op ? "clickable-name" : ""}
+                              onClick={op ? () => setViewOperator(op) : undefined}
+                              style={{ fontWeight: 600 }}
+                            >
+                              {r.name} <span style={{ color: "var(--text-faint)", fontWeight: 400 }}>#{r.code}</span>
+                            </span>
+                            <span style={{ color: "var(--danger)", fontWeight: 700, fontFamily: "var(--font-mono)" }}>{r.count}</span>
+                          </div>
+                          <div style={{ height: 6, background: "var(--surface-sunken)", borderRadius: 3, overflow: "hidden" }}>
+                            <div style={{ height: "100%", width: `${pct}%`, background: "var(--danger)", borderRadius: 3 }} />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {errorsByType.length > 0 && (
+              <>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>
+                  Erros por tipo
+                </div>
+                <ResponsiveContainer width="100%" height={180}>
+                  <BarChart data={errorsByType}>
+                    <CartesianGrid stroke="var(--border)" vertical={false} />
+                    <XAxis dataKey="name" tick={{ fill: "var(--text-muted)", fontSize: 10.5 }} />
+                    <YAxis tick={{ fill: "var(--text-muted)", fontSize: 11 }} allowDecimals={false} />
+                    <Tooltip contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", fontSize: 12, borderRadius: 10 }} labelStyle={{ color: "var(--text)" }} />
+                    <Bar dataKey="total" fill="var(--danger)" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </>
+            )}
+
+            {dateFilteredErrors.length > 0 ? (
+              <div style={{ overflowX: "auto", marginTop: 20 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 10 }}>Detalhes</div>
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Data</th><th>Pedido/Transf.</th><th>Tipo de Erro</th>
+                      <th>Quem errou</th><th>Quem apontou</th><th>Observação</th><th>Estação</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dateFilteredErrors.slice(0, 100).map((e) => {
+                      const opErr = operators.find((x) => x.code === e.error_operator_code);
+                      const opApo = operators.find((x) => x.code === e.operator_code);
+                      return (
+                        <tr key={e.id}>
+                          <td>{fmtDate(e.created_at)} {fmtClock(e.created_at).slice(0, 5)}</td>
+                          <td>
+                            {e.order_number ? (
+                              <>
+                                <span style={{ color: "var(--text-faint)", fontSize: 10.5 }}>
+                                  {e.order_type === "pedido" ? "P" : e.order_type === "transferencia" ? "T" : ""}
+                                </span>{" "}
+                                <span style={{ fontFamily: "var(--font-mono)" }}>{e.order_number}</span>
+                              </>
+                            ) : "—"}
+                          </td>
+                          <td>{e.error_type}</td>
+                          <td style={{ color: "var(--danger)", fontWeight: 600 }}>
+                            <span
+                              className={opErr ? "clickable-name" : ""}
+                              onClick={opErr ? () => setViewOperator(opErr) : undefined}
+                              style={{ color: "var(--danger)" }}
+                            >
+                              {e.error_operator_name || "—"}
+                            </span>
+                          </td>
+                          <td style={{ color: "var(--text-muted)" }}>
+                            <span
+                              className={opApo ? "clickable-name" : ""}
+                              onClick={opApo ? () => setViewOperator(opApo) : undefined}
+                              style={{ color: "var(--text-muted)" }}
+                            >
+                              {e.operator_name}
+                            </span>
+                          </td>
+                          <td style={{ color: "var(--text-muted)" }}>{e.note || "—"}</td>
+                          <td style={{ color: "var(--text-muted)" }}>{e.station || "—"}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p style={{ fontSize: 12.5, color: "var(--text-faint)" }}>Nenhum erro registrado no período filtrado.</p>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* ================= ABA FALTAS ================= */}
+      {activeTab === "faltas" && (
+        <>
+          <div className="card" style={{ marginBottom: 20 }}>
+            <div className="page-header-row" style={{ marginBottom: 16 }}>
+              <div className="card-title" style={{ marginBottom: 0, display: "flex", alignItems: "center", gap: 8 }}>
+                <IconPackage size={16} /> Produtos que mais faltam
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button className="btn-small" onClick={exportShortagesCSV}><IconDownload size={14} /> CSV</button>
+                <button className="btn-small btn-excel" onClick={exportShortagesXLSX}><IconDownload size={14} /> Excel</button>
+              </div>
+            </div>
+
+            {topShortageProducts.length > 0 ? (
+              <>
+                <ResponsiveContainer width="100%" height={Math.max(200, topShortageProducts.length * 34)}>
+                  <BarChart data={topShortageProducts} layout="vertical">
+                    <CartesianGrid stroke="var(--border)" horizontal={false} />
+                    <XAxis type="number" tick={{ fill: "var(--text-muted)", fontSize: 11 }} allowDecimals={false} />
+                    <YAxis type="category" dataKey="code" tick={{ fill: "var(--text-muted)", fontSize: 11 }} width={100} />
+                    <Tooltip contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", fontSize: 12, borderRadius: 10 }} labelStyle={{ color: "var(--text)" }} />
+                    <Bar dataKey="totalQty" fill="var(--danger)" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+                <table className="data-table" style={{ marginTop: 16 }}>
+                  <thead><tr><th>Código</th><th>Ocorrências</th><th>Quantidade total</th></tr></thead>
+                  <tbody>
+                    {topShortageProducts.map((p) => (
+                      <tr key={p.code}>
+                        <td style={{ fontFamily: "var(--font-mono)" }}>{p.code}</td>
+                        <td>{p.count}</td>
+                        <td style={{ color: "var(--danger)", fontWeight: 600 }}>{p.totalQty}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
+            ) : (
+              <p style={{ fontSize: 12.5, color: "var(--text-faint)" }}>Nenhuma falta registrada no período.</p>
+            )}
+          </div>
+
+          {shortagesByDay.length > 1 && (
+            <div className="card" style={{ marginBottom: 20 }}>
+              <div className="card-title">Faltas ao longo do tempo</div>
+              <ResponsiveContainer width="100%" height={240}>
+                <LineChart data={shortagesByDay}>
+                  <CartesianGrid stroke="var(--border)" vertical={false} />
+                  <XAxis dataKey="label" tick={{ fill: "var(--text-muted)", fontSize: 11 }} />
+                  <YAxis tick={{ fill: "var(--text-muted)", fontSize: 11 }} allowDecimals={false} />
                   <Tooltip contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", fontSize: 12, borderRadius: 10 }} labelStyle={{ color: "var(--text)" }} />
-                  <Bar dataKey="total" fill="var(--danger)" radius={[0, 4, 4, 0]} />
-                </BarChart>
+                  <Legend wrapperStyle={{ fontSize: 11 }} />
+                  <Line type="monotone" dataKey="totalFaltas" name="Faltas" stroke="#ef4444" strokeWidth={2} dot={{ r: 3 }} />
+                  <Line type="monotone" dataKey="totalQty" name="Quantidade total" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} />
+                </LineChart>
               </ResponsiveContainer>
             </div>
           )}
 
-          {conferenceSeparatorsRanking.length > 0 && (
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>
-                Separadores com mais problemas
+          {topShortageCustomers.length > 0 && (
+            <div className="card" style={{ marginBottom: 20 }}>
+              <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <IconBuilding size={16} /> Clientes mais afetados por falta
               </div>
               <table className="data-table">
-                <thead>
-                  <tr><th>Separador</th><th>Total conferido</th><th>Com problema</th><th>% problema</th></tr>
-                </thead>
+                <thead><tr><th>Cliente</th><th>Pedidos afetados</th><th>Faltas</th><th>Qtd. total</th></tr></thead>
                 <tbody>
-                  {conferenceSeparatorsRanking.map((r) => (
-                    <tr key={r.code}>
-                      <td style={{ fontFamily: "var(--font-display)", fontWeight: 600 }}>{r.name}</td>
-                      <td>{r.count}</td>
-                      <td style={{ color: r.problems > 0 ? "var(--danger)" : "var(--text-muted)", fontWeight: 600 }}>{r.problems}</td>
-                      <td style={{ color: r.problemRate > 20 ? "var(--danger)" : r.problemRate > 0 ? "var(--warning)" : "var(--ok)", fontWeight: 600 }}>
-                        {r.problemRate}%
-                      </td>
+                  {topShortageCustomers.map((c) => (
+                    <tr key={c.name}>
+                      <td style={{ fontFamily: "var(--font-display)" }}>{c.name}</td>
+                      <td>{c.entriesCount}</td>
+                      <td>{c.totalFaltas}</td>
+                      <td style={{ color: "var(--danger)", fontWeight: 600 }}>{c.totalQty}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           )}
-        </div>
-      )}
 
-      <div className="card" style={{ marginBottom: 20 }}>
-        <div className="card-title">Tempo médio por atividade (segundos)</div>
-        <ResponsiveContainer width="100%" height={240}>
-          <BarChart data={metrics.avgByActivity}>
-            <CartesianGrid stroke="var(--border)" vertical={false} />
-            <XAxis dataKey="name" tick={{ fill: "var(--text-muted)", fontSize: 11 }} />
-            <YAxis tick={{ fill: "var(--text-muted)", fontSize: 11 }} />
-            <Tooltip contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", fontSize: 12, borderRadius: 10 }} labelStyle={{ color: "var(--text)" }} />
-            <Bar dataKey="media" radius={[4, 4, 0, 0]}>
-              {metrics.avgByActivity.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-
-      <div className="card" style={{ marginBottom: 20 }}>
-        <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <IconTrendingUp size={16} /> Tendência semanal por atividade (segundos, média)
-        </div>
-        {weeklyTrend.length > 1 ? (
-          <ResponsiveContainer width="100%" height={240}>
-            <LineChart data={weeklyTrend}>
-              <CartesianGrid stroke="var(--border)" vertical={false} />
-              <XAxis dataKey="label" tick={{ fill: "var(--text-muted)", fontSize: 11 }} />
-              <YAxis tick={{ fill: "var(--text-muted)", fontSize: 11 }} />
-              <Tooltip contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", fontSize: 12, borderRadius: 10 }} labelStyle={{ color: "var(--text)" }} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              {activities.map((a, i) => (
-                <Line key={a.name} type="monotone" dataKey={a.name} stroke={COLORS[i % COLORS.length]} strokeWidth={2} dot={{ r: 3 }} connectNulls />
-              ))}
-            </LineChart>
-          </ResponsiveContainer>
-        ) : (
-          <p style={{ fontSize: 12.5, color: "var(--text-faint)" }}>Ainda não há dados de mais de uma semana no período filtrado.</p>
-        )}
-      </div>
-
-      <div className="card" style={{ marginBottom: 20 }}>
-        <div className="page-header-row" style={{ marginBottom: 16 }}>
-          <div className="card-title" style={{ marginBottom: 0 }}>Comparação mês a mês</div>
-          {availableMonths.length > 1 && (
-            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-              <select className="field" style={{ width: "auto" }} value={monthA} onChange={(e) => setMonthA(e.target.value)}>
-                {availableMonths.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}
-              </select>
-              <span style={{ color: "var(--text-faint)", fontSize: 12 }}>vs</span>
-              <select className="field" style={{ width: "auto" }} value={monthB} onChange={(e) => setMonthB(e.target.value)}>
-                {availableMonths.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}
-              </select>
-            </div>
-          )}
-        </div>
-        {availableMonths.length > 1 ? (
-          <table className="data-table">
-            <thead><tr><th>Atividade</th><th>{monthLabel(monthA)}</th><th>{monthLabel(monthB)}</th><th>Diferença</th></tr></thead>
-            <tbody>
-              {monthComparisonRows.map((r) => (
-                <tr key={r.name}>
-                  <td style={{ fontFamily: "var(--font-display)" }}>{r.name}</td>
-                  <td>{r.registrosA > 0 ? fmtDuration(r.mediaA) : "sem registros"}</td>
-                  <td>{r.registrosB > 0 ? fmtDuration(r.mediaB) : "sem registros"}</td>
-                  <td style={{ color: r.deltaPct === null ? "var(--text-faint)" : r.deltaPct < 0 ? "var(--ok)" : "var(--danger)" }}>
-                    {r.deltaPct === null ? "—" : `${r.deltaPct > 0 ? "+" : ""}${r.deltaPct}%`}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : (
-          <p style={{ fontSize: 12.5, color: "var(--text-faint)" }}>Ainda não há registros de mais de um mês para comparar.</p>
-        )}
-      </div>
-
-      {targetComparison.length > 0 && (
-        <div className="card" style={{ marginBottom: 20 }}>
-          <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <IconTarget size={16} /> Meta vs. real por atividade
-          </div>
-          <table className="data-table">
-            <thead><tr><th>Atividade</th><th>Meta</th><th>Real (média)</th><th>Diferença</th></tr></thead>
-            <tbody>
-              {targetComparison.map((t) => (
-                <tr key={t.name}>
-                  <td style={{ fontFamily: "var(--font-display)" }}>{t.name}</td>
-                  <td>{fmtDuration(t.target)}</td>
-                  <td>{t.registros > 0 ? fmtDuration(t.media) : "sem registros"}</td>
-                  <td style={{ color: t.deltaPct === null ? "var(--text-faint)" : t.deltaPct > 0 ? "var(--danger)" : "var(--ok)" }}>
-                    {t.deltaPct === null ? "—" : `${t.deltaPct > 0 ? "+" : ""}${t.deltaPct}%`}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      <div className="card" style={{ marginBottom: 20 }}>
-        <div className="card-title">Produtividade por operador</div>
-        <p style={{ fontSize: 12, color: "var(--text-faint)", marginTop: -6, marginBottom: 14 }}>
-          Clique no nome de um operador para ver o perfil completo.
-        </p>
-        <table className="data-table">
-          <thead><tr><th>Operador</th><th>Registros</th><th>Tempo médio</th><th>Tempo total</th></tr></thead>
-          <tbody>
-            {metrics.opStats.map((o) => {
-              const op = operators.find((x) => x.name === o.name);
-              return (
-                <tr key={o.name}>
-                  <td
-                    className={op ? "clickable-name" : ""}
-                    onClick={op ? () => setViewOperator(op) : undefined}
-                    title={op ? `Ver perfil de ${o.name}` : ""}
-                  >
-                    {o.name}
-                  </td>
-                  <td>{o.registros}</td>
-                  <td>{fmtDuration(o.media)}</td>
-                  <td>{fmtDuration(o.total)}</td>
-                </tr>
-              );
-            })}
-            {metrics.opStats.length === 0 && <tr><td colSpan={4} style={{ color: "var(--text-muted)" }}>Nenhum registro no período.</td></tr>}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="card" style={{ marginBottom: 20 }}>
-        <div className="page-header-row" style={{ marginBottom: 16 }}>
-          <div className="card-title" style={{ marginBottom: 0, display: "flex", alignItems: "center", gap: 8 }}>
-            <IconAlertTriangle size={16} /> Erros de separação no período
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button className="btn-small" onClick={exportErrorsCSV}>
-              <IconDownload size={14} /> CSV
-            </button>
-            <button className="btn-small btn-excel" onClick={exportErrorsXLSX}>
-              <IconDownload size={14} /> Excel
-            </button>
-            <button className="btn-danger-outline" onClick={() => setConfirmingResetErrors((v) => !v)}>
-              <IconTrash size={14} /> Zerar erros
-            </button>
-          </div>
-        </div>
-
-        {confirmingResetErrors && (
-          <div className="confirm-box" style={{ marginBottom: 16 }}>
-            <strong style={{ color: "var(--danger)", fontSize: 14 }}>Isso apaga todo o histórico de erros de separação, permanentemente.</strong>
-            <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
-              <input
-                className="field"
-                style={{ flex: 1 }}
-                placeholder="Digite ZERAR"
-                value={resetErrorsPhrase}
-                onChange={(e) => setResetErrorsPhrase(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && confirmResetErrors()}
-              />
-              <button className="btn-danger-outline" onClick={confirmResetErrors} disabled={resetErrorsPhrase.trim().toUpperCase() !== "ZERAR" || resettingErrors}>
-                {resettingErrors ? "Apagando..." : "Confirmar"}
+          <div className="card">
+            <div className="page-header-row" style={{ marginBottom: 16 }}>
+              <div className="card-title" style={{ marginBottom: 0 }}>Pedidos com falta ({shortageEntries.length})</div>
+              <button className="btn-danger-outline" onClick={() => setConfirmingResetShortages((v) => !v)}>
+                <IconTrash size={14} /> Zerar faltas
               </button>
-              <button className="btn-small" onClick={() => { setConfirmingResetErrors(false); setResetErrorsPhrase(""); }}>Cancelar</button>
             </div>
+
+            {confirmingResetShortages && (
+              <div className="confirm-box" style={{ marginBottom: 16 }}>
+                <strong style={{ color: "var(--danger)", fontSize: 14 }}>Isso apaga todas as faltas registradas, permanentemente.</strong>
+                <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
+                  <input
+                    className="field"
+                    style={{ flex: 1 }}
+                    placeholder="Digite ZERAR"
+                    value={resetShortagesPhrase}
+                    onChange={(e) => setResetShortagesPhrase(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && confirmResetShortages()}
+                  />
+                  <button className="btn-danger-outline" onClick={confirmResetShortages} disabled={resetShortagesPhrase.trim().toUpperCase() !== "ZERAR" || resettingShortages}>
+                    {resettingShortages ? "Apagando..." : "Confirmar"}
+                  </button>
+                  <button className="btn-small" onClick={() => { setConfirmingResetShortages(false); setResetShortagesPhrase(""); }}>Cancelar</button>
+                </div>
+              </div>
+            )}
+
+            {shortageEntries.length > 0 ? (
+              <div style={{ overflowX: "auto" }}>
+                <table className="data-table">
+                  <thead>
+                    <tr><th>Data</th><th>Operador</th><th>Atividade</th><th>Pedido</th><th>Cliente</th><th>Encaixe</th><th>Faltas</th></tr>
+                  </thead>
+                  <tbody>
+                    {shortageEntries.slice(0, 150).map((e) => {
+                      const list = shortagesByEntry[e.id] || [];
+                      const op = operators.find((x) => x.code === e.operator_code);
+                      return (
+                        <tr key={e.id}>
+                          <td>{fmtDate(e.start_time)}</td>
+                          <td
+                            className={op ? "clickable-name" : ""}
+                            onClick={op ? () => setViewOperator(op) : undefined}
+                            style={{ fontFamily: "var(--font-display)" }}
+                          >
+                            {e.operator_name}
+                          </td>
+                          <td>{e.activity}</td>
+                          <td>{e.order_number || "—"}</td>
+                          <td style={{ color: "var(--text-muted)" }}>{e.customer_name || "—"}</td>
+                          <td>
+                            {e.is_encaixe ? (
+                              <span style={{ background: "var(--accent-2-soft)", color: "var(--accent-2)", padding: "3px 8px", borderRadius: 5, fontSize: 10.5, fontWeight: 700 }}>ENC.</span>
+                            ) : "—"}
+                          </td>
+                          <td style={{ color: "var(--danger)" }}>
+                            {list.map((s) => `${s.product_code} (${s.quantity})`).join(", ")}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p style={{ fontSize: 12.5, color: "var(--text-faint)" }}>Nenhum pedido com falta no período filtrado.</p>
+            )}
           </div>
-        )}
-
-        {errorRanking.length > 0 && (
-          <div style={{ marginBottom: 20 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 12 }}>
-              Operadores que mais erraram
-            </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {errorRanking.map((r, i) => {
-                const pct = (r.count / maxErrorCount) * 100;
-                const op = operators.find((x) => x.code === r.code);
-                return (
-                  <div key={r.code} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <div
-                      style={{
-                        width: 28, height: 28, borderRadius: "50%",
-                        background: i === 0 ? "#ef4444" : i === 1 ? "#f97316" : i === 2 ? "#f59e0b" : "var(--surface-raised)",
-                        color: i < 3 ? "#fff" : "var(--text-muted)",
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        fontWeight: 700, fontSize: 12, flexShrink: 0,
-                      }}
-                    >
-                      {i + 1}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 }}>
-                        <span
-                          className={op ? "clickable-name" : ""}
-                          onClick={op ? () => setViewOperator(op) : undefined}
-                          style={{ fontWeight: 600 }}
-                        >
-                          {r.name} <span style={{ color: "var(--text-faint)", fontWeight: 400 }}>#{r.code}</span>
-                        </span>
-                        <span style={{ color: "var(--danger)", fontWeight: 700, fontFamily: "var(--font-mono)" }}>{r.count}</span>
-                      </div>
-                      <div style={{ height: 6, background: "var(--surface-sunken)", borderRadius: 3, overflow: "hidden" }}>
-                        <div style={{ height: "100%", width: `${pct}%`, background: "var(--danger)", borderRadius: 3, transition: "width 0.3s ease" }} />
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {errorsByType.length > 0 && (
-          <>
-            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>
-              Erros por tipo
-            </div>
-            <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={errorsByType}>
-                <CartesianGrid stroke="var(--border)" vertical={false} />
-                <XAxis dataKey="name" tick={{ fill: "var(--text-muted)", fontSize: 10.5 }} />
-                <YAxis tick={{ fill: "var(--text-muted)", fontSize: 11 }} allowDecimals={false} />
-                <Tooltip contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", fontSize: 12, borderRadius: 10 }} labelStyle={{ color: "var(--text)" }} />
-                <Bar dataKey="total" fill="var(--danger)" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </>
-        )}
-
-        {dateFilteredErrors.length > 0 ? (
-          <div style={{ overflowX: "auto", marginTop: 20 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 10 }}>Detalhes</div>
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Data</th><th>Pedido/Transf.</th><th>Tipo de Erro</th>
-                  <th>Quem errou</th><th>Quem apontou</th><th>Observação</th><th>Estação</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dateFilteredErrors.slice(0, 100).map((e) => {
-                  const opErr = operators.find((x) => x.code === e.error_operator_code);
-                  const opApo = operators.find((x) => x.code === e.operator_code);
-                  return (
-                    <tr key={e.id}>
-                      <td>{fmtDate(e.created_at)} {fmtClock(e.created_at).slice(0, 5)}</td>
-                      <td>
-                        {e.order_number ? (
-                          <>
-                            <span style={{ color: "var(--text-faint)", fontSize: 10.5 }}>
-                              {e.order_type === "pedido" ? "P" : e.order_type === "transferencia" ? "T" : ""}
-                            </span>{" "}
-                            <span style={{ fontFamily: "var(--font-mono)" }}>{e.order_number}</span>
-                          </>
-                        ) : "—"}
-                      </td>
-                      <td>{e.error_type}</td>
-                      <td style={{ color: "var(--danger)", fontWeight: 600 }}>
-                        <span
-                          className={opErr ? "clickable-name" : ""}
-                          onClick={opErr ? () => setViewOperator(opErr) : undefined}
-                          style={{ color: "var(--danger)" }}
-                        >
-                          {e.error_operator_name || "—"}
-                        </span>
-                        {e.error_operator_code && <span style={{ color: "var(--text-faint)", fontWeight: 400 }}> #{e.error_operator_code}</span>}
-                      </td>
-                      <td style={{ color: "var(--text-muted)" }}>
-                        <span
-                          className={opApo ? "clickable-name" : ""}
-                          onClick={opApo ? () => setViewOperator(opApo) : undefined}
-                          style={{ color: "var(--text-muted)" }}
-                        >
-                          {e.operator_name}
-                        </span>
-                      </td>
-                      <td style={{ color: "var(--text-muted)" }}>{e.note || "—"}</td>
-                      <td style={{ color: "var(--text-muted)" }}>{e.station || "—"}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <p style={{ fontSize: 12.5, color: "var(--text-faint)" }}>Nenhum erro registrado no período filtrado.</p>
-        )}
-      </div>
-
-      <div className="card" style={{ marginBottom: 20 }}>
-        <div className="page-header-row" style={{ marginBottom: 16 }}>
-          <div className="card-title" style={{ marginBottom: 0, display: "flex", alignItems: "center", gap: 8 }}>
-            <IconPackage size={16} /> Produtos que mais faltam
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button className="btn-small" onClick={exportShortagesCSV}>
-              <IconDownload size={14} /> CSV
-            </button>
-            <button className="btn-small btn-excel" onClick={exportShortagesXLSX}>
-              <IconDownload size={14} /> Excel
-            </button>
-          </div>
-        </div>
-
-        {topShortageProducts.length > 0 ? (
-          <>
-            <ResponsiveContainer width="100%" height={Math.max(200, topShortageProducts.length * 34)}>
-              <BarChart data={topShortageProducts} layout="vertical">
-                <CartesianGrid stroke="var(--border)" horizontal={false} />
-                <XAxis type="number" tick={{ fill: "var(--text-muted)", fontSize: 11 }} allowDecimals={false} />
-                <YAxis type="category" dataKey="code" tick={{ fill: "var(--text-muted)", fontSize: 11 }} width={100} />
-                <Tooltip contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", fontSize: 12, borderRadius: 10 }} labelStyle={{ color: "var(--text)" }} />
-                <Bar dataKey="totalQty" fill="var(--danger)" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-            <table className="data-table" style={{ marginTop: 16 }}>
-              <thead><tr><th>Código</th><th>Ocorrências</th><th>Quantidade total</th></tr></thead>
-              <tbody>
-                {topShortageProducts.map((p) => (
-                  <tr key={p.code}>
-                    <td style={{ fontFamily: "var(--font-mono)" }}>{p.code}</td>
-                    <td>{p.count}</td>
-                    <td style={{ color: "var(--danger)", fontWeight: 600 }}>{p.totalQty}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </>
-        ) : (
-          <p style={{ fontSize: 12.5, color: "var(--text-faint)" }}>Nenhuma falta registrada no período.</p>
-        )}
-      </div>
-
-      {shortagesByDay.length > 1 && (
-        <div className="card" style={{ marginBottom: 20 }}>
-          <div className="card-title">Faltas ao longo do tempo</div>
-          <ResponsiveContainer width="100%" height={240}>
-            <LineChart data={shortagesByDay}>
-              <CartesianGrid stroke="var(--border)" vertical={false} />
-              <XAxis dataKey="label" tick={{ fill: "var(--text-muted)", fontSize: 11 }} />
-              <YAxis tick={{ fill: "var(--text-muted)", fontSize: 11 }} allowDecimals={false} />
-              <Tooltip contentStyle={{ background: "var(--surface)", border: "1px solid var(--border)", fontSize: 12, borderRadius: 10 }} labelStyle={{ color: "var(--text)" }} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Line type="monotone" dataKey="totalFaltas" name="Faltas" stroke="#ef4444" strokeWidth={2} dot={{ r: 3 }} />
-              <Line type="monotone" dataKey="totalQty" name="Quantidade total" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
+        </>
       )}
 
-      {topShortageCustomers.length > 0 && (
-        <div className="card" style={{ marginBottom: 20 }}>
-          <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <IconBuilding size={16} /> Clientes mais afetados por falta
-          </div>
-          <table className="data-table">
-            <thead><tr><th>Cliente</th><th>Pedidos afetados</th><th>Faltas</th><th>Qtd. total</th></tr></thead>
-            <tbody>
-              {topShortageCustomers.map((c) => (
-                <tr key={c.name}>
-                  <td style={{ fontFamily: "var(--font-display)" }}>{c.name}</td>
-                  <td>{c.entriesCount}</td>
-                  <td>{c.totalFaltas}</td>
-                  <td style={{ color: "var(--danger)", fontWeight: 600 }}>{c.totalQty}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      <div className="card" style={{ marginBottom: 20 }}>
-        <div className="page-header-row" style={{ marginBottom: 16 }}>
-          <div className="card-title" style={{ marginBottom: 0 }}>Pedidos com falta ({shortageEntries.length})</div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button className="btn-small" onClick={exportShortagesCSV}>
-              <IconDownload size={14} /> CSV
-            </button>
-            <button className="btn-small btn-excel" onClick={exportShortagesXLSX}>
-              <IconDownload size={14} /> Excel
-            </button>
-            <button className="btn-danger-outline" onClick={() => setConfirmingResetShortages((v) => !v)}>
-              <IconTrash size={14} /> Zerar faltas
-            </button>
-          </div>
-        </div>
-
-        {confirmingResetShortages && (
-          <div className="confirm-box" style={{ marginBottom: 16 }}>
-            <strong style={{ color: "var(--danger)", fontSize: 14 }}>Isso apaga todas as faltas registradas, permanentemente.</strong>
-            <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "8px 0 14px 0" }}>
-              Os registros de atividades (histórico) <strong>não</strong> são apagados. Digite <strong>ZERAR</strong> abaixo para confirmar.
-            </p>
-            <div style={{ display: "flex", gap: 10 }}>
-              <input
-                className="field"
-                style={{ flex: 1 }}
-                placeholder="Digite ZERAR"
-                value={resetShortagesPhrase}
-                onChange={(e) => setResetShortagesPhrase(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && confirmResetShortages()}
-              />
-              <button className="btn-danger-outline" onClick={confirmResetShortages} disabled={resetShortagesPhrase.trim().toUpperCase() !== "ZERAR" || resettingShortages}>
-                {resettingShortages ? "Apagando..." : "Confirmar"}
+      {/* ================= ABA HISTÓRICO ================= */}
+      {activeTab === "historico" && (
+        <div className="card">
+          <div className="page-header-row" style={{ marginBottom: 16 }}>
+            <div className="card-title" style={{ marginBottom: 0 }}>Histórico detalhado</div>
+            {onOpenAdminMaster && (
+              <button className="btn-small" onClick={() => onOpenAdminMaster({ tab: "entries" })}>
+                <IconEdit3 size={14} /> Abrir na Central de controle
               </button>
-              <button className="btn-small" onClick={() => { setConfirmingResetShortages(false); setResetShortagesPhrase(""); }}>Cancelar</button>
-            </div>
+            )}
           </div>
-        )}
-
-        {shortageEntries.length > 0 ? (
           <div style={{ overflowX: "auto" }}>
             <table className="data-table">
               <thead>
-                <tr><th>Data</th><th>Operador</th><th>Atividade</th><th>Pedido</th><th>Cliente</th><th>Encaixe</th><th>Faltas</th></tr>
+                <tr>
+                  <th>Data</th><th>Operador</th><th>Atividade</th><th>Turno</th>
+                  <th>Estação</th><th>Início</th><th>Fim</th><th>Duração</th><th>Flags</th>
+                  <th style={{ width: 130 }}>Admin</th>
+                </tr>
               </thead>
               <tbody>
-                {shortageEntries.slice(0, 150).map((e) => {
-                  const list = shortagesByEntry[e.id] || [];
+                {filteredEntries.slice(0, 150).map((e) => {
+                  const isOutlier = metrics.outliers.some((o) => o.id === e.id);
+                  const faltas = shortagesByEntry[e.id] || [];
                   const op = operators.find((x) => x.code === e.operator_code);
                   return (
                     <tr key={e.id}>
@@ -1759,125 +1790,66 @@ export default function Panel({
                       >
                         {e.operator_name}
                       </td>
-                      <td>{e.activity}</td>
-                      <td>{e.order_number || "—"}</td>
-                      <td style={{ color: "var(--text-muted)" }}>{e.customer_name || "—"}</td>
                       <td>
-                        {e.is_encaixe ? (
-                          <span style={{ background: "var(--accent-2-soft)", color: "var(--accent-2)", padding: "3px 8px", borderRadius: 5, fontSize: 10.5, fontWeight: 700 }}>ENC.</span>
-                        ) : "—"}
+                        {e.activity}
+                        {(e.transfer_type || e.customer_name || e.order_number) && (
+                          <div style={{ fontSize: 10.5, color: "var(--text-faint)" }}>
+                            {e.transfer_type || e.customer_name}
+                            {e.order_number ? ` · #${e.order_number}` : ""}
+                            {e.transfer_number ? ` · #${e.transfer_number}` : ""}
+                            {e.transfer_urgent ? " · urgente" : ""}
+                          </div>
+                        )}
                       </td>
-                      <td style={{ color: "var(--danger)" }}>
-                        {list.map((s) => `${s.product_code} (${s.quantity})`).join(", ")}
+                      <td>{e.shift}</td>
+                      <td style={{ color: "var(--text-muted)" }}>{e.station || "—"}</td>
+                      <td>{fmtClock(e.start_time)}</td>
+                      <td>{fmtClock(e.end_time)}</td>
+                      <td>
+                        {fmtDuration(e.duration_seconds)}
+                        {isOutlier && <span className="outlier-tag">fora do padrão</span>}
+                        {e.manual_entry && <span className="outlier-tag" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>manual</span>}
+                        {e.note && <span title={e.note} style={{ marginLeft: 6, cursor: "help" }}>nota</span>}
+                      </td>
+                      <td>
+                        {e.is_encaixe && (
+                          <span style={{ background: "var(--accent-2-soft)", color: "var(--accent-2)", padding: "3px 8px", borderRadius: 5, fontSize: 10, fontWeight: 700, marginRight: 4 }}>
+                            ENCAIXE
+                          </span>
+                        )}
+                        {faltas.length > 0 && (
+                          <span title={faltas.map((f) => `${f.product_code} x${f.quantity}`).join(", ")} style={{ background: "var(--danger-soft)", color: "var(--danger)", padding: "3px 8px", borderRadius: 5, fontSize: 10, fontWeight: 700, cursor: "help" }}>
+                            {faltas.length} falta{faltas.length > 1 ? "s" : ""}
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ whiteSpace: "nowrap" }}>
+                        {onOpenAdminMaster && (
+                          <button className="btn-small" style={{ padding: "5px 9px", marginRight: 4 }} onClick={() => onOpenAdminMaster({ tab: "entries", id: e.id })} title="Editar">
+                            <IconEdit size={12} />
+                          </button>
+                        )}
+                        <button
+                          className="btn-small"
+                          style={{ padding: "5px 9px", color: "var(--danger)", borderColor: "var(--danger)" }}
+                          onClick={async () => {
+                            await quickDeleteEntry(e);
+                            onOpenAdminMaster?.({ tab: "entries", refresh: true });
+                          }}
+                          title="Excluir"
+                        >
+                          <IconTrash size={12} />
+                        </button>
                       </td>
                     </tr>
                   );
                 })}
+                {filteredEntries.length === 0 && <tr><td colSpan={10} style={{ color: "var(--text-muted)" }}>Nenhum registro encontrado.</td></tr>}
               </tbody>
             </table>
           </div>
-        ) : (
-          <p style={{ fontSize: 12.5, color: "var(--text-faint)" }}>Nenhum pedido com falta no período filtrado.</p>
-        )}
-      </div>
-
-      <div className="card">
-        <div className="page-header-row" style={{ marginBottom: 16 }}>
-          <div className="card-title" style={{ marginBottom: 0 }}>Histórico detalhado</div>
-          {onOpenAdminMaster && (
-            <button className="btn-small" onClick={() => onOpenAdminMaster({ tab: "entries" })}>
-              <IconEdit3 size={14} /> Abrir na Central de controle
-            </button>
-          )}
         </div>
-        <div style={{ overflowX: "auto" }}>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Data</th><th>Operador</th><th>Atividade</th><th>Turno</th>
-                <th>Estação</th><th>Início</th><th>Fim</th><th>Duração</th><th>Flags</th>
-                <th style={{ width: 130 }}>Admin</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredEntries.slice(0, 150).map((e) => {
-                const isOutlier = metrics.outliers.some((o) => o.id === e.id);
-                const faltas = shortagesByEntry[e.id] || [];
-                const op = operators.find((x) => x.code === e.operator_code);
-                return (
-                  <tr key={e.id}>
-                    <td>{fmtDate(e.start_time)}</td>
-                    <td
-                      className={op ? "clickable-name" : ""}
-                      onClick={op ? () => setViewOperator(op) : undefined}
-                      style={{ fontFamily: "var(--font-display)" }}
-                    >
-                      {e.operator_name}
-                    </td>
-                    <td>
-                      {e.activity}
-                      {(e.transfer_type || e.customer_name || e.order_number) && (
-                        <div style={{ fontSize: 10.5, color: "var(--text-faint)" }}>
-                          {e.transfer_type || e.customer_name}
-                          {e.order_number ? ` · #${e.order_number}` : ""}
-                          {e.transfer_number ? ` · #${e.transfer_number}` : ""}
-                          {e.transfer_urgent ? " · urgente" : ""}
-                        </div>
-                      )}
-                      {e.vehicle && (
-                        <div style={{ fontSize: 10.5, color: "var(--text-faint)" }}>
-                          {e.vehicle}{e.plate ? ` · ${e.plate}` : ""}
-                        </div>
-                      )}
-                    </td>
-                    <td>{e.shift}</td>
-                    <td style={{ color: "var(--text-muted)" }}>{e.station || "—"}</td>
-                    <td>{fmtClock(e.start_time)}</td>
-                    <td>{fmtClock(e.end_time)}</td>
-                    <td>
-                      {fmtDuration(e.duration_seconds)}
-                      {isOutlier && <span className="outlier-tag">fora do padrão</span>}
-                      {e.manual_entry && <span className="outlier-tag" style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>manual</span>}
-                      {e.note && <span title={e.note} style={{ marginLeft: 6, cursor: "help" }}>nota</span>}
-                    </td>
-                    <td>
-                      {e.is_encaixe && (
-                        <span style={{ background: "var(--accent-2-soft)", color: "var(--accent-2)", padding: "3px 8px", borderRadius: 5, fontSize: 10, fontWeight: 700, marginRight: 4 }}>
-                          ENCAIXE
-                        </span>
-                      )}
-                      {faltas.length > 0 && (
-                        <span title={faltas.map((f) => `${f.product_code} x${f.quantity}`).join(", ")} style={{ background: "var(--danger-soft)", color: "var(--danger)", padding: "3px 8px", borderRadius: 5, fontSize: 10, fontWeight: 700, cursor: "help" }}>
-                          {faltas.length} falta{faltas.length > 1 ? "s" : ""}
-                        </span>
-                      )}
-                    </td>
-                    <td style={{ whiteSpace: "nowrap" }}>
-                      {onOpenAdminMaster && (
-                        <button className="btn-small" style={{ padding: "5px 9px", marginRight: 4 }} onClick={() => onOpenAdminMaster({ tab: "entries", id: e.id })} title="Editar">
-                          <IconEdit size={12} />
-                        </button>
-                      )}
-                      <button
-                        className="btn-small"
-                        style={{ padding: "5px 9px", color: "var(--danger)", borderColor: "var(--danger)" }}
-                        onClick={async () => {
-                          await quickDeleteEntry(e);
-                          onOpenAdminMaster?.({ tab: "entries", refresh: true });
-                        }}
-                        title="Excluir"
-                      >
-                        <IconTrash size={12} />
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-              {filteredEntries.length === 0 && <tr><td colSpan={10} style={{ color: "var(--text-muted)" }}>Nenhum registro encontrado.</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      )}
     </div>
   );
 }

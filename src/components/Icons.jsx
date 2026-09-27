@@ -1,5 +1,6 @@
 // ============================================================
 // Aponta CD — Biblioteca de ícones SVG
+// Estilo Lucide: traço fino 1.5px, viewBox 24x24, currentColor
 // ============================================================
 
 const baseProps = (size, strokeWidth, className) => ({
@@ -15,8 +16,14 @@ const baseProps = (size, strokeWidth, className) => ({
   "aria-hidden": true,
 });
 
+/* ============ NAVEGAÇÃO ============ */
+
 export function IconActivity({ size = 20, strokeWidth = 1.5, className = "" }) {
-  return <svg {...baseProps(size, strokeWidth, className)}><path d="M22 12h-4l-3 9L9 3l-3 9H2" /></svg>;
+  return (
+    <svg {...baseProps(size, strokeWidth, className)}>
+      <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+    </svg>
+  );
 }
 
 export function IconAlertTriangle({ size = 20, strokeWidth = 1.5, className = "" }) {
@@ -116,6 +123,22 @@ export function IconSettings({ size = 20, strokeWidth = 1.5, className = "" }) {
   );
 }
 
+export function IconSliders({ size = 20, strokeWidth = 1.5, className = "" }) {
+  return (
+    <svg {...baseProps(size, strokeWidth, className)}>
+      <line x1="4" y1="21" x2="4" y2="14" />
+      <line x1="4" y1="10" x2="4" y2="3" />
+      <line x1="12" y1="21" x2="12" y2="12" />
+      <line x1="12" y1="8" x2="12" y2="3" />
+      <line x1="20" y1="21" x2="20" y2="16" />
+      <line x1="20" y1="12" x2="20" y2="3" />
+      <line x1="1" y1="14" x2="7" y2="14" />
+      <line x1="9" y1="8" x2="15" y2="8" />
+      <line x1="17" y1="16" x2="23" y2="16" />
+    </svg>
+  );
+}
+
 export function IconUsers({ size = 20, strokeWidth = 1.5, className = "" }) {
   return (
     <svg {...baseProps(size, strokeWidth, className)}>
@@ -176,6 +199,8 @@ export function IconClipboardCheck({ size = 20, strokeWidth = 1.5, className = "
   );
 }
 
+/* ============ AÇÕES ============ */
+
 export function IconEdit({ size = 20, strokeWidth = 1.5, className = "" }) {
   return (
     <svg {...baseProps(size, strokeWidth, className)}>
@@ -235,7 +260,11 @@ export function IconX({ size = 20, strokeWidth = 1.5, className = "" }) {
 }
 
 export function IconCheck({ size = 20, strokeWidth = 1.5, className = "" }) {
-  return <svg {...baseProps(size, strokeWidth, className)}><polyline points="20 6 9 17 4 12" /></svg>;
+  return (
+    <svg {...baseProps(size, strokeWidth, className)}>
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  );
 }
 
 export function IconRefresh({ size = 20, strokeWidth = 1.5, className = "" }) {
@@ -258,19 +287,35 @@ export function IconRotateCcw({ size = 20, strokeWidth = 1.5, className = "" }) 
 }
 
 export function IconFilter({ size = 20, strokeWidth = 1.5, className = "" }) {
-  return <svg {...baseProps(size, strokeWidth, className)}><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" /></svg>;
+  return (
+    <svg {...baseProps(size, strokeWidth, className)}>
+      <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+    </svg>
+  );
 }
 
 export function IconChevronDown({ size = 20, strokeWidth = 1.5, className = "" }) {
-  return <svg {...baseProps(size, strokeWidth, className)}><polyline points="6 9 12 15 18 9" /></svg>;
+  return (
+    <svg {...baseProps(size, strokeWidth, className)}>
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  );
 }
 
 export function IconChevronRight({ size = 20, strokeWidth = 1.5, className = "" }) {
-  return <svg {...baseProps(size, strokeWidth, className)}><polyline points="9 18 15 12 9 6" /></svg>;
+  return (
+    <svg {...baseProps(size, strokeWidth, className)}>
+      <polyline points="9 18 15 12 9 6" />
+    </svg>
+  );
 }
 
 export function IconChevronLeft({ size = 20, strokeWidth = 1.5, className = "" }) {
-  return <svg {...baseProps(size, strokeWidth, className)}><polyline points="15 18 9 12 15 6" /></svg>;
+  return (
+    <svg {...baseProps(size, strokeWidth, className)}>
+      <polyline points="15 18 9 12 15 6" />
+    </svg>
+  );
 }
 
 export function IconMoreVertical({ size = 20, strokeWidth = 1.5, className = "" }) {
@@ -282,6 +327,8 @@ export function IconMoreVertical({ size = 20, strokeWidth = 1.5, className = "" 
     </svg>
   );
 }
+
+/* ============ ESTADO ============ */
 
 export function IconInfo({ size = 20, strokeWidth = 1.5, className = "" }) {
   return (
@@ -303,6 +350,8 @@ export function IconXCircle({ size = 20, strokeWidth = 1.5, className = "" }) {
   );
 }
 
+/* ============ KIOSK ============ */
+
 export function IconPackage({ size = 20, strokeWidth = 1.5, className = "" }) {
   return (
     <svg {...baseProps(size, strokeWidth, className)}>
@@ -315,7 +364,11 @@ export function IconPackage({ size = 20, strokeWidth = 1.5, className = "" }) {
 }
 
 export function IconZap({ size = 20, strokeWidth = 1.5, className = "" }) {
-  return <svg {...baseProps(size, strokeWidth, className)}><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></svg>;
+  return (
+    <svg {...baseProps(size, strokeWidth, className)}>
+      <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+    </svg>
+  );
 }
 
 export function IconArrowLeftRight({ size = 20, strokeWidth = 1.5, className = "" }) {
@@ -378,6 +431,8 @@ export function IconDelete({ size = 20, strokeWidth = 1.5, className = "" }) {
   );
 }
 
+/* ============ SEGURANÇA ============ */
+
 export function IconLock({ size = 20, strokeWidth = 1.5, className = "" }) {
   return (
     <svg {...baseProps(size, strokeWidth, className)}>
@@ -388,7 +443,11 @@ export function IconLock({ size = 20, strokeWidth = 1.5, className = "" }) {
 }
 
 export function IconShield({ size = 20, strokeWidth = 1.5, className = "" }) {
-  return <svg {...baseProps(size, strokeWidth, className)}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>;
+  return (
+    <svg {...baseProps(size, strokeWidth, className)}>
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+    </svg>
+  );
 }
 
 export function IconKey({ size = 20, strokeWidth = 1.5, className = "" }) {
@@ -398,6 +457,8 @@ export function IconKey({ size = 20, strokeWidth = 1.5, className = "" }) {
     </svg>
   );
 }
+
+/* ============ TV / GAMIFICAÇÃO ============ */
 
 export function IconMedal({ size = 20, strokeWidth = 1.5, className = "" }) {
   return (
@@ -436,7 +497,11 @@ export function IconTarget({ size = 20, strokeWidth = 1.5, className = "" }) {
 }
 
 export function IconCrown({ size = 20, strokeWidth = 1.5, className = "" }) {
-  return <svg {...baseProps(size, strokeWidth, className)}><path d="M2 20h20M5 20V8l5 4 2-8 2 8 5-4v12" /></svg>;
+  return (
+    <svg {...baseProps(size, strokeWidth, className)}>
+      <path d="M2 20h20M5 20V8l5 4 2-8 2 8 5-4v12" />
+    </svg>
+  );
 }
 
 export function IconAward({ size = 20, strokeWidth = 1.5, className = "" }) {
@@ -447,6 +512,8 @@ export function IconAward({ size = 20, strokeWidth = 1.5, className = "" }) {
     </svg>
   );
 }
+
+/* ============ HEADER / MISC ============ */
 
 export function IconMapPin({ size = 20, strokeWidth = 1.5, className = "" }) {
   return (
@@ -467,7 +534,11 @@ export function IconSun({ size = 20, strokeWidth = 1.5, className = "" }) {
 }
 
 export function IconMoon({ size = 20, strokeWidth = 1.5, className = "" }) {
-  return <svg {...baseProps(size, strokeWidth, className)}><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg>;
+  return (
+    <svg {...baseProps(size, strokeWidth, className)}>
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+    </svg>
+  );
 }
 
 export function IconLogOut({ size = 20, strokeWidth = 1.5, className = "" }) {
@@ -498,7 +569,11 @@ export function IconFlag({ size = 20, strokeWidth = 1.5, className = "" }) {
 }
 
 export function IconDot({ size = 20, strokeWidth = 1.5, className = "" }) {
-  return <svg {...baseProps(size, strokeWidth, className)}><circle cx="12" cy="12" r="3" fill="currentColor" /></svg>;
+  return (
+    <svg {...baseProps(size, strokeWidth, className)}>
+      <circle cx="12" cy="12" r="3" fill="currentColor" />
+    </svg>
+  );
 }
 
 export function IconBuilding({ size = 20, strokeWidth = 1.5, className = "" }) {
@@ -570,6 +645,8 @@ export function IconMinimize({ size = 20, strokeWidth = 1.5, className = "" }) {
   );
 }
 
+/* ============ MAPA / GRID ============ */
+
 export function IconGrid({ size = 20, strokeWidth = 1.5, className = "" }) {
   return (
     <svg {...baseProps(size, strokeWidth, className)}>
@@ -601,21 +678,7 @@ export function IconLayers({ size = 20, strokeWidth = 1.5, className = "" }) {
   );
 }
 
-export function IconSliders({ size = 20, strokeWidth = 1.5, className = "" }) {
-  return (
-    <svg {...baseProps(size, strokeWidth, className)}>
-      <line x1="4" y1="21" x2="4" y2="14" />
-      <line x1="4" y1="10" x2="4" y2="3" />
-      <line x1="12" y1="21" x2="12" y2="12" />
-      <line x1="12" y1="8" x2="12" y2="3" />
-      <line x1="20" y1="21" x2="20" y2="16" />
-      <line x1="20" y1="12" x2="20" y2="3" />
-      <line x1="1" y1="14" x2="7" y2="14" />
-      <line x1="9" y1="8" x2="15" y2="8" />
-      <line x1="17" y1="16" x2="23" y2="16" />
-    </svg>
-  );
-}
+/* ============ FASE 1 — PAUSA ============ */
 
 export function IconPause({ size = 20, strokeWidth = 1.5, className = "" }) {
   return (
@@ -627,8 +690,24 @@ export function IconPause({ size = 20, strokeWidth = 1.5, className = "" }) {
 }
 
 export function IconPlay({ size = 20, strokeWidth = 1.5, className = "" }) {
-  return <svg {...baseProps(size, strokeWidth, className)}><polygon points="5 3 19 12 5 21 5 3" /></svg>;
+  return (
+    <svg {...baseProps(size, strokeWidth, className)}>
+      <polygon points="5 3 19 12 5 21 5 3" />
+    </svg>
+  );
 }
+
+/* ============ FASE 2 — ALERTAS ============ */
+
+export function IconMessageCircle({ size = 20, strokeWidth = 1.5, className = "" }) {
+  return (
+    <svg {...baseProps(size, strokeWidth, className)}>
+      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+    </svg>
+  );
+}
+
+/* ============ FASE 3 — HISTÓRICO ============ */
 
 export function IconHistory({ size = 20, strokeWidth = 1.5, className = "" }) {
   return (
@@ -636,13 +715,6 @@ export function IconHistory({ size = 20, strokeWidth = 1.5, className = "" }) {
       <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
       <polyline points="3 3 3 8 8 8" />
       <polyline points="12 7 12 12 16 14" />
-    </svg>
-  );
-}
-export function IconMessageCircle({ size = 20, strokeWidth = 1.5, className = "" }) {
-  return (
-    <svg {...baseProps(size, strokeWidth, className)}>
-      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
     </svg>
   );
 }

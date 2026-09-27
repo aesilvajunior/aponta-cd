@@ -13,7 +13,11 @@ const EVENT_LABELS = {
   sound_late_activity: "Atividade demorada",
   sound_new_conference: "Novo item na mesa",
   sound_shortage: "Falta registrada",
-  sound_goal: "Meta atingida",
+  sound_goal: "Meta da equipe",
+  sound_activity_start: "Atividade iniciada",
+  sound_activity_finish: "Atividade finalizada",
+  sound_error_registered: "Erro registrado",
+  sound_goal_hit: "Meta individual batida",
 };
 
 export default function SoundSettings() {
@@ -48,12 +52,11 @@ export default function SoundSettings() {
   async function save() {
     setSaving(true);
     setError("");
-    const { error: err } = await updateSoundPrefs({
-      sound_late_activity: prefs.sound_late_activity,
-      sound_new_conference: prefs.sound_new_conference,
-      sound_shortage: prefs.sound_shortage,
-      sound_goal: prefs.sound_goal,
+    const patch = {};
+    Object.keys(EVENT_LABELS).forEach((k) => {
+      patch[k] = prefs[k];
     });
+    const { error: err } = await updateSoundPrefs(patch);
     setSaving(false);
     if (err) return setError(err.message);
     setSaved(true);
@@ -64,10 +67,10 @@ export default function SoundSettings() {
     <div>
       <h1 className="page-title">Sons do sistema</h1>
       <p className="page-sub">
-        Cada tipo de evento pode ter um som diferente. Clique no som para ouvir uma prévia.
+        Cada tipo de evento pode ter um som diferente. Clicar em uma opção toca uma prévia.
       </p>
 
-      <div className="card" style={{ maxWidth: 720 }}>
+      <div className="card" style={{ maxWidth: 860 }}>
         {loading ? (
           <div className="schedule-empty">Carregando...</div>
         ) : (
