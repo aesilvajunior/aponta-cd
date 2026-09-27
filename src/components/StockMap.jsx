@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchMapAreas,
+  addMapArea,
   updateMapArea,
   deleteMapArea,
   fetchMapItems,
@@ -25,11 +26,10 @@ import {
   screenToWorld,
   hitTest,
   getTransform,
-  getVisibleBounds,
+  clampZoom,
   createTouchState,
   distanceBetween,
   angleBetween,
-  clampZoom,
   PAN_THRESHOLD_PX,
 } from "../lib/stockMapEngine";
 import { supabase } from "../supabaseClient";
@@ -38,7 +38,6 @@ import StockMapItemPicker from "./StockMapItemPicker";
 import {
   IconMapPin,
   IconSearch,
-  IconPackage,
   IconEdit,
   IconTrash,
   IconX,
@@ -46,17 +45,16 @@ import {
   IconGrid,
   IconList,
   IconRefresh,
+  IconCheck,
+  IconAlertTriangle,
 } from "./Icons";
 
-// ============================================================
-// Cor por ocupação (0-1)
-// ============================================================
 function occupancyColor(ratio) {
-  if (ratio < 0.01) return "#94a3b8";         // vazio
-  if (ratio < 0.4) return "#4a7ba7";          // baixa
-  if (ratio < 0.7) return "#f59e0b";          // média
-  if (ratio < 0.9) return "#ef4444";          // alta
-  return "#7f1d1d";                           // cheio
+  if (ratio < 0.01) return "#94a3b8";
+  if (ratio < 0.4) return "#4a7ba7";
+  if (ratio < 0.7) return "#f59e0b";
+  if (ratio < 0.9) return "#ef4444";
+  return "#7f1d1d";
 }
 
 export default function StockMap({ isAdmin }) {
@@ -64,6 +62,7 @@ export default function StockMap({ isAdmin }) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   const [view, setView] = useState(createInitialView());
   const [selectedArea, setSelectedArea] = useState(null);
@@ -85,6 +84,19 @@ export default function StockMap({ isAdmin }) {
     occupancy: true,
   });
 
+  // Área sendo editada (drag ou resize)
+  const [dragState, setDragState] = useState(null);
+  // { areaId, mode: "move" | "resize", startX, startY, startW, startH, startMouseX, startMouseY }
+
+  // Modal criar nova área
+  const [newAreaModal, setNewAreaModal] = useState(false);
+  const [newAreaForm, setNewAreaForm] = useState({
+    code: "", label: "", areaType: "prateleira",
+    x: 40, y: 40, width: 10, height: 15,
+    hasSides: false,
+  });
+  const [areaBusy, setAreaBusy] = useState(false);
+
   const containerRef = useRef(null);
   const wrapperRef = useRef(null);
   const viewRef = useRef(view);
@@ -94,10 +106,7 @@ export default function StockMap({ isAdmin }) {
   const panStartRef = useRef({ x: 0, y: 0 });
   const panMovedRef = useRef(false);
   const touchStateRef = useRef(createTouchState());
-  const lastTapRef = useRef(0);
-  const animFrameRef = useRef(null);
 
-  // -------- Load --------
   async function loadAll() {
     setLoading(true);
     const [{ data: a, error: e1 }, { data: i, error: e2 }] = await Promise.all([
@@ -125,25 +134,23 @@ export default function StockMap({ isAdmin }) {
     return () => supabase.removeChannel(ch);
   }, []);
 
-  // -------- Fullscreen --------
   useEffect(() => {
-    function onChange() {
-      setIsFullscreen(!!document.fullscreenElement);
-    }
+    function onChange() { setIsFullscreen(!!document.fullscreenElement); }
     document.addEventListener("fullscreenchange", onChange);
     return () => document.removeEventListener("fullscreenchange", onChange);
   }, []);
 
   function toggleFullscreen() {
     if (!wrapperRef.current) return;
-    if (document.fullscreenElement) {
-      document.exitFullscreen?.();
-    } else {
-      wrapperRef.current.requestFullscreen?.();
-    }
+    if (document.fullscreenElement) document.exitFullscreen?.();
+    else wrapperRef.current.requestFullscreen?.();
   }
 
-  // -------- Itens agrupados --------
+  function flashSuccess(msg) {
+    setSuccess(msg);
+    setTimeout(() => setSuccess(""), 2500);
+  }
+
   const itemsByArea = useMemo(() => {
     const map = {};
     items.forEach((it) => {
@@ -153,7 +160,6 @@ export default function StockMap({ isAdmin }) {
     return map;
   }, [items]);
 
-  // Máximo de SKUs por área (pra calcular % de ocupação)
   const maxSkus = useMemo(() => {
     let max = 1;
     Object.values(itemsByArea).forEach((list) => {
@@ -162,7 +168,6 @@ export default function StockMap({ isAdmin }) {
     return max;
   }, [itemsByArea]);
 
-  // Áreas com filtro + ocupação
   const decoratedAreas = useMemo(() => {
     const q = search.trim().toLowerCase();
     return areas
@@ -185,18 +190,44 @@ export default function StockMap({ isAdmin }) {
       });
   }, [areas, itemsByArea, items, search, filterType, maxSkus]);
 
-  // -------- Hover: hit test --------
+  // -------- Hit test --------
+  function getWorldPoint(clientX, clientY) {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return null;
+    const sx = (clientX - rect.left) / rect.width;
+    const sy = (clientY - rect.top) / rect.height;
+    return screenToWorld(viewRef.current, sx, sy);
+  }
+
   function handleMouseMove(e) {
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const sx = (e.clientX - rect.left) / rect.width;
-    const sy = (e.clientY - rect.top) / rect.height;
-
     setMousePos({ x: e.clientX, y: e.clientY, show: true });
+
+    // Drag de área em modo edição
+    if (dragState) {
+      const dxPct = ((e.clientX - dragState.startMouseX) / rect.width) / view.zoom;
+      const dyPct = ((e.clientY - dragState.startMouseY) / rect.height) / view.zoom;
+
+      const updated = {
+        x: dragState.mode === "move" ? dragState.startX + dxPct : dragState.startX,
+        y: dragState.mode === "move" ? dragState.startY + dyPct : dragState.startY,
+        width: dragState.mode === "resize" ? Math.max(2, dragState.startW + dxPct) : dragState.startW,
+        height: dragState.mode === "resize" ? Math.max(2, dragState.startH + dyPct) : dragState.startH,
+      };
+
+      // Atualiza visualmente (local)
+      setAreas((prev) =>
+        prev.map((a) =>
+          a.id === dragState.areaId ? { ...a, ...updated } : a
+        )
+      );
+      return;
+    }
 
     if (isPanningRef.current) return;
 
-    const world = screenToWorld(view, sx, sy);
+    const world = getWorldPoint(e.clientX, e.clientY);
     const hit = hitTest(decoratedAreas.filter((a) => a.matches), world);
     setHoveredArea(hit || null);
   }
@@ -206,27 +237,51 @@ export default function StockMap({ isAdmin }) {
     setMousePos((p) => ({ ...p, show: false }));
   }
 
-  // -------- Click e pan --------
   function handleMouseDown(e) {
     if (e.button !== 0) return;
+    // Em modo edição não permite pan ao clicar em handle
+    if (dragState) return;
     isPanningRef.current = true;
     panMovedRef.current = false;
     panStartRef.current = { x: e.clientX, y: e.clientY, view: { ...viewRef.current } };
-    e.preventDefault();
   }
 
-  function handleMouseUp(e) {
+  async function handleMouseUp(e) {
+    // Se estava arrastando área em edição → salva
+    if (dragState) {
+      const area = areas.find((a) => a.id === dragState.areaId);
+      if (area) {
+        await updateMapArea(area.id, {
+          x: area.x,
+          y: area.y,
+          width: area.width,
+          height: area.height,
+        });
+        flashSuccess("Área atualizada");
+      }
+      setDragState(null);
+      return;
+    }
+
     if (!isPanningRef.current) return;
     isPanningRef.current = false;
 
     if (panMovedRef.current) return;
 
-    // Foi clique simples → seleciona
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const sx = (e.clientX - rect.left) / rect.width;
-    const sy = (e.clientY - rect.top) / rect.height;
-    const world = screenToWorld(viewRef.current, sx, sy);
+    const world = getWorldPoint(e.clientX, e.clientY);
+    if (!world) return;
+
+    if (editMode) {
+      const hit = hitTest(decoratedAreas.filter((a) => a.matches), world);
+      if (hit) {
+        setSelectedArea(hit);
+        setPanelView("lista");
+      } else {
+        setSelectedArea(null);
+      }
+      return;
+    }
+
     const hit = hitTest(decoratedAreas.filter((a) => a.matches), world);
     if (hit) {
       setSelectedArea(hit);
@@ -236,8 +291,13 @@ export default function StockMap({ isAdmin }) {
     }
   }
 
+  // Window listeners para drag
   useEffect(() => {
     function onMouseMove(e) {
+      if (dragState) {
+        handleMouseMove(e);
+        return;
+      }
       if (!isPanningRef.current) return;
       const rect = containerRef.current?.getBoundingClientRect();
       if (!rect) return;
@@ -258,7 +318,7 @@ export default function StockMap({ isAdmin }) {
     }
 
     function onMouseUp(e) {
-      if (isPanningRef.current) handleMouseUp(e);
+      handleMouseUp(e);
     }
 
     window.addEventListener("mousemove", onMouseMove);
@@ -268,9 +328,8 @@ export default function StockMap({ isAdmin }) {
       window.removeEventListener("mouseup", onMouseUp);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [decoratedAreas]);
+  }, [decoratedAreas, dragState]);
 
-  // -------- Wheel: zoom + shift=rotate --------
   function handleWheel(e) {
     e.preventDefault();
     const rect = containerRef.current?.getBoundingClientRect();
@@ -288,11 +347,17 @@ export default function StockMap({ isAdmin }) {
     setView((v) => zoomAt(v, delta, sx, sy));
   }
 
-  // -------- Touch (pan, pinça, giro) --------
+  function handleDoubleClick(e) {
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const sx = (e.clientX - rect.left) / rect.width;
+    const sy = (e.clientY - rect.top) / rect.height;
+    setView((v) => zoomAt(v, 0.5, sx, sy));
+  }
+
   function handleTouchStart(e) {
     const touches = Array.from(e.touches);
     touchStateRef.current.touches = touches;
-
     if (touches.length === 2) {
       touchStateRef.current.active = true;
       touchStateRef.current.initialDistance = distanceBetween(touches[0], touches[1]);
@@ -308,13 +373,10 @@ export default function StockMap({ isAdmin }) {
       e.preventDefault();
       const dist = distanceBetween(touches[0], touches[1]);
       const angle = angleBetween(touches[0], touches[1]);
-
       const scaleFactor = dist / touchStateRef.current.initialDistance;
       const newZoom = clampZoom(touchStateRef.current.initialZoom * scaleFactor);
-
       const angleDelta = angle - touchStateRef.current.initialAngle;
       const newRotation = touchStateRef.current.initialRotation + angleDelta;
-
       setView((v) => ({
         ...v,
         zoom: newZoom,
@@ -328,20 +390,7 @@ export default function StockMap({ isAdmin }) {
     touchStateRef.current.touches = [];
   }
 
-  // -------- Double click: zoom --------
-  function handleDoubleClick(e) {
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const sx = (e.clientX - rect.left) / rect.width;
-    const sy = (e.clientY - rect.top) / rect.height;
-    setView((v) => zoomAt(v, 0.5, sx, sy));
-
-    const world = screenToWorld(viewRef.current, sx, sy);
-    const hit = hitTest(decoratedAreas.filter((a) => a.matches), world);
-    if (hit) setSelectedArea(hit);
-  }
-
-  // -------- Keyboard --------
+  // Keyboard
   useEffect(() => {
     function onKeyDown(e) {
       const tag = (e.target && e.target.tagName) || "";
@@ -363,9 +412,6 @@ export default function StockMap({ isAdmin }) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  // -------- Escala (metros) --------
-  // Largura do galpão real: 12.85 m (1285 cm)
-  // Largura visível no container: (1 / zoom) * 100% → em metros
   const scaleLabel = useMemo(() => {
     const visibleWidthM = 12.85 / view.zoom;
     const visibleHeightM = visibleWidthM * 0.75;
@@ -373,6 +419,7 @@ export default function StockMap({ isAdmin }) {
   }, [view.zoom]);
 
   // -------- Ações --------
+
   async function handleDeleteArea(a) {
     if (!window.confirm(`Remover a área "${a.label}"?`)) return;
     await deleteMapArea(a.id);
@@ -386,21 +433,65 @@ export default function StockMap({ isAdmin }) {
     await loadAll();
   }
 
+  // Iniciar arrastar área
+  function startDragArea(e, a, mode) {
+    e.stopPropagation();
+    e.preventDefault();
+    const rect = containerRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setDragState({
+      areaId: a.id,
+      mode,
+      startX: a.x,
+      startY: a.y,
+      startW: a.width,
+      startH: a.height,
+      startMouseX: e.clientX,
+      startMouseY: e.clientY,
+    });
+  }
+
+  // Salvar nova área
+  async function handleCreateArea() {
+    const code = newAreaForm.code.trim().toUpperCase();
+    const label = newAreaForm.label.trim();
+    if (!code) return setError("Digite o código da área.");
+    if (!label) return setError("Digite o rótulo.");
+
+    setAreaBusy(true);
+    const { error: err } = await addMapArea({
+      code,
+      label,
+      areaType: newAreaForm.areaType,
+      floor: "terreo",
+      hasSides: newAreaForm.hasSides,
+      x: Number(newAreaForm.x),
+      y: Number(newAreaForm.y),
+      width: Number(newAreaForm.width),
+      height: Number(newAreaForm.height),
+      color: colorForType(newAreaForm.areaType),
+    });
+    setAreaBusy(false);
+    if (err) return setError(err.message);
+    setNewAreaModal(false);
+    setNewAreaForm({ code: "", label: "", areaType: "prateleira", x: 40, y: 40, width: 10, height: 15, hasSides: false });
+    await loadAll();
+    flashSuccess("Área criada");
+  }
+
   const selectedAreaItems = selectedArea ? (itemsByArea[selectedArea.id] || []) : [];
   const bySide = selectedArea?.has_sides ? groupItemsBySide(selectedAreaItems) : null;
   const byCategory = selectedArea ? groupItemsByCategory(selectedAreaItems) : [];
 
-  // -------- Render --------
   const transform = getTransform(view);
 
   return (
     <div>
-      {/* Header da página (fora do mapa) */}
       <div className="page-header-row" style={{ marginBottom: 16 }}>
         <div>
           <h1 className="page-title">Mapa do estoque</h1>
           <p className="page-sub" style={{ marginBottom: 0 }}>
-            Arraste pra mover · Scroll pra zoom · Shift+scroll pra girar · Duplo-clique pra ampliar
+            Arraste · Scroll pra zoom · Shift+scroll pra girar · Duplo-clique pra ampliar
           </p>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -411,8 +502,14 @@ export default function StockMap({ isAdmin }) {
             <button
               className={`btn-small ${editMode ? "btn-excel" : ""}`}
               onClick={() => setEditMode((v) => !v)}
+              style={editMode ? { background: "var(--ok)", color: "#fff", borderColor: "var(--ok)" } : undefined}
             >
               <IconEdit size={14} /> {editMode ? "Sair do modo edição" : "Modo edição"}
+            </button>
+          )}
+          {isAdmin && editMode && (
+            <button className="btn-small btn-excel" onClick={() => setNewAreaModal(true)}>
+              <IconPlus size={14} /> Nova área
             </button>
           )}
         </div>
@@ -425,7 +522,21 @@ export default function StockMap({ isAdmin }) {
         </div>
       )}
 
-      {/* Filtros */}
+      {success && (
+        <div className="alert-card" style={{ marginBottom: 16, background: "var(--ok-soft)", borderColor: "var(--ok)", color: "var(--ok)", display: "flex", alignItems: "center", gap: 8 }}>
+          <IconCheck size={16} /> {success}
+        </div>
+      )}
+
+      {editMode && (
+        <div className="alert-card alert-warning" style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+          <IconAlertTriangle size={16} />
+          <div style={{ flex: 1 }}>
+            <strong>Modo edição ativo.</strong> Arraste as áreas pra mover · Arraste o canto inferior direito pra redimensionar · Clique em qualquer área pra editar pelo painel lateral.
+          </div>
+        </div>
+      )}
+
       <div className="card" style={{ marginBottom: 16 }}>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
           <div style={{ position: "relative", flex: 1, minWidth: 200 }}>
@@ -447,9 +558,7 @@ export default function StockMap({ isAdmin }) {
         </div>
       </div>
 
-      {/* Grid: mapa + painel */}
       <div style={{ display: "grid", gridTemplateColumns: selectedArea ? "1fr 420px" : "1fr", gap: 16 }}>
-        {/* Wrapper do mapa (com controles) */}
         <div
           ref={wrapperRef}
           className={`map-wrapper ${isFullscreen ? "map-wrapper-fullscreen" : ""}`}
@@ -462,7 +571,6 @@ export default function StockMap({ isAdmin }) {
             boxShadow: isFullscreen ? "none" : "var(--shadow-lg)",
           }}
         >
-          {/* Container interno com padding-bottom (aspecto 4:3) */}
           <div
             ref={containerRef}
             className="map-container"
@@ -471,7 +579,7 @@ export default function StockMap({ isAdmin }) {
               width: "100%",
               paddingBottom: isFullscreen ? "100vh" : "75%",
               background: "radial-gradient(ellipse at center, #111823 0%, #0a0e14 100%)",
-              cursor: isPanningRef.current ? "grabbing" : "grab",
+              cursor: dragState ? "grabbing" : isPanningRef.current ? "grabbing" : "grab",
               userSelect: "none",
               touchAction: "none",
             }}
@@ -484,7 +592,6 @@ export default function StockMap({ isAdmin }) {
             onTouchMove={handleTouchMove}
             onTouchEnd={handleTouchEnd}
           >
-            {/* Grid de fundo */}
             {layers.grid && (
               <div
                 style={{
@@ -503,133 +610,154 @@ export default function StockMap({ isAdmin }) {
               />
             )}
 
-            {/* Vinheta nas bordas */}
-            <div
-              style={{
-                position: "absolute",
-                inset: 0,
-                background: "radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.5) 100%)",
-                pointerEvents: "none",
-                zIndex: 2,
-              }}
-            />
+            <div style={{ position: "absolute", inset: 0, background: "radial-gradient(ellipse at center, transparent 40%, rgba(0,0,0,0.5) 100%)", pointerEvents: "none", zIndex: 2 }} />
 
-            {/* Áreas */}
             <div
               style={{
                 position: "absolute",
                 inset: 0,
                 transform,
                 transformOrigin: "center",
-                transition: isPanningRef.current ? "none" : "transform 180ms cubic-bezier(0.22, 1, 0.36, 1)",
+                transition: isPanningRef.current || dragState ? "none" : "transform 180ms cubic-bezier(0.22, 1, 0.36, 1)",
               }}
             >
               {loading ? (
                 <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <div className="loading-spinner" />
                 </div>
-              ) : decoratedAreas.length === 0 ? (
-                <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, color: "var(--text-muted)" }}>
-                  <IconMapPin size={48} strokeWidth={1} />
-                  <div style={{ fontWeight: 600 }}>Nenhuma área cadastrada</div>
-                </div>
-              ) : (
-                decoratedAreas.map((a, idx) => {
-                  const isSelected = selectedArea?.id === a.id;
-                  const isHovered = hoveredArea?.id === a.id;
-                  const isCorridor = a.code === "CORREDOR-CENTRAL";
-                  const hidden = !a.matches;
-                  const occupancy = layers.occupancy ? a.occupancy : 0.5;
-                  const baseColor = layers.occupancy ? occupancyColor(occupancy) : (a.color || colorForType(a.area_type));
+              ) : decoratedAreas.map((a, idx) => {
+                const isSelected = selectedArea?.id === a.id;
+                const isHovered = hoveredArea?.id === a.id;
+                const isCorridor = a.code === "CORREDOR-CENTRAL";
+                const hidden = !a.matches;
+                const occupancy = layers.occupancy ? a.occupancy : 0.5;
+                const baseColor = a.area_type === "conferencia"
+                  ? "#10b981"
+                  : layers.occupancy
+                  ? occupancyColor(occupancy)
+                  : (a.color || colorForType(a.area_type));
+                const isDragging = dragState?.areaId === a.id;
 
-                  return (
-                    <div
-                      key={a.id}
-                      style={{
-                        position: "absolute",
-                        left: `${a.x}%`,
-                        top: `${a.y}%`,
-                        width: `${a.width}%`,
-                        height: `${a.height}%`,
-                        background: isCorridor ? "transparent" : baseColor,
-                        border: isCorridor
-                          ? `1px dashed rgba(74, 123, 167, 0.3)`
-                          : `1.5px solid ${isSelected ? "#00d4ff" : "rgba(255,255,255,0.15)"}`,
-                        borderRadius: isCorridor ? 12 : 6,
-                        cursor: isCorridor ? "default" : "pointer",
-                        transition: "all 250ms cubic-bezier(0.22, 1, 0.36, 1)",
-                        display: "flex",
-                        flexDirection: "column",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: 3,
-                        padding: 3,
-                        overflow: "hidden",
-                        opacity: hidden ? 0.12 : 1,
-                        transform: isSelected
-                          ? "scale(1.05)"
-                          : isHovered
-                          ? "scale(1.03)"
-                          : "scale(1)",
-                        boxShadow: isSelected
-                          ? "0 0 0 2px #00d4ff, 0 8px 24px rgba(0, 212, 255, 0.4)"
-                          : isHovered
-                          ? "0 6px 16px rgba(0,0,0,0.5)"
-                          : "0 2px 6px rgba(0,0,0,0.3)",
-                        zIndex: isSelected ? 100 : isHovered ? 50 : idx,
-                      }}
-                    >
-                      {!isCorridor && layers.labels && (
-                        <>
+                return (
+                  <div
+                    key={a.id}
+                    onMouseDown={(e) => {
+                      if (editMode && !isCorridor) {
+                        startDragArea(e, a, "move");
+                      }
+                    }}
+                    style={{
+                      position: "absolute",
+                      left: `${a.x}%`,
+                      top: `${a.y}%`,
+                      width: `${a.width}%`,
+                      height: `${a.height}%`,
+                      background: isCorridor ? "transparent" : baseColor,
+                      border: isCorridor
+                        ? `1px dashed rgba(74, 123, 167, 0.3)`
+                        : `1.5px solid ${isSelected ? "#00d4ff" : "rgba(255,255,255,0.15)"}`,
+                      borderRadius: isCorridor ? 12 : 6,
+                      cursor: editMode
+                        ? isDragging
+                          ? "grabbing"
+                          : "move"
+                        : isCorridor
+                        ? "default"
+                        : "pointer",
+                      transition: isDragging
+                        ? "none"
+                        : "all 250ms cubic-bezier(0.22, 1, 0.36, 1)",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 3,
+                      padding: 3,
+                      overflow: "hidden",
+                      opacity: hidden ? 0.12 : 1,
+                      transform: isSelected || isDragging
+                        ? "scale(1.05)"
+                        : isHovered && !editMode
+                        ? "scale(1.03)"
+                        : "scale(1)",
+                      boxShadow: isSelected
+                        ? "0 0 0 2px #00d4ff, 0 8px 24px rgba(0, 212, 255, 0.4)"
+                        : isHovered && !editMode
+                        ? "0 6px 16px rgba(0,0,0,0.5)"
+                        : "0 2px 6px rgba(0,0,0,0.3)",
+                      zIndex: isSelected || isDragging ? 100 : isHovered ? 50 : idx,
+                    }}
+                  >
+                    {!isCorridor && layers.labels && (
+                      <>
+                        <div
+                          style={{
+                            fontSize: Math.max(8, Math.min(14, a.width * 0.9)),
+                            fontWeight: 800,
+                            color: "#fff",
+                            textShadow: "0 1px 2px rgba(0,0,0,0.6)",
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            maxWidth: "100%",
+                            lineHeight: 1.1,
+                            letterSpacing: "0.02em",
+                          }}
+                        >
+                          {a.code}
+                        </div>
+                        {a.height >= 8 && a.stats.skus > 0 && (
                           <div
                             style={{
-                              fontSize: Math.max(8, Math.min(14, a.width * 0.9)),
-                              fontWeight: 800,
-                              color: "#fff",
-                              textShadow: "0 1px 2px rgba(0,0,0,0.6)",
-                              whiteSpace: "nowrap",
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                              maxWidth: "100%",
-                              lineHeight: 1.1,
-                              letterSpacing: "0.02em",
+                              fontSize: 9,
+                              color: "rgba(255,255,255,0.85)",
+                              fontWeight: 700,
+                              fontFamily: "var(--font-mono)",
                             }}
                           >
-                            {a.code}
+                            {a.stats.skus} · {a.stats.totalQty}
                           </div>
-                          {a.height >= 8 && a.stats.skus > 0 && (
-                            <div
-                              style={{
-                                fontSize: 9,
-                                color: "rgba(255,255,255,0.85)",
-                                fontWeight: 700,
-                                fontFamily: "var(--font-mono)",
-                              }}
-                            >
-                              {a.stats.skus} · {a.stats.totalQty}
-                            </div>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  );
-                })
-              )}
+                        )}
+                      </>
+                    )}
+
+                    {/* Handle de resize (só em modo edição) */}
+                    {editMode && !isCorridor && (
+                      <div
+                        onMouseDown={(e) => startDragArea(e, a, "resize")}
+                        style={{
+                          position: "absolute",
+                          right: -6,
+                          bottom: -6,
+                          width: 14,
+                          height: 14,
+                          background: "#00d4ff",
+                          border: "2px solid #0a0e14",
+                          borderRadius: 4,
+                          cursor: "nwse-resize",
+                          zIndex: 10,
+                          boxShadow: "0 2px 6px rgba(0,0,0,0.5)",
+                        }}
+                        title="Arraste pra redimensionar"
+                      />
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
-          {/* Norte */}
           <div className="map-north">
             <div className="map-north-letter">N</div>
           </div>
 
-          {/* Controles flutuantes */}
           <StockMapControls
             view={view}
             onZoomIn={() => setView((v) => zoomIn(v))}
             onZoomOut={() => setView((v) => zoomOut(v))}
             onRotate={() => setView((v) => rotateBy(v, 90))}
             onRotateReset={() => setView((v) => rotateTo(v, 0))}
+            onRotateSet={(deg) => setView((v) => rotateTo(v, deg))}
             onReset={() => setView((v) => resetView(v))}
             onFullscreen={toggleFullscreen}
             isFullscreen={isFullscreen}
@@ -638,8 +766,7 @@ export default function StockMap({ isAdmin }) {
             scaleLabel={scaleLabel}
           />
 
-          {/* Tooltip hover */}
-          {hoveredArea && mousePos.show && (
+          {hoveredArea && mousePos.show && !editMode && (
             <div
               className="map-tooltip"
               style={{
@@ -658,7 +785,6 @@ export default function StockMap({ isAdmin }) {
           )}
         </div>
 
-        {/* Painel lateral */}
         {selectedArea && (
           <div className="card map-panel" style={{ position: "sticky", top: 16, alignSelf: "flex-start", maxHeight: "calc(100vh - 80px)", overflowY: "auto" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 12 }}>
@@ -685,11 +811,13 @@ export default function StockMap({ isAdmin }) {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14, paddingBottom: 14, borderBottom: "1px solid var(--border)" }}>
               <div>
                 <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 3 }}>SKUs</div>
-                <div style={{ fontSize: 20, fontWeight: 700 }}>{selectedArea.stats.skus}</div>
+                <div style={{ fontSize: 20, fontWeight: 700 }}>{selectedArea.stats?.skus ?? selectedAreaItems.length}</div>
               </div>
               <div>
                 <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 3 }}>Qtd. total</div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: "var(--accent)" }}>{selectedArea.stats.totalQty}</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: "var(--accent)" }}>
+                  {selectedArea.stats?.totalQty ?? selectedAreaItems.reduce((s, i) => s + (i.quantity || 0), 0)}
+                </div>
               </div>
             </div>
 
@@ -754,6 +882,75 @@ export default function StockMap({ isAdmin }) {
 
       {pickerOpen && selectedArea && (
         <StockMapItemPicker area={selectedArea} item={editingItem} onClose={() => setPickerOpen(false)} onSaved={loadAll} />
+      )}
+
+      {/* Modal nova área */}
+      {newAreaModal && (
+        <div className="kiosk-modal-backdrop" onClick={() => !areaBusy && setNewAreaModal(false)}>
+          <div className="kiosk-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 560 }}>
+            <div className="kiosk-modal-header">
+              <div>
+                <div className="kiosk-modal-title">Nova área</div>
+                <div className="kiosk-modal-sub">Posição e tamanho em % do mapa (0-100)</div>
+              </div>
+              <button className="kiosk-modal-close" onClick={() => setNewAreaModal(false)}>
+                <IconX size={18} />
+              </button>
+            </div>
+
+            <div className="kiosk-modal-body">
+              <div className="schedule-modal-grid">
+                <div>
+                  <label className="schedule-modal-label">Código *</label>
+                  <input className="schedule-modal-field" placeholder="Ex: 1V" value={newAreaForm.code} onChange={(e) => setNewAreaForm({ ...newAreaForm, code: e.target.value.toUpperCase() })} />
+                </div>
+                <div>
+                  <label className="schedule-modal-label">Tipo *</label>
+                  <select className="schedule-modal-field" value={newAreaForm.areaType} onChange={(e) => setNewAreaForm({ ...newAreaForm, areaType: e.target.value })}>
+                    {AREA_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                </div>
+                <div className="schedule-modal-full">
+                  <label className="schedule-modal-label">Rótulo *</label>
+                  <input className="schedule-modal-field" placeholder="Ex: Prateleira 1V" value={newAreaForm.label} onChange={(e) => setNewAreaForm({ ...newAreaForm, label: e.target.value })} />
+                </div>
+                <div>
+                  <label className="schedule-modal-label">X (%)</label>
+                  <input type="number" min="0" max="99" className="schedule-modal-field" value={newAreaForm.x} onChange={(e) => setNewAreaForm({ ...newAreaForm, x: e.target.value })} />
+                </div>
+                <div>
+                  <label className="schedule-modal-label">Y (%)</label>
+                  <input type="number" min="0" max="99" className="schedule-modal-field" value={newAreaForm.y} onChange={(e) => setNewAreaForm({ ...newAreaForm, y: e.target.value })} />
+                </div>
+                <div>
+                  <label className="schedule-modal-label">Largura (%)</label>
+                  <input type="number" min="2" max="100" className="schedule-modal-field" value={newAreaForm.width} onChange={(e) => setNewAreaForm({ ...newAreaForm, width: e.target.value })} />
+                </div>
+                <div>
+                  <label className="schedule-modal-label">Altura (%)</label>
+                  <input type="number" min="2" max="100" className="schedule-modal-field" value={newAreaForm.height} onChange={(e) => setNewAreaForm({ ...newAreaForm, height: e.target.value })} />
+                </div>
+                <div className="schedule-modal-full">
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={newAreaForm.hasSides}
+                      onChange={(e) => setNewAreaForm({ ...newAreaForm, hasSides: e.target.checked })}
+                    />
+                    Tem lado PAR e ÍMPAR (prateleira de dupla face)
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <div className="kiosk-modal-footer">
+              <button className="kiosk-btn kiosk-btn-secondary" onClick={() => setNewAreaModal(false)} disabled={areaBusy}>Cancelar</button>
+              <button className="kiosk-btn kiosk-btn-primary" onClick={handleCreateArea} disabled={areaBusy}>
+                <IconCheck size={14} /> {areaBusy ? "Criando..." : "Criar área"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

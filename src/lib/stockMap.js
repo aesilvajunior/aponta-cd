@@ -1,12 +1,12 @@
 import { supabase } from "../supabaseClient";
 
 // ============================================================
-// Mapa do estoque — helpers v2
-// Suporta lado (PAR/ÍMPAR) e categorias
+// Mapa do estoque — helpers v3
 // ============================================================
 
 export const AREA_TYPES = [
   { value: "prateleira", label: "Prateleira", color: "#4a7ba7" },
+  { value: "conferencia", label: "Mesa de conferência", color: "#10b981" },
   { value: "recebimento", label: "Recebimento", color: "#f59e0b" },
   { value: "escritorio", label: "Escritório", color: "#6b7280" },
   { value: "infra", label: "Infraestrutura", color: "#8b5cf6" },
@@ -18,7 +18,6 @@ export const SIDES = [
   { value: "impar", label: "Ímpar (esquerda)", short: "ÍMPAR" },
 ];
 
-// Categorias comuns (o usuário pode adicionar mais via CSV)
 export const DEFAULT_CATEGORIES = [
   "Conexões",
   "Vedações",
@@ -130,7 +129,7 @@ export async function deleteMapItem(id) {
   return supabase.from("stock_map_items").delete().eq("id", id);
 }
 
-// ---------- Agrupamento / resumo ----------
+// ---------- Agrupamento ----------
 
 export function groupItemsBySide(items) {
   const par = items.filter((i) => i.side === "par" || !i.side);
@@ -172,9 +171,8 @@ export function summarizeArea(area, items) {
   };
 }
 
-// ---------- Import CSV (stub pronto pra plugar) ----------
+// ---------- Import CSV (stub) ----------
 
-// Aceita array de objetos com: area_code, side, product_code, product_name, category, quantity, slot, note
 export async function bulkImportItems(rows) {
   if (!Array.isArray(rows) || rows.length === 0) {
     return { error: { message: "Nenhuma linha pra importar." } };
