@@ -429,9 +429,6 @@ export default function App() {
           {tab === "achievements" && isAdmin && (
             <Achievements operators={operators} />
           )}
-          {tab === "equipment" && isAdmin && (
-            <EquipmentManager />
-          )}
           {tab === "stock-map-history" && isAdmin && (
             <StockMapHistory />
           )}
