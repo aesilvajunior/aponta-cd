@@ -260,7 +260,7 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
     setShowPrefsModal(false);
     setConfettiActive(false);
     cancelOrderForm();
-    // Limpa o operador salvo no sessionStorage (usado pela Rotina do Líder)
+    // NOVO: limpa o operador salvo para a Rotina do Líder
     try { sessionStorage.removeItem("aponta_schedule_operator"); } catch {}
   }
 
@@ -329,7 +329,7 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
     });
     setLoggedOperator(op);
 
-    // ✅ NOVO: salva no sessionStorage para a Rotina do Líder identificar quem está logado
+    // NOVO: salva operador logado no sessionStorage (para a Rotina do Líder)
     try {
       sessionStorage.setItem(
         "aponta_schedule_operator",

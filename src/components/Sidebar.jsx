@@ -1,116 +1,374 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useState } from "react";
+import ThemeToggle from "./ThemeToggle";
+import { useAuth } from "../context/AuthContext";
+import {
+  IconActivity,
+  IconAlertTriangle,
+  IconCalendar,
+  IconClipboardCheck,
+  IconBox,
+  IconSearch,
+  IconLayoutDashboard,
+  IconTrendingUp,
+  IconEdit3,
+  IconSettings,
+  IconUsers,
+  IconClock,
+  IconTv,
+  IconStar,
+  IconLogOut,
+  IconChevronLeft,
+  IconChevronRight,
+  IconChevronDown,
+  IconRotateCcw,
+  IconTarget,
+  IconUpload,
+  IconMapPin,
+  IconShield,
+  IconVolume2,
+  IconPackage,
+  IconAlertCircle,
+  IconAward,
+  IconTruck,
+  IconLayers,
+  IconDownload,
+  IconBuilding,
+  IconHistory,
+} from "./Icons";
 
-// Menu lateral do Aponta CD.
-// Recebe:
-//  - tab: aba atual
-//  - setTab: função para trocar de aba
-//  - isAdmin: se o usuário destravou o admin com PIN
-//  - onLock: função para travar admin (volta pro kiosk)
-//  - currentOperator: operador logado (com role: 'operator' | 'lider' | 'admin')
+const STORAGE_KEY = "aponta_sidebar_collapsed";
+const SECTIONS_KEY = "aponta_sidebar_sections";
+const GROUPS_KEY = "aponta_sidebar_groups";
+
+const SECTIONS = [
+  {
+    title: "Operação",
+    items: [
+      { key: "kiosk", label: "Apontar atividade", Icon: IconActivity },
+      { key: "errors-kiosk", label: "Apontar erro", Icon: IconAlertTriangle },
+      { key: "conference", label: "Conferência", Icon: IconClipboardCheck },
+      { key: "schedules", label: "Agenda", Icon: IconCalendar },
+      { key: "checklist", label: "Checklist do CD", Icon: IconClipboardCheck },
+      { key: "rotation", label: "Rotação de tarefas", Icon: IconRotateCcw },
+      // ↓↓↓ NOVO: Rotina do Líder (só aparece para líder ou admin) ↓↓↓
+      { key: "daily-routine", label: "Rotina do Líder", Icon: IconClipboardCheck, requiresLeader: true },
+    ],
+  },
+  {
+    title: "Análise",
+    items: [
+      { key: "executive", label: "Visão geral", Icon: IconTrendingUp },
+      { key: "panel", label: "Indicadores", Icon: IconLayoutDashboard },
+      { key: "turn-comparison", label: "Comparação de turnos", Icon: IconActivity },
+      {
+        key: "faltas-group",
+        label: "Faltas",
+        Icon: IconBox,
+        children: [
+          { key: "shortages", label: "Todas as faltas" },
+          { key: "supplier-shortages", label: "Por fornecedor", Icon: IconBuilding },
+        ],
+      },
+      { key: "stock-map", label: "Mapa do estoque", Icon: IconMapPin },
+      { key: "stock-map-history", label: "Histórico do mapa", Icon: IconHistory },
+    ],
+  },
+  {
+    title: "Pessoas",
+    items: [
+      {
+        key: "metas-group",
+        label: "Metas",
+        Icon: IconTarget,
+        children: [
+          { key: "goals", label: "Individuais" },
+          { key: "team-goals", label: "Por equipe" },
+          { key: "goals-dashboard", label: "Dashboard" },
+        ],
+      },
+      { key: "achievements", label: "Conquistas", Icon: IconAward },
+      { key: "sales-query", label: "Líder da equipe", Icon: IconSearch },
+      { key: "sales-team", label: "Equipe comercial", Icon: IconUsers },
+      { key: "team", label: "Cadastros", Icon: IconSettings },
+      { key: "equipment", label: "Equipamentos", Icon: IconTruck },
+    ],
+  },
+  {
+    title: "Sistema",
+    items: [
+      { key: "admin-master", label: "Central de controle", Icon: IconStar },
+      { key: "manual", label: "Lançamento manual", Icon: IconEdit3 },
+      { key: "csv-import", label: "Importar CSV", Icon: IconUpload },
+      { key: "monthly-report", label: "Relatório mensal", Icon: IconDownload },
+      { key: "fraud", label: "Detecção de fraude", Icon: IconShield },
+      { key: "reports-scheduler", label: "Export agendado", Icon: IconVolume2 },
+      { key: "alert-settings", label: "Alertas Telegram", Icon: IconAlertCircle },
+      { key: "sound-settings", label: "Sons do sistema", Icon: IconVolume2 },
+      { key: "audit", label: "Auditoria", Icon: IconClock },
+      // ↓↓↓ NOVO: Configuração da Rotina (só admin) ↓↓↓
+      { key: "routine-settings", label: "Config. Rotina", Icon: IconSettings, requiresAdmin: true },
+    ],
+  },
+];
+
 export default function Sidebar({ tab, setTab, isAdmin, onLock, currentOperator }) {
+  const { session, signOut } = useAuth();
+
+  // ↓↓↓ NOVO: descobre se é líder ↓↓↓
   const isLeader = currentOperator?.role === "lider" || isAdmin;
 
-  // Lista de itens "públicos" (não precisam de admin).
-  const publicItems = useMemo(
-    () => [
-      { key: "kiosk", label: "Kiosk", icon: "🕒" },
-      { key: "errors-kiosk", label: "Erros de Separação", icon: "⚠" },
-      { key: "shortages", label: "Faltas", icon: "📦" },
-      { key: "conference", label: "Conferência", icon: "🔎" },
-      { key: "checklist", label: "Checklist CD", icon: "✅" },
-      { key: "schedules", label: "Escalas", icon: "🗓" },
-      { key: "sales-query", label: "Consulta Vendas", icon: "💬" },
-      { key: "rotation", label: "Rotação", icon: "🔄" },
-      { key: "goals-dashboard", label: "Metas", icon: "🎯" },
-      { key: "stock-map", label: "Mapa de Estoque", icon: "🗺" },
-      // ↓↓ NOVO ↓↓
-      {
-        key: "daily-routine",
-        label: "Rotina do Líder",
-        icon: "📋",
-        visible: isLeader, // só aparece para líder ou admin
-      },
-    ],
-    [isLeader]
-  );
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return localStorage.getItem(STORAGE_KEY) === "1"; } catch { return false; }
+  });
 
-  // Lista de itens ADMIN (precisam de PIN).
-  const adminItems = useMemo(
-    () => [
-      { key: "executive", label: "Visão Executiva", icon: "📊" },
-      { key: "panel", label: "Painel", icon: "📈" },
-      { key: "team", label: "Equipe", icon: "👥" },
-      { key: "manual", label: "Lançamento Manual", icon: "✍" },
-      { key: "audit", label: "Auditoria", icon: "🔍" },
-      { key: "sales-team", label: "Equipe de Vendas", icon: "🛒" },
-      { key: "admin-master", label: "Admin Master", icon: "🔧" },
-      { key: "goals", label: "Metas (Admin)", icon: "🎯" },
-      { key: "csv-import", label: "Importar CSV", icon: "📥" },
-      { key: "fraud", label: "Fraudes", icon: "🚨" },
-      { key: "reports-scheduler", label: "Relatórios Agendados", icon: "🕐" },
-      { key: "stock-map-edit", label: "Editar Mapa", icon: "🗺" },
-      { key: "turn-comparison", label: "Comparar Turnos", icon: "🔀" },
-      { key: "supplier-shortages", label: "Faltas Fornecedor", icon: "📦" },
-      { key: "sound-settings", label: "Sons", icon: "🔊" },
-      { key: "alert-settings", label: "Alertas", icon: "🔔" },
-      { key: "team-goals", label: "Metas da Equipe", icon: "🥇" },
-      { key: "achievements", label: "Conquistas", icon: "🏆" },
-      { key: "equipment", label: "Equipamentos", icon: "🧰" },
-      { key: "stock-map-history", label: "Hist. Mapa", icon: "📜" },
-      { key: "monthly-report", label: "Relatório Mensal", icon: "📅" },
-      // ↓↓ NOVO ↓↓
-      { key: "routine-settings", label: "Config. Rotina", icon: "⚙" },
-    ],
-    []
-  );
+  const [sectionOpen, setSectionOpen] = useState(() => {
+    try {
+      const raw = localStorage.getItem(SECTIONS_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return SECTIONS.reduce((acc, s) => ({ ...acc, [s.title]: true }), {});
+  });
+
+  const [groupOpen, setGroupOpen] = useState(() => {
+    try {
+      const raw = localStorage.getItem(GROUPS_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch {}
+    return { "faltas-group": false, "metas-group": false };
+  });
+
+  useEffect(() => {
+    try { localStorage.setItem(STORAGE_KEY, collapsed ? "1" : "0"); } catch {}
+  }, [collapsed]);
+
+  useEffect(() => {
+    try { localStorage.setItem(SECTIONS_KEY, JSON.stringify(sectionOpen)); } catch {}
+  }, [sectionOpen]);
+
+  useEffect(() => {
+    try { localStorage.setItem(GROUPS_KEY, JSON.stringify(groupOpen)); } catch {}
+  }, [groupOpen]);
+
+  function toggle() { setCollapsed((v) => !v); }
+
+  function toggleSection(title) {
+    setSectionOpen((s) => ({ ...s, [title]: !s[title] }));
+  }
+
+  function toggleGroup(key) {
+    setGroupOpen((g) => ({ ...g, [key]: !g[key] }));
+  }
+
+  async function handleSignOut() {
+    if (!window.confirm("Sair da sua conta?")) return;
+    await signOut();
+  }
+
+  const email = session?.user?.email || "";
+
+  function groupHasActiveChild(item) {
+    if (!item.children) return false;
+    return item.children.some((c) => c.key === tab);
+  }
+
+  // ↓↓↓ NOVO: filtra itens conforme permissão ↓↓↓
+  function isItemVisible(item) {
+    if (item.requiresLeader && !isLeader) return false;
+    if (item.requiresAdmin && !isAdmin) return false;
+    return true;
+  }
 
   return (
-    <aside className="sidebar">
-      <div className="sidebar-brand">
-        <strong>Aponta CD</strong>
+    <nav className={`sidebar ${collapsed ? "sidebar-collapsed" : ""}`}>
+      <div className="sidebar-brand-row">
+        <div className="sidebar-brand">
+          {!collapsed && <div className="sidebar-brand-text">Aponta CD</div>}
+        </div>
+        <button
+          className="sidebar-toggle"
+          onClick={toggle}
+          title={collapsed ? "Expandir menu" : "Recolher menu"}
+          aria-label={collapsed ? "Expandir menu" : "Recolher menu"}
+        >
+          {collapsed ? <IconChevronRight size={16} /> : <IconChevronLeft size={16} />}
+        </button>
       </div>
 
-      <nav className="sidebar-nav">
-        {publicItems
-          .filter((it) => it.visible !== false)
-          .map((it) => (
-            <button
-              key={it.key}
-              className={`sidebar-item ${tab === it.key ? "active" : ""}`}
-              onClick={() => setTab(it.key)}
-              type="button"
-            >
-              <span className="sidebar-icon">{it.icon}</span>
-              <span className="sidebar-label">{it.label}</span>
-            </button>
-          ))}
+      <div className="sidebar-nav">
+        {SECTIONS.map((section) => {
+          const isOpen = sectionOpen[section.title] !== false;
+          const visibleItems = section.items.filter(isItemVisible);
+
+          // Se a seção ficou vazia após filtrar, não renderiza
+          if (visibleItems.length === 0) return null;
+
+          return (
+            <div key={section.title} className="sidebar-section">
+              {!collapsed ? (
+                <button
+                  className="sidebar-section-header"
+                  onClick={() => toggleSection(section.title)}
+                  style={{
+                    width: "100%",
+                    background: "transparent",
+                    border: "none",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "10px 12px 6px 12px",
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                    color: "var(--text-faint)",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  <span>{section.title}</span>
+                  <IconChevronDown
+                    size={12}
+                    style={{
+                      transform: isOpen ? "rotate(0deg)" : "rotate(-90deg)",
+                      transition: "transform 150ms ease",
+                    }}
+                  />
+                </button>
+              ) : (
+                <div className="sidebar-section-divider" />
+              )}
+
+              {isOpen && visibleItems.map((item) => {
+                if (item.children) {
+                  const isGroupOpen = groupOpen[item.key];
+                  const hasActiveChild = groupHasActiveChild(item);
+                  const GroupIcon = item.Icon;
+
+                  return (
+                    <div key={item.key}>
+                      <div
+                        className={`nav-item ${hasActiveChild ? "active" : ""}`}
+                        onClick={() => {
+                          if (collapsed) {
+                            setTab(item.children[0].key);
+                          } else {
+                            toggleGroup(item.key);
+                          }
+                        }}
+                        title={collapsed ? item.label : undefined}
+                        style={{ cursor: "pointer" }}
+                      >
+                        <span className="nav-item-icon">
+                          {GroupIcon && <GroupIcon size={18} />}
+                        </span>
+                        {!collapsed && (
+                          <>
+                            <span className="nav-item-label">{item.label}</span>
+                            <IconChevronDown
+                              size={12}
+                              style={{
+                                marginLeft: "auto",
+                                transform: isGroupOpen ? "rotate(0deg)" : "rotate(-90deg)",
+                                transition: "transform 150ms ease",
+                                color: "var(--text-faint)",
+                              }}
+                            />
+                          </>
+                        )}
+                      </div>
+                      {!collapsed && isGroupOpen && (
+                        <div style={{ paddingLeft: 20 }}>
+                          {item.children.map((child) => {
+                            const ChildIcon = child.Icon;
+                            return (
+                              <div
+                                key={child.key}
+                                className={`nav-item ${tab === child.key ? "active" : ""}`}
+                                onClick={() => setTab(child.key)}
+                                style={{ fontSize: 13 }}
+                              >
+                                <span className="nav-item-icon">
+                                  {ChildIcon ? <ChildIcon size={15} /> : <span style={{ width: 15, display: "inline-block" }} />}
+                                </span>
+                                <span className="nav-item-label">{child.label}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+
+                const ItemIcon = item.Icon;
+                return (
+                  <div
+                    key={item.key}
+                    className={`nav-item ${tab === item.key ? "active" : ""}`}
+                    onClick={() => setTab(item.key)}
+                    title={collapsed ? item.label : undefined}
+                  >
+                    <span className="nav-item-icon">
+                      {ItemIcon && <ItemIcon size={18} />}
+                    </span>
+                    {!collapsed && <span className="nav-item-label">{item.label}</span>}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
 
         {isAdmin && (
-          <>
-            <div className="sidebar-sep">Admin</div>
-            {adminItems.map((it) => (
-              <button
-                key={it.key}
-                className={`sidebar-item ${tab === it.key ? "active" : ""}`}
-                onClick={() => setTab(it.key)}
-                type="button"
-              >
-                <span className="sidebar-icon">{it.icon}</span>
-                <span className="sidebar-label">{it.label}</span>
-              </button>
-            ))}
-
-            <button
-              className="sidebar-item sidebar-lock"
-              onClick={onLock}
-              type="button"
+          <div className="sidebar-section">
+            {!collapsed && <div className="sidebar-section-divider" />}
+            <div
+              className="nav-item nav-item-tv"
+              onClick={() => window.open("/tv", "_blank")}
+              title={collapsed ? "Painel TV" : "Abrir painel de exibição numa nova aba"}
             >
-              <span className="sidebar-icon">🔒</span>
-              <span className="sidebar-label">Travar Admin</span>
-            </button>
-          </>
+              <span className="nav-item-icon"><IconTv size={18} /></span>
+              {!collapsed && (
+                <>
+                  <span className="nav-item-label">Painel TV</span>
+                  <span className="nav-item-badge">↗</span>
+                </>
+              )}
+            </div>
+          </div>
         )}
-      </nav>
-    </aside>
+      </div>
+
+      <div className="sidebar-footer">
+        {!collapsed && email && (
+          <div className="sidebar-user" title={email}>
+            <div className="sidebar-user-avatar">{email.charAt(0).toUpperCase()}</div>
+            <div className="sidebar-user-email">{email}</div>
+          </div>
+        )}
+
+        <ThemeToggle compact={collapsed} />
+
+        {isAdmin && (
+          <button
+            className="sidebar-logout"
+            onClick={onLock}
+            title={collapsed ? "Sair do admin" : undefined}
+          >
+            <IconLogOut size={16} />
+            {!collapsed && <span>Sair do admin</span>}
+          </button>
+        )}
+
+        <button
+          className="sidebar-logout sidebar-logout-danger"
+          onClick={handleSignOut}
+          title={collapsed ? "Sair da conta" : undefined}
+        >
+          <IconLogOut size={16} />
+          {!collapsed && <span>Sair da conta</span>}
+        </button>
+      </div>
+    </nav>
   );
 }
