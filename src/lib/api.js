@@ -1171,3 +1171,93 @@ export async function bulkInsertRotationAssignments(rows) {
   if (!rows || rows.length === 0) return { error: null };
   return supabase.from("rotation_assignments").insert(rows);
 }
+// ============================================================
+// ROTINA DO LÍDER
+// ============================================================
+export async function fetchRoutineConfig() {
+  return supabase.from("routine_steps_config").select("*").order("sort_order");
+}
+
+export async function updateRoutineStep(step_key, patch) {
+  return supabase
+    .from("routine_steps_config")
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq("step_key", step_key);
+}
+
+export async function fetchRoutineProgress(date) {
+  return supabase
+    .from("daily_routine_progress")
+    .select("*")
+    .eq("routine_date", date);
+}
+
+export async function markRoutineStep({ date, step_key, operator }) {
+  return supabase.from("daily_routine_progress").upsert(
+    {
+      routine_date: date,
+      step_key,
+      completed_at: new Date().toISOString(),
+      completed_by: operator?.code ?? null,
+      completed_name: operator?.name ?? null,
+    },
+    { onConflict: "routine_date,step_key" }
+  );
+}
+
+export async function unmarkRoutineStep(date, step_key) {
+  return supabase
+    .from("daily_routine_progress")
+    .delete()
+    .eq("routine_date", date)
+    .eq("step_key", step_key);
+}
+
+export async function fetchPhysicalChecklist(date) {
+  return supabase.from("cd_physical_checklist").select("*").eq("check_date", date);
+}
+
+export async function upsertPhysicalChecklist(payload) {
+  return supabase
+    .from("cd_physical_checklist")
+    .upsert(payload, { onConflict: "check_date,area" });
+}
+
+export async function fetchInconsistencies({ from, to, status } = {}) {
+  let q = supabase.from("cd_inconsistencies").select("*").order("created_at", { ascending: false });
+  if (from) q = q.gte("inc_date", from);
+  if (to) q = q.lte("inc_date", to);
+  if (status && status !== "todas") q = q.eq("status", status);
+  return q;
+}
+
+export async function createInconsistency(payload) {
+  return supabase.from("cd_inconsistencies").insert(payload).select().single();
+}
+
+export async function updateInconsistency(id, patch) {
+  return supabase.from("cd_inconsistencies").update(patch).eq("id", id);
+}
+
+export async function deleteInconsistency(id) {
+  return supabase.from("cd_inconsistencies").delete().eq("id", id);
+}
+
+export async function fetchTelegramSubscribers() {
+  return supabase.from("telegram_subscribers").select("*").order("created_at");
+}
+
+export async function upsertTelegramSubscriber(payload) {
+  return supabase.from("telegram_subscribers").upsert(payload, { onConflict: "chat_id" });
+}
+
+export async function deleteTelegramSubscriber(id) {
+  return supabase.from("telegram_subscribers").delete().eq("id", id);
+}
+
+export async function fetchRoutineHistory({ from, to } = {}) {
+  let q = supabase.from("daily_routine_progress").select("*").order("routine_date", { ascending: false });
+  if (from) q = q.gte("routine_date", from);
+  if (to) q = q.lte("routine_date", to);
+  return q;
+}

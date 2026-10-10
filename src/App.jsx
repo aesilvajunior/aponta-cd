@@ -55,6 +55,9 @@ import Achievements from "./components/Achievements";
 import EquipmentManager from "./components/EquipmentManager";
 import StockMapHistory from "./components/StockMapHistory";
 import MonthlyReport from "./components/MonthlyReport";
+// ↓↓↓ NOVOS IMPORTS (Bloco 5 - Missão 2) ↓↓↓
+import DailyRoutine from "./components/DailyRoutine";
+import RoutineSettings from "./components/RoutineSettings";
 import {
   DEFAULT_OPERATORS,
   DEFAULT_ACTIVITIES,
@@ -88,8 +91,12 @@ export default function App() {
   const [activeSessions, setActiveSessions] = useState([]);
   const [separationErrors, setSeparationErrors] = useState([]);
 
-  // Operador logado (para checar can_manage_rotation)
+  // Operador logado (para checar role: operator | lider | admin)
   const [currentOperator, setCurrentOperator] = useState(null);
+
+  // ↓↓↓ NOVO (Bloco 5 - Missão 3) ↓↓↓
+  // isLeader = líder OU admin. Usado para liberar a "Rotina do Líder".
+  const isLeader = currentOperator?.role === "lider" || isAdmin;
 
   const alertedRef = useRef(new Set());
 
@@ -337,6 +344,8 @@ export default function App() {
     "stock-map-edit", "turn-comparison", "supplier-shortages", "sound-settings",
     "alert-settings", "team-goals", "achievements", "equipment",
     "stock-map-history", "monthly-report",
+    // ↓↓↓ NOVO (Bloco 5 - Missão 5.1) ↓↓↓
+    "routine-settings",
   ];
 
   const shortagesByEntry = (() => {
@@ -356,7 +365,14 @@ export default function App() {
         </div>
       )}
 
-      <Sidebar tab={tab} setTab={setTab} isAdmin={isAdmin} onLock={lockAdmin} />
+      {/* ↓↓↓ Sidebar agora recebe currentOperator (Bloco 5 - Missão 7) ↓↓↓ */}
+      <Sidebar
+        tab={tab}
+        setTab={setTab}
+        isAdmin={isAdmin}
+        onLock={lockAdmin}
+        currentOperator={currentOperator}
+      />
 
       <main className="main">
         {connectionError && (
@@ -414,6 +430,11 @@ export default function App() {
           )}
           {tab === "stock-map" && (
             <StockMap isAdmin={isAdmin} />
+          )}
+
+          {/* ↓↓↓ NOVO (Bloco 5 - Missão 4): Rotina do Líder ↓↓↓ */}
+          {tab === "daily-routine" && (isLeader || isAdmin) && (
+            <DailyRoutine currentOperator={currentOperator} />
           )}
 
           {adminTabs.includes(tab) && !isAdmin && (
@@ -497,6 +518,10 @@ export default function App() {
           )}
           {tab === "reports-scheduler" && isAdmin && (
             <ReportsScheduler />
+          )}
+          {/* ↓↓↓ NOVO (Bloco 5 - Missão 5.2): Config. Rotina ↓↓↓ */}
+          {tab === "routine-settings" && isAdmin && (
+            <RoutineSettings />
           )}
         </div>
 

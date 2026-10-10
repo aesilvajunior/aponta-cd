@@ -111,7 +111,6 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
   const [shortages, setShortages] = useState([]);
   const [finishNote, setFinishNote] = useState("");
 
-  // Fase 4 — boas-vindas, preferências e confete
   const [showWelcome, setShowWelcome] = useState(false);
   const [prefs, setPrefs] = useState({ theme: "auto", font_scale: 1.0, favorite_activities: [] });
   const [showPrefsModal, setShowPrefsModal] = useState(false);
@@ -126,7 +125,6 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
   const mainContainerRef = useRef(null);
   const modalRef = useRef(null);
 
-  // Aplica tema local do kiosk
   useEffect(() => {
     try {
       localStorage.setItem(KIOSK_THEME_KEY, localTheme);
@@ -142,7 +140,6 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
     };
   }, [localTheme]);
 
-  // Aplica preferências do operador (tema, fonte) quando logado
   useEffect(() => {
     if (!loggedOperator) return;
     if (prefs.theme && prefs.theme !== "auto") {
@@ -263,6 +260,8 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
     setShowPrefsModal(false);
     setConfettiActive(false);
     cancelOrderForm();
+    // Limpa o operador salvo no sessionStorage (usado pela Rotina do Líder)
+    try { sessionStorage.removeItem("aponta_schedule_operator"); } catch {}
   }
 
   function handleDigit(d) {
@@ -329,6 +328,15 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
       favorite_activities: prefsData?.favorite_activities || [],
     });
     setLoggedOperator(op);
+
+    // ✅ NOVO: salva no sessionStorage para a Rotina do Líder identificar quem está logado
+    try {
+      sessionStorage.setItem(
+        "aponta_schedule_operator",
+        JSON.stringify({ code: op.code, name: op.name, role: op.role })
+      );
+    } catch {}
+
     setCheckingLogin(false);
 
     if (welcomeNeeded) {
@@ -565,7 +573,6 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
     setSession((s) => s ? { ...s, paused_at: null, total_paused_seconds: newTotal } : s);
   }
 
-  // Verifica se essa finalização bateu meta (tempo médio <= target) → confete
   function didHitGoal(durationSec) {
     if (!session) return false;
     const cfg = activities.find((a) => a.name === session.activity);
@@ -737,7 +744,6 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
     setStationNameState(promptForStationName());
   }
 
-  // Ordena atividades: favoritas primeiro
   const orderedActivities = (() => {
     if (!prefs.favorite_activities || prefs.favorite_activities.length === 0) return activities;
     const fav = new Set(prefs.favorite_activities);
