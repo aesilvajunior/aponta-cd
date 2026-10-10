@@ -66,6 +66,7 @@ export default function App() {
   const [isAdmin, setIsAdmin] = useState(false);
 
   const [cmdOpen, setCmdOpen] = useState(false);
+const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [globalFilter, setGlobalFilter] = useState(null);
   const [profileOperator, setProfileOperator] = useState(null);
 
@@ -196,13 +197,32 @@ export default function App() {
       )}
 
       {/* ↓↓↓ NOVO: Sidebar recebe currentOperator para filtrar itens ↓↓↓ */}
-      <Sidebar
-        tab={tab}
-        setTab={setTab}
-        isAdmin={isAdmin}
-        onLock={lockAdmin}
-        currentOperator={currentOperator}
-      />
+      {/* Botão hambúrguer só aparece no mobile (controlado por CSS) */}
+<button
+  className="mobile-menu-btn"
+  onClick={() => setMobileMenuOpen(true)}
+  aria-label="Abrir menu"
+>
+  ☰
+</button>
+
+{/* Backdrop escuro que cobre o resto da tela no mobile */}
+<div
+  className={`mobile-menu-backdrop ${mobileMenuOpen ? "visible" : ""}`}
+  onClick={() => setMobileMenuOpen(false)}
+  aria-hidden="true"
+/>
+
+{/* Sidebar com classe extra quando aberto no mobile */}
+<div className={mobileMenuOpen ? "sidebar-open-wrapper" : ""}>
+  <Sidebar
+    tab={tab}
+    setTab={(t) => { setTab(t); setMobileMenuOpen(false); }}
+    isAdmin={isAdmin}
+    onLock={lockAdmin}
+    currentOperator={currentOperator}
+  />
+</div>
 
       <main className="main">
         <StatusBar realtimeStatus={realtimeStatus} updateReady={updateReady} />
