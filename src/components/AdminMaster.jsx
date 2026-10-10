@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   fetchEntries,
+  verifyAdminPin,
   fetchShortages,
   fetchActiveSessions,
   fetchSeparationErrors,
@@ -99,7 +100,7 @@ function csvEscape(v) {
   return s;
 }
 
-export default function AdminMaster({ operators, adminPin = "2026" }) {
+export default function AdminMaster({ operators }) {
   const [tab, setTab] = useState("entries");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -437,11 +438,13 @@ export default function AdminMaster({ operators, adminPin = "2026" }) {
 
   async function confirmBulkDelete() {
     if (!confirmDelete || busy) return;
-    if (pinInput !== adminPin) {
-      setPinError("PIN incorreto.");
+    setBusy(true);
+    const pinCheck = await verifyAdminPin(pinInput);
+    if (!pinCheck.ok) {
+      setBusy(false);
+      setPinError(pinCheck.error ? "Não foi possível verificar o PIN. Tente de novo." : "PIN incorreto.");
       return;
     }
-    setBusy(true);
     let errorMsg = null;
 
     if (confirmDelete.type === "entries") {

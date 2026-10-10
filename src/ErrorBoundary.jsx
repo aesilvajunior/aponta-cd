@@ -1,4 +1,5 @@
 import React from "react";
+import { reportError } from "./lib/errorReporter";
 
 export default class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -12,6 +13,7 @@ export default class ErrorBoundary extends React.Component {
 
   componentDidCatch(error, info) {
     console.error("Erro não tratado no Aponta CD:", error, info);
+    reportError(error, { type: "react.boundary", componentStack: String(info?.componentStack || "").slice(0, 1500) });
   }
 
   render() {

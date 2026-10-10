@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRealtimeSync } from "../hooks/useRealtimeSync";
 import { supabase } from "../supabaseClient";
 import {
   fetchActiveSessions,
@@ -37,6 +38,7 @@ import {
   IconSettings,
   IconX,
   IconActivity,
+  IconPause,
 } from "./Icons";
 
 const ACCENT_LIGHT = "#4a7ba7";
@@ -224,7 +226,7 @@ export default function TvBoard() {
     return () => supabase.removeChannel(ch);
   }, []);
 
-  async function loadAll() {
+  const loadAll = useCallback(async () => {
     const [
       { data: s },
       { data: e },
@@ -233,7 +235,7 @@ export default function TvBoard() {
       { data: ch },
     ] = await Promise.all([
       fetchActiveSessions(),
-      fetchEntries({ limit: 2000 }),
+      fetchEntries({ limit: 2000, days: 8 }), // a TV só mostra hoje e a semana atual
       fetchShortages({ limit: 500 }),
       fetchConferenceQueue(),
       fetchConferenceHistory({ limit: 200 }),
@@ -257,19 +259,32 @@ export default function TvBoard() {
     }
     if (cq) setConferenceQueue(cq);
     if (ch) setConferenceHistory(ch);
-  }
+  }, []);
+
+  // Um único canal para as 4 tabelas, com debounce (várias mudanças seguidas
+  // viram uma só recarga) e recuperação automática de queda de conexão.
+  const loadTimer = useRef(null);
+  const scheduleLoad = useCallback(() => {
+    clearTimeout(loadTimer.current);
+    loadTimer.current = setTimeout(loadAll, 300);
+  }, [loadAll]);
 
   useEffect(() => {
     loadAll();
-    const channel = supabase
-      .channel("tv-board")
-      .on("postgres_changes", { event: "*", schema: "public", table: "active_sessions" }, loadAll)
-      .on("postgres_changes", { event: "*", schema: "public", table: "entries" }, loadAll)
-      .on("postgres_changes", { event: "*", schema: "public", table: "entry_shortages" }, loadAll)
-      .on("postgres_changes", { event: "*", schema: "public", table: "conference_queue" }, loadAll)
-      .subscribe();
-    return () => supabase.removeChannel(channel);
-  }, []);
+    return () => clearTimeout(loadTimer.current);
+  }, [loadAll]);
+
+  useRealtimeSync({
+    channelName: "tv-board",
+    handlers: {
+      active_sessions: scheduleLoad,
+      entries: scheduleLoad,
+      entry_shortages: scheduleLoad,
+      conference_queue: scheduleLoad,
+    },
+    onResync: loadAll,
+    resyncMs: 3 * 60 * 1000,
+  });
 
   function enterFullscreen() {
     document.documentElement.requestFullscreen?.().catch(() => {});

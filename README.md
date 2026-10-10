@@ -105,3 +105,59 @@ Painel público para TV/monitor no CD:
 ---
 
 ## 📂 Estrutura do Projeto
+
+---
+
+## Atualização de outubro/2026: o que mudou e como ativar
+
+### 1. Banco de dados (Supabase): rodar uma vez
+Abra o **SQL Editor** e rode `supabase/migrations/2026-10-10_hardening.sql`.
+Ele é seguro de repetir. Enquanto não for rodado, o app continua funcionando no modo antigo.
+
+O que ele faz:
+- **PIN de admin com hash**: o PIN sai de `admin_config` (texto puro) e passa a ficar numa tabela
+  fechada (`admin_secrets`), conferido pelas funções `verify_admin_pin` / `set_admin_pin`.
+  Depois de rodar, **o PIN atual continua o mesmo**, mas ninguém mais consegue lê-lo pela API.
+- **`client_errors`**: o app grava erros do navegador (tablets, TV) nessa tabela. Consulte em
+  *Table Editor > client_errors*.
+- **Índices** em `entries` (consultas por período ficam rápidas).
+- **Agregações**: view `v_operator_daily_stats` e função `get_operator_ranking(de, ate)`
+  (já existe `fetchOperatorRanking` em `src/lib/api.js`; ainda não está ligada a nenhuma tela).
+
+### 2. Cloudflare Pages: variáveis do servidor
+O endpoint `/api/schedule-event` agora exige usuário logado e só aceita o próprio site.
+Em *Settings > Variables and Secrets* confira/crie:
+
+| Variável | Para quê |
+|---|---|
+| `GOOGLE_SA_EMAIL`, `GOOGLE_SA_KEY`, `GOOGLE_CALENDAR_ID` | Google Calendar (já existiam) |
+| `SUPABASE_URL`, `SUPABASE_ANON_KEY` | **novas**: mesmas do `.env`, para validar o login |
+| `ALLOWED_ORIGIN` | opcional: outros domínios autorizados (separados por vírgula) |
+
+> Sem `SUPABASE_URL`/`SUPABASE_ANON_KEY` o agendamento responde erro 500 (de propósito: não abre mão da segurança).
+
+### 3. Instalar dependências novas
+```bash
+npm install     # atualiza o package-lock.json (xlsx vem do CDN oficial da SheetJS)
+npm run check   # lint + testes + build
+```
+Depois de commitar o `package-lock.json`, troque `npm install` por `npm ci` em `.github/workflows/ci.yml`.
+
+### 4. Como o app se comporta agora
+- **Sem internet no Kiosk**: iniciar e finalizar atividade ficam guardados no aparelho
+  (inclusive faltas e fila de conferência) e são enviados sozinhos quando a conexão volta.
+  A faixa no topo mostra o que está pendente.
+- **Desfazer**: depois de finalizar, há ~6 s para tocar em *Desfazer*.
+- **Atualização do app**: quando sai versão nova aparece "Atualizar agora"; ela não troca sozinha no meio de um apontamento.
+- **Histórico**: o app carrega os últimos 120 dias (`ENTRIES_WINDOW_DAYS` em `src/lib/api.js`);
+  relatórios e telas que buscam por conta própria continuam vendo tudo.
+- **Instalável (PWA)**: no tablet, *Adicionar à tela inicial*.
+
+### 5. Desenvolvimento
+| Comando | O que faz |
+|---|---|
+| `npm run dev` | servidor local |
+| `npm test` | testes (Vitest) das regras em `src/lib` e da fila offline |
+| `npm run lint` | ESLint (erros reais quebram, avisos não) |
+| `npm run format` | Prettier |
+| `npm run check` | lint + testes + build (o mesmo que roda no GitHub) |

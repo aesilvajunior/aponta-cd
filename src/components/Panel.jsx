@@ -6,6 +6,8 @@ import { fmtClock, fmtDate, fmtDuration, todayLocalISODate, localISODate } from 
 import { computeMetrics, computeWeeklyTrend, computeMonthlyBuckets, monthLabel, mean as meanM } from "../lib/metrics";
 import { exportHistoricoExcel, exportShortagesExcel, exportErrorsExcel } from "../utils/excel";
 import OperatorProfile from "./OperatorProfile";
+import DeleteEntryModal from "./panel/DeleteEntryModal";
+import { fmtDateTime, csvEscape, periodFilename, periodLabel, downloadCsv, quickRange } from "./panel/panelHelpers";
 import { fetchConferenceHistory, deleteEntry, logAudit } from "../lib/api";
 import {
   IconDownload,
@@ -38,157 +40,6 @@ const TABS = [
   { key: "faltas", label: "Faltas", Icon: IconPackage },
   { key: "historico", label: "Histórico", Icon: IconList },
 ];
-
-function fmtDateTime(iso) {
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return "—";
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} às ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function csvEscape(v) {
-  if (v == null) return "";
-  const s = String(v);
-  if (/[";\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
-  return s;
-}
-
-function periodFilename(prefix, ext, dateFrom, dateTo, fallbackEntries) {
-  let fromStr = dateFrom;
-  let toStr = dateTo;
-  if (!fromStr || !toStr) {
-    if (fallbackEntries && fallbackEntries.length > 0) {
-      const sorted = [...fallbackEntries].sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
-      if (!fromStr) fromStr = localISODate(sorted[0].start_time);
-      if (!toStr) toStr = localISODate(sorted[sorted.length - 1].start_time);
-    } else {
-      const today = todayLocalISODate();
-      if (!fromStr) fromStr = today;
-      if (!toStr) toStr = today;
-    }
-  }
-  return `${prefix}_${fromStr}_a_${toStr}.${ext}`;
-}
-
-function periodLabel(dateFrom, dateTo, fallbackEntries) {
-  if (dateFrom || dateTo) {
-    return `${dateFrom ? fmtDate(dateFrom + "T12:00:00") : "início"} até ${dateTo ? fmtDate(dateTo + "T12:00:00") : "hoje"}`;
-  }
-  if (fallbackEntries && fallbackEntries.length > 0) {
-    const sorted = [...fallbackEntries].sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
-    return `${fmtDate(sorted[0].start_time)} até ${fmtDate(sorted[sorted.length - 1].start_time)}`;
-  }
-  return "todo o histórico";
-}
-
-function downloadCsv(lines, filename) {
-  const csv = "\ufeff" + lines.join("\r\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
-
-function quickRange(type) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const toISO = (d) => localISODate(d);
-  if (type === "hoje") return { from: toISO(today), to: toISO(today) };
-  if (type === "ontem") {
-    const y = new Date(today);
-    y.setDate(y.getDate() - 1);
-    return { from: toISO(y), to: toISO(y) };
-  }
-  if (type === "7dias") {
-    const past = new Date(today);
-    past.setDate(past.getDate() - 6);
-    return { from: toISO(past), to: toISO(today) };
-  }
-  if (type === "mes") {
-    const first = new Date(today.getFullYear(), today.getMonth(), 1);
-    return { from: toISO(first), to: toISO(today) };
-  }
-  return { from: "", to: "" };
-}
-
-// Modal de confirmação digitada
-function DeleteEntryModal({ entry, onClose, onConfirmed }) {
-  const [phrase, setPhrase] = useState("");
-  const [busy, setBusy] = useState(false);
-  const inputRef = useRef(null);
-
-  useEffect(() => {
-    setTimeout(() => inputRef.current?.focus(), 60);
-  }, []);
-
-  async function confirm() {
-    if (phrase.trim().toUpperCase() !== "APAGAR") return;
-    setBusy(true);
-    await onConfirmed();
-    setBusy(false);
-  }
-
-  return (
-    <div className="kiosk-modal-backdrop" onClick={onClose}>
-      <div className="kiosk-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 480 }}>
-        <div className="kiosk-modal-header">
-          <div>
-            <div className="kiosk-modal-title" style={{ color: "var(--danger)", display: "flex", alignItems: "center", gap: 8 }}>
-              <IconAlertTriangle size={18} /> Apagar lançamento
-            </div>
-            <div className="kiosk-modal-sub">
-              {entry.operator_name} — {entry.activity} · {fmtDate(entry.start_time)}
-            </div>
-          </div>
-          <button className="kiosk-modal-close" onClick={onClose} aria-label="Fechar">
-            <IconX size={18} />
-          </button>
-        </div>
-
-        <div className="kiosk-modal-body">
-          <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 0 }}>
-            Isso apaga o registro <strong>permanentemente</strong>. A ação fica registrada na auditoria.
-          </p>
-          <div>
-            <label className="schedule-modal-label">
-              Digite <strong>APAGAR</strong> para confirmar
-            </label>
-            <input
-              ref={inputRef}
-              className="schedule-modal-field"
-              style={{ fontFamily: "var(--font-mono)", textAlign: "center", letterSpacing: 3, fontSize: 18, fontWeight: 700 }}
-              value={phrase}
-              onChange={(e) => setPhrase(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && confirm()}
-              placeholder="APAGAR"
-              disabled={busy}
-              maxLength={10}
-            />
-          </div>
-        </div>
-
-        <div className="kiosk-modal-footer">
-          <button className="kiosk-btn kiosk-btn-secondary" onClick={onClose} disabled={busy}>
-            Cancelar
-          </button>
-          <button
-            className="kiosk-btn"
-            style={{ background: "var(--danger)", color: "#fff", flex: 1 }}
-            onClick={confirm}
-            disabled={busy || phrase.trim().toUpperCase() !== "APAGAR"}
-          >
-            {busy ? "Apagando..." : "Apagar lançamento"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export default function Panel({
   entries,
@@ -1081,7 +932,7 @@ export default function Panel({
     };
   }
 
-  async function copyDailySummary() {
+  function buildDailySummary() {
     const today = todayLocalISODate();
     const todayEntries = entries.filter((e) => localISODate(e.start_time) === today);
     const todayMetrics = computeMetrics(todayEntries, activities);
@@ -1108,7 +959,11 @@ export default function Panel({
     lines.push("Por operador:");
     todayMetrics.opStats.forEach((o) => lines.push(`  • ${o.name}: ${o.registros} registro(s), total ${fmtDuration(o.total)}`));
 
-    const text = lines.join("\n");
+    return lines.join("\n");
+  }
+
+  async function copyDailySummary() {
+    const text = buildDailySummary();
     try {
       await navigator.clipboard.writeText(text);
       setCopyLabel("Copiado!");
@@ -1116,6 +971,12 @@ export default function Panel({
       setCopyLabel("Não foi possível copiar");
     }
     setTimeout(() => setCopyLabel("Copiar resumo do dia"), 2500);
+  }
+
+  // Abre o WhatsApp (app ou web) com o resumo pronto para escolher o contato/grupo.
+  function shareDailySummaryWhatsApp() {
+    const text = buildDailySummary();
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
   }
 
   async function confirmReset() {
@@ -1169,6 +1030,7 @@ export default function Panel({
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button className="btn-small" onClick={copyDailySummary}>{copyLabel}</button>
+          <button className="btn-small" onClick={shareDailySummaryWhatsApp}>Enviar por WhatsApp</button>
           <button className="btn-small" onClick={openPrintableReport}>Gerar relatório (PDF)</button>
           <button className="btn-small" onClick={exportHistoricoCSV}>
             <IconDownload size={14} /> CSV

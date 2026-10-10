@@ -1,0 +1,53 @@
+/* ============================================================
+   RESPONSIVO — mobile
+   ============================================================ */
+@media (max-width: 640px) {
+  .daily-routine,
+  .rs-wrap {
+    padding: 14px;
+  }
+
+  .dr-header h1 {
+    font-size: 22px;
+  }
+
+  .dr-progress-ring {
+    width: 54px;
+    height: 54px;
+    font-size: 12px;
+  }
+
+  .dr-tabs button {
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+
+  .dr-step-main {
+    padding: 12px 14px;
+  }
+
+  .dr-info strong {
+    font-size: 14px;
+  }
+
+  .pc-checks {
+    gap: 8px;
+  }
+
+  .pc-checks label {
+    padding: 6px 10px;
+    font-size: 13px;
+  }
+
+  .rs-step {
+    grid-template-columns: 1fr;
+  }
+
+  .rs-step > button {
+    justify-self: stretch;
+  }
+
+  .inc-actions button {
+    flex: 1;
+  }
+}

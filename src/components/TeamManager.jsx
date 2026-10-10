@@ -15,7 +15,7 @@ import {
   addVehicle as apiAddVehicle,
   updateVehicle,
   deleteVehicle as apiDeleteVehicle,
-  updateAdminPin,
+  changeAdminPin,
   updateAlertThreshold,
   logAudit,
 } from "../lib/api";
@@ -122,7 +122,6 @@ export default function TeamManager({
   activities,
   errorTypes,
   vehicles = [],
-  adminPin,
   alertThreshold = 1800,
   refreshConfig,
 }) {
@@ -136,6 +135,7 @@ export default function TeamManager({
   const [newActivity, setNewActivity] = useState("");
   const [newActivityTarget, setNewActivityTarget] = useState("");
   const [newPin, setNewPin] = useState("");
+  const [currentPin, setCurrentPin] = useState("");
   const [formError, setFormError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -628,18 +628,20 @@ export default function TeamManager({
   async function changePin() {
     const pin = newPin.trim();
     if (pin.length < 4) return setFormError("O PIN precisa ter pelo menos 4 dígitos.");
+    if (!currentPin.trim()) return setFormError("Digite o PIN atual para confirmar a troca.");
     await runAction(async () => {
-      const res = await updateAdminPin(pin);
-      if (!res.error) {
+      const res = await changeAdminPin(currentPin.trim(), pin);
+      if (res.ok) {
         await audit({
           action: "editar",
           entity: "admin_config",
           entityId: "pin",
           details: "PIN de administrador alterado",
         });
+        return { error: null };
       }
-      return res;
-    }, () => setNewPin(""));
+      return { error: res.error || { message: "PIN atual incorreto." } };
+    }, () => { setNewPin(""); setCurrentPin(""); });
   }
 
   return (
@@ -663,6 +665,20 @@ export default function TeamManager({
           <div style={{ display: "flex", gap: 10 }}>
             <input
               className="field"
+              type="password"
+              inputMode="numeric"
+              autoComplete="off"
+              style={{ flex: 1 }}
+              placeholder="PIN atual"
+              value={currentPin}
+              onChange={(e) => setCurrentPin(e.target.value.replace(/\D/g, ""))}
+              disabled={busy}
+            />
+            <input
+              className="field"
+              type="password"
+              inputMode="numeric"
+              autoComplete="off"
               style={{ flex: 1 }}
               placeholder="Novo PIN"
               value={newPin}
@@ -673,7 +689,7 @@ export default function TeamManager({
               {busy ? "..." : "Alterar"}
             </button>
           </div>
-          <p style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 10, marginBottom: 0 }}>PIN atual: {adminPin}</p>
+          <p style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 10, marginBottom: 0 }}>Por segurança o PIN não é exibido. Para trocar, informe o atual e o novo.</p>
         </div>
 
         <div className="card">

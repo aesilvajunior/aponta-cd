@@ -1,18 +1,25 @@
 import React, { useState } from "react";
 import { IconLock, IconShield } from "./Icons";
+import { verifyAdminPin } from "../lib/api";
 
-export default function AdminGate({ correctPin, onUnlock }) {
+export default function AdminGate({ onUnlock }) {
   const [attempt, setAttempt] = useState("");
   const [error, setError] = useState("");
+  const [checking, setChecking] = useState(false);
 
-  function submit() {
-    if (attempt.trim() === correctPin) {
-      setError("");
-      setAttempt("");
+  async function submit() {
+    if (checking || attempt.trim().length < 4) return;
+    setChecking(true);
+    setError("");
+    const { ok, error: verifyError } = await verifyAdminPin(attempt.trim());
+    setChecking(false);
+    setAttempt("");
+    if (ok) {
       onUnlock();
+    } else if (verifyError) {
+      setError("Não foi possível verificar o PIN. Confira a conexão e tente de novo.");
     } else {
       setError("PIN incorreto.");
-      setAttempt("");
     }
   }
 
@@ -67,15 +74,18 @@ export default function AdminGate({ correctPin, onUnlock }) {
             onChange={(e) => setAttempt(e.target.value.replace(/\D/g, ""))}
             onKeyDown={(e) => e.key === "Enter" && submit()}
             maxLength={8}
+            inputMode="numeric"
+            autoComplete="off"
+            aria-label="PIN de administrador"
             autoFocus
           />
 
-          <button className="btn btn-primary" onClick={submit} disabled={attempt.length < 4}>
-            Entrar
+          <button className="btn btn-primary" onClick={submit} disabled={attempt.length < 4 || checking}>
+            {checking ? "Verificando..." : "Entrar"}
           </button>
 
           {error && (
-            <p style={{
+            <p role="alert" style={{
               color: "var(--danger)",
               fontSize: 12.5,
               textAlign: "center",

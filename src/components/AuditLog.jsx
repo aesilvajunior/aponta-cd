@@ -8,6 +8,7 @@ import {
   IconRefresh,
   IconTrash,
   IconList,
+  IconDot,
 } from "./Icons";
 
 const ACTIONS = {

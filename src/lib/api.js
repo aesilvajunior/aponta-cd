@@ -168,11 +168,52 @@ export async function fetchAdminConfig() {
     .select("*")
     .eq("id", 1)
     .maybeSingle();
+  // O PIN nunca deve ficar no estado do app (nem no modo legado).
+  if (data) {
+    // eslint-disable-next-line no-unused-vars
+    const { pin, pin_hash, ...safe } = data;
+    return { data: safe, error };
+  }
   return { data, error };
 }
 
-export async function updateAdminPin(pin) {
-  return supabase.from("admin_config").update({ pin }).eq("id", 1);
+function isMissingRpc(error) {
+  const code = error?.code || "";
+  const msg = error?.message || "";
+  return code === "PGRST202" || code === "42883" || /could not find the function/i.test(msg);
+}
+
+// Valida o PIN no servidor (RPC verify_admin_pin). Se a migração ainda não
+// foi aplicada, cai no modo legado (compara com admin_config.pin).
+export async function verifyAdminPin(pin) {
+  const { data, error } = await supabase.rpc("verify_admin_pin", { p_pin: String(pin ?? "") });
+  if (!error) return { ok: data === true, error: null };
+  if (isMissingRpc(error)) {
+    const { data: row, error: legacyError } = await supabase
+      .from("admin_config")
+      .select("pin")
+      .eq("id", 1)
+      .maybeSingle();
+    if (legacyError) return { ok: false, error: legacyError };
+    return { ok: !!row && String(row.pin) === String(pin ?? ""), error: null };
+  }
+  return { ok: false, error };
+}
+
+// Troca o PIN exigindo o PIN atual. Retorna { ok, error }.
+export async function changeAdminPin(currentPin, newPin) {
+  const { data, error } = await supabase.rpc("set_admin_pin", {
+    p_current: String(currentPin ?? ""),
+    p_new: String(newPin ?? ""),
+  });
+  if (!error) return { ok: data === true, error: null };
+  if (isMissingRpc(error)) {
+    const check = await verifyAdminPin(currentPin);
+    if (!check.ok) return { ok: false, error: check.error };
+    const res = await supabase.from("admin_config").update({ pin: newPin }).eq("id", 1);
+    return { ok: !res.error, error: res.error || null };
+  }
+  return { ok: false, error };
 }
 
 export async function updateAlertThreshold(seconds) {
@@ -182,12 +223,21 @@ export async function updateAlertThreshold(seconds) {
 // ============================================================
 // ENTRIES
 // ============================================================
-export async function fetchEntries({ limit = 5000 } = {}) {
-  const { data, error } = await supabase
+// Janela padrão de histórico carregada no app (dias). Registros mais antigos
+// continuam no banco e nos relatórios mensais; só não vêm no carregamento inicial.
+export const ENTRIES_WINDOW_DAYS = 120;
+
+export async function fetchEntries({ limit = 5000, days = ENTRIES_WINDOW_DAYS } = {}) {
+  let query = supabase
     .from("entries")
     .select("*")
     .order("start_time", { ascending: false })
     .limit(limit);
+  if (days) {
+    const since = new Date(Date.now() - days * 86400000).toISOString();
+    query = query.gte("start_time", since);
+  }
+  const { data, error } = await query;
   return { data, error };
 }
 
@@ -267,12 +317,13 @@ export async function startSession({
   operatorCode, operatorName, activity, orderNumber, customerName,
   transferType, transferUrgent, transferNumber, vehicle, plate,
   station, isEncaixe, supplierName, invoiceNumber, isDupla = false,
+  startTime = null,
 }) {
   const payload = {
     operator_code: operatorCode,
     operator_name: operatorName,
     activity,
-    start_time: new Date().toISOString(),
+    start_time: startTime || new Date().toISOString(),
     order_number: orderNumber || null,
     customer_name: customerName || null,
     transfer_type: transferType || null,
@@ -300,13 +351,14 @@ export async function startSession({
   return { data, error };
 }
 
-export async function finishSession(session, durationSeconds, shift, note, isEncaixe, pausedSeconds = 0, partner = null) {
+export async function finishSession(session, durationSeconds, shift, note, isEncaixe, pausedSeconds = 0, partner = null, opts = {}) {
   const entryPayload = {
+    ...(opts.entryId ? { id: opts.entryId } : {}),
     operator_code: session.operator_code,
     operator_name: session.operator_name,
     activity: session.activity,
     start_time: session.start_time,
-    end_time: new Date().toISOString(),
+    end_time: opts.endTime || new Date().toISOString(),
     duration_seconds: durationSeconds,
     shift,
     order_number: session.order_number || null,
@@ -333,12 +385,29 @@ export async function finishSession(session, durationSeconds, shift, note, isEnc
     .select()
     .maybeSingle();
 
-  if (error) return { error };
+  // 23505 = chave duplicada: o lançamento já tinha sido gravado numa tentativa
+  // anterior (reenvio da fila offline). Segue o fluxo para limpar a sessão.
+  const alreadySaved = error?.code === "23505" && !!opts.entryId;
+  if (error && !alreadySaved) return { error };
 
   await supabase.from("session_partners").delete().eq("session_operator_code", session.operator_code);
   await supabase.from("active_sessions").delete().eq("operator_code", session.operator_code);
 
-  return { data: entry, error: null };
+  return { data: entry || (alreadySaved ? entryPayload : null), error: null };
+}
+
+// Desfaz uma finalização feita há pouco: apaga o lançamento (e o que dependia
+// dele) e recoloca a sessão em andamento.
+export async function undoFinishSession({ entryId, sessionRow }) {
+  if (!entryId || !sessionRow) return { error: { message: "Nada para desfazer." } };
+  // eslint-disable-next-line no-unused-vars
+  const { __offline, ...row } = sessionRow;
+  const { error: restoreError } = await supabase.from("active_sessions").insert(row);
+  if (restoreError) return { error: restoreError };
+  await supabase.from("conference_queue").delete().eq("entry_id", entryId);
+  await supabase.from("entry_shortages").delete().eq("entry_id", entryId);
+  const { error } = await supabase.from("entries").delete().eq("id", entryId);
+  return { error };
 }
 
 export async function updateActiveSession(operatorCode, fields) {
@@ -1260,4 +1329,11 @@ export async function fetchRoutineHistory({ from, to } = {}) {
   if (from) q = q.gte("routine_date", from);
   if (to) q = q.lte("routine_date", to);
   return q;
+}
+
+// ============================================================
+// AGREGAÇÕES NO BANCO (requer supabase/migrations/2026-10-10_hardening.sql)
+// ============================================================
+export async function fetchOperatorRanking(fromISO, toISO) {
+  return supabase.rpc("get_operator_ranking", { p_from: fromISO, p_to: toISO });
 }

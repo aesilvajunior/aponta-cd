@@ -1,8 +1,16 @@
 // ============================================================
 // Edge Function — criar/editar/remover evento no Google Calendar
-// Lê credenciais de 2 variáveis simples:
-//   GOOGLE_SA_EMAIL  → e-mail da conta de serviço
-//   GOOGLE_SA_KEY    → chave privada (com \n literais)
+// Variáveis de ambiente (Cloudflare Pages > Settings > Variables):
+//   GOOGLE_SA_EMAIL     e-mail da conta de serviço
+//   GOOGLE_SA_KEY       chave privada (com \n literais)
+//   GOOGLE_CALENDAR_ID  agenda onde os eventos são criados
+//   SUPABASE_URL        mesma URL do projeto Supabase usada no app
+//   SUPABASE_ANON_KEY   mesma chave anon usada no app
+//   ALLOWED_ORIGIN      (opcional) outros domínios autorizados, separados
+//                       por vírgula. O próprio domínio do site já é aceito.
+//
+// Segurança: só atende quem estiver logado no app (token do Supabase no
+// header Authorization) e só a partir de origens autorizadas.
 // ============================================================
 
 function pemToArrayBuffer(pem) {
@@ -113,17 +121,65 @@ function buildEventBody(payload) {
   };
 }
 
+function json(body, status, headers) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...headers, "Content-Type": "application/json" },
+  });
+}
+
+// Confere com o Supabase se o token é de uma sessão válida.
+async function isLoggedIn(request, env) {
+  const supabaseUrl = env.SUPABASE_URL || env.VITE_SUPABASE_URL;
+  const anonKey = env.SUPABASE_ANON_KEY || env.VITE_SUPABASE_ANON_KEY;
+  if (!supabaseUrl || !anonKey) return { ok: false, misconfigured: true };
+
+  const auth = request.headers.get("Authorization") || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+  if (!token) return { ok: false };
+
+  try {
+    const res = await fetch(`${supabaseUrl.replace(/\/$/, "")}/auth/v1/user`, {
+      headers: { apikey: anonKey, Authorization: `Bearer ${token}` },
+    });
+    return { ok: res.ok };
+  } catch {
+    return { ok: false };
+  }
+}
+
 export async function onRequest(context) {
   const { request, env } = context;
 
+  // Origens aceitas: o próprio site + as listadas em ALLOWED_ORIGIN
+  const selfOrigin = new URL(request.url).origin;
+  const allowedOrigins = [
+    selfOrigin,
+    ...(env.ALLOWED_ORIGIN || "").split(",").map((o) => o.trim()).filter(Boolean),
+  ];
+  const origin = request.headers.get("Origin");
+
   const corsHeaders = {
-    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Origin": origin && allowedOrigins.includes(origin) ? origin : selfOrigin,
     "Access-Control-Allow-Methods": "POST, PUT, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    Vary: "Origin",
   };
+
+  if (origin && !allowedOrigins.includes(origin)) {
+    return json({ error: "Origem não autorizada." }, 403, corsHeaders);
+  }
 
   if (request.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
+  }
+
+  const login = await isLoggedIn(request, env);
+  if (login.misconfigured) {
+    return json({ error: "SUPABASE_URL / SUPABASE_ANON_KEY não configuradas nas variáveis do servidor." }, 500, corsHeaders);
+  }
+  if (!login.ok) {
+    return json({ error: "Não autorizado. Faça login novamente." }, 401, corsHeaders);
   }
 
   try {

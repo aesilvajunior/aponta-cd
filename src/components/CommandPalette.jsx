@@ -22,6 +22,7 @@ import {
   IconMapPin,
   IconShield,
   IconVolume2,
+  IconAlertTriangle,
 } from "./Icons";
 
 function ItemIcon({ type, actionKey }) {

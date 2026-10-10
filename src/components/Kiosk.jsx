@@ -1,5 +1,14 @@
 import React, { useEffect, useRef, useState } from "react";
-import { fetchActiveSessionFor, startSession, finishSession, saveShortages, addToConferenceQueue } from "../lib/api";
+import { fetchActiveSessionFor, saveShortages, addToConferenceQueue, undoFinishSession } from "../lib/api";
+import {
+  startSessionSafe,
+  finishSessionSafe,
+  pendingSessionFor,
+  isNetworkError,
+  queueShortages,
+  queueConference,
+  removeByEntryId,
+} from "../lib/offlineSync";
 import { fmtDuration, fmtClock, fmtDate, shiftFor } from "../lib/format";
 import { getStationName, promptForStationName } from "../lib/station";
 import { playSuccess, playError, playKey } from "../utils/sound";
@@ -36,6 +45,7 @@ import {
 
 const CODE_LENGTH = 3;
 const AUTO_RETURN_MS = 2200;
+const UNDO_WINDOW_MS = 6000; // tempo para o botão "Desfazer" após finalizar
 const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 const TRANSFER_TYPES = ["AP", "ZN"];
 const KIOSK_THEME_KEY = "aponta_kiosk_theme";
@@ -76,6 +86,12 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
   const [msgType, setMsgType] = useState("info");
   const [now, setNow] = useState(Date.now());
   const [busy, setBusy] = useState(false);
+  // O estado "busy" só atualiza no próximo render; o ref bloqueia o duplo toque
+  // (dois cliques rápidos antes do React redesenhar) na hora.
+  const busyRef = useRef(false);
+  const lastFinishRef = useRef(null);
+  const lock = () => { busyRef.current = true; setBusy(true); };
+  const unlock = () => { busyRef.current = false; setBusy(false); };
   const [checkingLogin, setCheckingLogin] = useState(false);
   const [shake, setShake] = useState(false);
   const [confirmation, setConfirmation] = useState(null);
@@ -302,21 +318,28 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
       shouldShowWelcome(op.code),
     ]);
 
-    if (error) {
+    // Sem internet: segue com o que está guardado neste aparelho (fila offline).
+    const offlineLogin = !!error && isNetworkError(error);
+    if (error && !offlineLogin) {
       playError();
       setMsgType("error");
       setMsg("Erro ao verificar sessão. Tente de novo.");
       setCheckingLogin(false);
       return;
     }
+    const sessionData = (offlineLogin ? null : data) || pendingSessionFor(op.code);
 
     playSuccess();
     playEventSound("sound_activity_start");
-    setSession(data || null);
-    if (data) {
-      setPaused(!!data.paused_at);
-      setPausedAt(data.paused_at ? new Date(data.paused_at).getTime() : null);
-      setTotalPausedSeconds(data.total_paused_seconds || 0);
+    setSession(sessionData || null);
+    if (offlineLogin) {
+      setMsgType("info");
+      setMsg("Sem conexão. Seus apontamentos ficam salvos neste aparelho e serão enviados quando a internet voltar.");
+    }
+    if (sessionData) {
+      setPaused(!!sessionData.paused_at);
+      setPausedAt(sessionData.paused_at ? new Date(sessionData.paused_at).getTime() : null);
+      setTotalPausedSeconds(sessionData.total_paused_seconds || 0);
     } else {
       setPaused(false);
       setPausedAt(null);
@@ -354,11 +377,11 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
   }
 
   async function startActivity(activityName, extra = {}) {
-    if (busy) return;
+    if (busy || busyRef.current) return;
     bump();
-    setBusy(true);
+    lock();
     const startedAt = new Date().toISOString();
-    const { error } = await startSession({
+    const { error, data: startedData, queued } = await startSessionSafe({
       operatorCode: loggedOperator.code,
       operatorName: loggedOperator.name,
       activity: activityName,
@@ -374,7 +397,7 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
       supplierName: extra.supplierName || null,
       invoiceNumber: extra.invoiceNumber || null,
     });
-    setBusy(false);
+    unlock();
 
     if (!error) {
       playSuccess();
@@ -396,7 +419,9 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
         activity: activityName,
         time: fmtClock(startedAt),
         detail: detailParts.join(" · ") || null,
+        queued: !!queued,
       });
+      void startedData;
       autoReturnTimeoutRef.current = setTimeout(reset, AUTO_RETURN_MS);
       return;
     }
@@ -529,15 +554,15 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
   }
 
   async function handlePause() {
-    if (!session || busy) return;
+    if (!session || busy || busyRef.current) return;
     bump();
-    setBusy(true);
+    lock();
     const nowIso = new Date().toISOString();
     const { error: err } = await supabase
       .from("active_sessions")
       .update({ paused_at: nowIso })
       .eq("operator_code", session.operator_code);
-    setBusy(false);
+    unlock();
     if (err) {
       playError();
       setMsgType("error");
@@ -550,16 +575,16 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
   }
 
   async function handleResume() {
-    if (!session || busy || !pausedAt) return;
+    if (!session || busy || busyRef.current || !pausedAt) return;
     bump();
-    setBusy(true);
+    lock();
     const addedPause = Math.round((Date.now() - pausedAt) / 1000);
     const newTotal = (session.total_paused_seconds || 0) + addedPause;
     const { error: err } = await supabase
       .from("active_sessions")
       .update({ paused_at: null, total_paused_seconds: newTotal })
       .eq("operator_code", session.operator_code);
-    setBusy(false);
+    unlock();
     if (err) {
       playError();
       setMsgType("error");
@@ -580,15 +605,33 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
     return durationSec <= cfg.target_seconds;
   }
 
+  async function addConferenceSafe(entry) {
+    const { error } = await addToConferenceQueue(entry);
+    if (error && isNetworkError(error)) queueConference(entry);
+  }
+
+  function rememberFinish({ entryId, queued }) {
+    lastFinishRef.current = { entryId, queued: !!queued, sessionRow: session };
+  }
+
   async function finishDirectly() {
-    if (!session || busy) return;
+    if (!session || busy || busyRef.current) return;
     bump();
-    setBusy(true);
+    lock();
     const pausedSecs = session.total_paused_seconds || 0;
     const duration = Math.max(0, Math.round((Date.now() - new Date(session.start_time).getTime()) / 1000) - pausedSecs);
     const hitGoal = didHitGoal(duration);
-    const { data: newEntry, error } = await finishSession(session, duration, shiftFor(session.start_time), noteInput.trim(), !!session.is_encaixe, pausedSecs);
-    setBusy(false);
+    const { data: newEntry, entryId, error, queued } = await finishSessionSafe({
+      session,
+      durationSeconds: duration,
+      shift: shiftFor(session.start_time),
+      note: noteInput.trim(),
+      isEncaixe: !!session.is_encaixe,
+      pausedSeconds: pausedSecs,
+      shortages: [],
+      separation: isSeparationEntry(session),
+    });
+    unlock();
     if (!error) {
       playSuccess();
       playEventSound("sound_activity_finish");
@@ -596,22 +639,57 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
         playEventSound("sound_goal_hit");
         triggerConfetti();
       }
-      if (newEntry && isSeparationEntry(newEntry)) {
-        await addToConferenceQueue(newEntry);
+      if (!queued && newEntry && isSeparationEntry(newEntry)) {
+        await addConferenceSafe(newEntry);
       }
+      rememberFinish({ entryId, queued });
       refreshEntries?.();
       setSession(null);
       setNoteInput("");
       setPaused(false);
       setPausedAt(null);
       setTotalPausedSeconds(0);
-      setConfirmation({ kind: "finished", activity: session.activity, extra: fmtDuration(duration) });
-      autoReturnTimeoutRef.current = setTimeout(reset, AUTO_RETURN_MS);
+      setConfirmation({ kind: "finished", activity: session.activity, extra: fmtDuration(duration), queued: !!queued, canUndo: true });
+      autoReturnTimeoutRef.current = setTimeout(reset, UNDO_WINDOW_MS);
     } else {
       playError();
       setMsgType("error");
       setMsg(`Erro ao salvar. ${error.message || "Tente novamente."}`);
     }
+  }
+
+  async function handleUndo() {
+    const last = lastFinishRef.current;
+    if (!last || busyRef.current) return;
+    if (autoReturnTimeoutRef.current) clearTimeout(autoReturnTimeoutRef.current);
+    lock();
+    let undoError = null;
+    if (last.queued) {
+      removeByEntryId(last.entryId); // ainda não chegou ao banco: só tira da fila
+    } else {
+      const res = await undoFinishSession({ entryId: last.entryId, sessionRow: last.sessionRow });
+      undoError = res.error;
+    }
+    unlock();
+    if (undoError) {
+      playError();
+      setMsgType("error");
+      setMsg(`Não foi possível desfazer. ${undoError.message || ""}`.trim());
+      setConfirmation((c) => (c ? { ...c, canUndo: false } : c));
+      autoReturnTimeoutRef.current = setTimeout(reset, AUTO_RETURN_MS);
+      return;
+    }
+    lastFinishRef.current = null;
+    const restored = last.sessionRow;
+    setSession(restored);
+    setPaused(!!restored.paused_at);
+    setPausedAt(restored.paused_at ? new Date(restored.paused_at).getTime() : null);
+    setTotalPausedSeconds(restored.total_paused_seconds || 0);
+    setConfirmation(null);
+    setMsgType("info");
+    setMsg("Finalização desfeita. A atividade voltou para em andamento.");
+    refreshEntries?.();
+    bump();
   }
 
   function openFinishModal() {
@@ -656,7 +734,7 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
   }
 
   async function confirmFinish() {
-    if (busy) return;
+    if (busy || busyRef.current) return;
     if (finishHadShortage === null) return;
     if (finishHadShortage === true) {
       const valid = shortages.filter((s) => s.productCode.trim().length > 0);
@@ -667,42 +745,48 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
       }
     }
 
-    setBusy(true);
+    lock();
     const pausedSecs = session.total_paused_seconds || 0;
     const duration = Math.max(0, Math.round((Date.now() - new Date(session.start_time).getTime()) / 1000) - pausedSecs);
     const shift = shiftFor(session.start_time);
     const finalNote = finishNote.trim();
     const hitGoal = didHitGoal(duration);
 
-    const { data: newEntry, error } = await finishSession(
+    const validShortages = finishHadShortage === true
+      ? shortages
+          .filter((s) => s.productCode.trim().length > 0)
+          .map((s) => ({
+            productCode: s.productCode.trim(),
+            quantity: Number(s.quantity) || 1,
+            supplierName: session.supplier_name || null,
+          }))
+      : [];
+
+    const { data: newEntry, entryId, error, queued } = await finishSessionSafe({
       session,
-      duration,
+      durationSeconds: duration,
       shift,
-      finalNote,
-      !!session.is_encaixe,
-      pausedSecs
-    );
+      note: finalNote,
+      isEncaixe: !!session.is_encaixe,
+      pausedSeconds: pausedSecs,
+      shortages: validShortages,
+      separation: isSeparationEntry(session),
+    });
 
     if (error) {
-      setBusy(false);
+      unlock();
       playError();
       setMsgType("error");
       setMsg(`Erro ao finalizar. ${error.message || "Tente novamente."}`);
       return;
     }
 
-    if (finishHadShortage === true) {
-      const validShortages = shortages
-        .filter((s) => s.productCode.trim().length > 0)
-        .map((s) => ({
-          productCode: s.productCode.trim(),
-          quantity: Number(s.quantity) || 1,
-          supplierName: session.supplier_name || null,
-        }));
-
+    if (!queued && validShortages.length > 0) {
       const { error: errShortage } = await saveShortages(newEntry.id, validShortages);
-      if (errShortage) {
-        setBusy(false);
+      if (errShortage && isNetworkError(errShortage)) {
+        queueShortages(newEntry.id, session.operator_code, validShortages);
+      } else if (errShortage) {
+        unlock();
         playError();
         setMsgType("error");
         setMsg(`Atividade salva, mas houve erro ao salvar faltas: ${errShortage.message}`);
@@ -712,13 +796,16 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
         return;
       }
       playEventSound("sound_shortage");
+    } else if (queued && validShortages.length > 0) {
+      playEventSound("sound_shortage");
     }
 
-    if (newEntry && isSeparationEntry(newEntry)) {
-      await addToConferenceQueue(newEntry);
+    if (!queued && newEntry && isSeparationEntry(newEntry)) {
+      await addConferenceSafe(newEntry);
     }
 
-    setBusy(false);
+    rememberFinish({ entryId, queued });
+    unlock();
     playSuccess();
     playEventSound("sound_activity_finish");
     if (hitGoal) {
@@ -735,9 +822,11 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
       kind: "finished",
       activity: session.activity,
       extra: fmtDuration(duration),
+      queued: !!queued,
+      canUndo: true,
     });
     closeFinishModal();
-    autoReturnTimeoutRef.current = setTimeout(reset, AUTO_RETURN_MS);
+    autoReturnTimeoutRef.current = setTimeout(reset, UNDO_WINDOW_MS);
   }
 
   function editStation() {
@@ -843,7 +932,7 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
               </button>
             </div>
             {msg ? (
-              <p className="kiosk-terminal-error">{msg}</p>
+              <p className="kiosk-terminal-error" role="alert">{msg}</p>
             ) : (
               <p className="kiosk-terminal-hint">teclado do computador também funciona</p>
             )}
@@ -851,7 +940,7 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
         )}
 
         {loggedOperator && confirmation && (
-          <div className="kiosk-confirm">
+          <div className="kiosk-confirm" role="status" aria-live="polite">
             <div
               className="kiosk-confirm-icon"
               style={{
@@ -869,6 +958,21 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
                 ? `às ${confirmation.time}${confirmation.detail ? ` · ${confirmation.detail}` : ""}`
                 : `duração: ${confirmation.extra}`}
             </div>
+            {confirmation.queued && (
+              <div className="kiosk-confirm-sub kiosk-confirm-offline">
+                Sem conexão: salvo neste aparelho e será enviado automaticamente.
+              </div>
+            )}
+            {confirmation.kind === "finished" && confirmation.canUndo && (
+              <button
+                type="button"
+                className="kiosk-btn kiosk-btn-secondary kiosk-undo-btn"
+                onClick={handleUndo}
+                disabled={busy}
+              >
+                Desfazer
+              </button>
+            )}
           </div>
         )}
 
@@ -1191,7 +1295,7 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
             )}
 
             {msg && (
-              <p className={`kiosk-inline-msg ${msgType === "error" ? "error" : ""}`}>
+              <p className={`kiosk-inline-msg ${msgType === "error" ? "error" : ""}`} role={msgType === "error" ? "alert" : "status"}>
                 {msg}
               </p>
             )}
@@ -1201,10 +1305,10 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
 
       {showFinishModal && (
         <div className="kiosk-modal-backdrop" onClick={bump}>
-          <div className="kiosk-modal" ref={modalRef} onClick={(e) => e.stopPropagation()}>
+          <div className="kiosk-modal" ref={modalRef} role="dialog" aria-modal="true" aria-labelledby="kiosk-finish-title" onClick={(e) => e.stopPropagation()}>
             <div className="kiosk-modal-header">
               <div>
-                <div className="kiosk-modal-title">Finalizar {session?.activity}</div>
+                <div className="kiosk-modal-title" id="kiosk-finish-title">Finalizar {session?.activity}</div>
                 <div className="kiosk-modal-sub">
                   {loggedOperator?.name} · em andamento desde {session && fmtClock(session.start_time)}
                 </div>

@@ -9,6 +9,16 @@ import {
 } from "../lib/api";
 import { supabase } from "../supabaseClient";
 import useKeyboardNav from "../hooks/useKeyboardNav";
+
+// Cabeçalhos para chamar /api/schedule-event: o servidor só aceita quem está logado.
+async function calendarHeaders() {
+  const { data } = await supabase.auth.getSession();
+  const token = data?.session?.access_token;
+  return {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
 import {
   IconCalendar,
   IconChevronLeft,
@@ -441,7 +451,7 @@ export default function ScheduleManager({ operators, isAdmin }) {
       const method = editingId ? "PUT" : "POST";
       const res = await fetch("/api/schedule-event", {
         method,
-        headers: { "Content-Type": "application/json" },
+        headers: await calendarHeaders(),
         body: JSON.stringify({
           id: savedId,
           google_event_id: originalGoogleEventId,
@@ -484,7 +494,7 @@ export default function ScheduleManager({ operators, isAdmin }) {
       if (s.google_event_id) {
         await fetch("/api/schedule-event", {
           method: "DELETE",
-          headers: { "Content-Type": "application/json" },
+          headers: await calendarHeaders(),
           body: JSON.stringify({ google_event_id: s.google_event_id }),
         });
       }

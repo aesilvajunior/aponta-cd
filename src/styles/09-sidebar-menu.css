@@ -1,0 +1,106 @@
+/* ============================================================
+   SIDEBAR — estilos do menu lateral
+   ============================================================ */
+.sidebar {
+  width: 240px;
+  min-width: 240px;
+  background: var(--bg-elev, #1a1a1a);
+  border-right: 1px solid var(--border, #2a2a2a);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow-y: auto;
+  position: sticky;
+  top: 0;
+}
+
+.sidebar-brand {
+  padding: 20px 18px;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text, #fff);
+  border-bottom: 1px solid var(--border, #2a2a2a);
+  letter-spacing: 0.3px;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  padding: 10px 8px;
+  gap: 2px;
+  flex: 1;
+}
+
+.sidebar-sep {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted, #888);
+  padding: 16px 10px 6px;
+  margin-top: 8px;
+  border-top: 1px solid var(--border, #2a2a2a);
+}
+
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  color: var(--text, #ddd);
+  font-size: 14px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+  font-family: inherit;
+  width: 100%;
+}
+
+.sidebar-item:hover {
+  background: var(--bg-hover, rgba(255, 255, 255, 0.06));
+  color: var(--text, #fff);
+}
+
+.sidebar-item.active {
+  background: var(--accent-soft, rgba(99, 102, 241, 0.15));
+  color: var(--accent, #6366f1);
+  font-weight: 600;
+}
+
+.sidebar-icon {
+  font-size: 16px;
+  width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.sidebar-label {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-lock {
+  margin-top: 12px;
+  color: var(--danger, #ef4444);
+}
+
+.sidebar-lock:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+/* Responsivo: sidebar vira gaveta em telas pequenas */
+@media (max-width: 768px) {
+  .sidebar {
+    width: 200px;
+    min-width: 200px;
+  }
+  .sidebar-label {
+    font-size: 13px;
+  }
+}
