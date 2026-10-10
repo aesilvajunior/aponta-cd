@@ -50,7 +50,6 @@ const SECTIONS = [
       { key: "schedules", label: "Agenda", Icon: IconCalendar },
       { key: "checklist", label: "Checklist do CD", Icon: IconClipboardCheck },
       { key: "rotation", label: "Rotação de tarefas", Icon: IconRotateCcw },
-      // ↓↓↓ NOVO: Rotina do Líder (só aparece para líder ou admin) ↓↓↓
       { key: "daily-routine", label: "Rotina do Líder", Icon: IconClipboardCheck, requiresLeader: true },
     ],
   },
@@ -105,16 +104,14 @@ const SECTIONS = [
       { key: "alert-settings", label: "Alertas Telegram", Icon: IconAlertCircle },
       { key: "sound-settings", label: "Sons do sistema", Icon: IconVolume2 },
       { key: "audit", label: "Auditoria", Icon: IconClock },
-      // ↓↓↓ NOVO: Configuração da Rotina (só admin) ↓↓↓
       { key: "routine-settings", label: "Config. Rotina", Icon: IconSettings, requiresAdmin: true },
     ],
   },
 ];
 
-export default function Sidebar({ tab, setTab, isAdmin, onLock, currentOperator }) {
+export default function Sidebar({ tab, setTab, isAdmin, onLock, currentOperator, mobileOpen }) {
   const { session, signOut } = useAuth();
 
-  // ↓↓↓ NOVO: descobre se é líder ↓↓↓
   const isLeader = currentOperator?.role === "lider" || isAdmin;
 
   const [collapsed, setCollapsed] = useState(() => {
@@ -171,15 +168,20 @@ export default function Sidebar({ tab, setTab, isAdmin, onLock, currentOperator 
     return item.children.some((c) => c.key === tab);
   }
 
-  // ↓↓↓ NOVO: filtra itens conforme permissão ↓↓↓
   function isItemVisible(item) {
     if (item.requiresLeader && !isLeader) return false;
     if (item.requiresAdmin && !isAdmin) return false;
     return true;
   }
 
+  const navClasses = [
+    "sidebar",
+    collapsed ? "sidebar-collapsed" : "",
+    mobileOpen ? "sidebar-open" : "",
+  ].filter(Boolean).join(" ");
+
   return (
-    <nav className={`sidebar ${collapsed ? "sidebar-collapsed" : ""}`}>
+    <nav className={navClasses}>
       <div className="sidebar-brand-row">
         <div className="sidebar-brand">
           {!collapsed && <div className="sidebar-brand-text">Aponta CD</div>}
@@ -198,8 +200,6 @@ export default function Sidebar({ tab, setTab, isAdmin, onLock, currentOperator 
         {SECTIONS.map((section) => {
           const isOpen = sectionOpen[section.title] !== false;
           const visibleItems = section.items.filter(isItemVisible);
-
-          // Se a seção ficou vazia após filtrar, não renderiza
           if (visibleItems.length === 0) return null;
 
           return (
