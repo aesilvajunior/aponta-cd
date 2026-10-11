@@ -2,6 +2,7 @@
 // Aponta CD — Preferências por operador
 // ============================================================
 import { supabase } from "../supabaseClient";
+import { todayLocalISODate } from "./format";
 
 export async function fetchOperatorPrefs(operatorCode) {
   const { data, error } = await supabase
@@ -40,7 +41,7 @@ export async function saveOperatorPrefs(operatorCode, patch) {
 }
 
 export async function markWelcomeShown(operatorCode) {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocalISODate();
   return supabase
     .from("operator_prefs")
     .upsert(
@@ -55,7 +56,7 @@ export async function markWelcomeShown(operatorCode) {
 
 export async function shouldShowWelcome(operatorCode) {
   const { data } = await fetchOperatorPrefs(operatorCode);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayLocalISODate();
   return data?.welcome_shown_date !== today;
 }
 

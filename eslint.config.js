@@ -4,6 +4,7 @@ import react from "eslint-plugin-react";
 import reactHooks from "eslint-plugin-react-hooks";
 
 export default [
+  { linterOptions: { reportUnusedDisableDirectives: "off" } },
   { ignores: ["dist/**", "node_modules/**", "public/sw.js"] },
   js.configs.recommended,
   {
@@ -26,7 +27,7 @@ export default [
       // Erros reais (variável inexistente, etc.) quebram o CI;
       // estilo e variáveis sem uso ficam como aviso.
       "no-undef": "error",
-      "no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_", caughtErrors: "none" }],
+      "no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^(_|React$)", caughtErrors: "none" }],
       "no-empty": ["warn", { allowEmptyCatch: true }],
     },
   },

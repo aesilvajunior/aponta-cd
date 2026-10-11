@@ -161,3 +161,20 @@ Depois de commitar o `package-lock.json`, troque `npm install` por `npm ci` em `
 | `npm run lint` | ESLint (erros reais quebram, avisos não) |
 | `npm run format` | Prettier |
 | `npm run check` | lint + testes + build (o mesmo que roda no GitHub) |
+
+
+---
+
+## Estilos (CSS): onde editar
+Os estilos ficam em **`src/styles/`**, em arquivos numerados que o `src/main.jsx` carrega em ordem
+(`01-base`, `02-layout`, `03-components`, `04-kiosk`, `05-schedules`, `06-screens`, `07-utilities`,
+`08-stock-map`, `09-routine-checklist`, `10-responsive`, `11-status-a11y`).
+**Não existe mais `src/styles.css`.** Se um ajuste de CSS "não aparece", confira se foi feito
+nesses arquivos e se o arquivo está importado no `main.jsx`.
+Regras de celular (menu gaveta, ≤720px) estão em `10-responsive.css`; ajustes de acessibilidade e
+da gaveta (visibilidade, foco) em `11-status-a11y.css`.
+
+## Cache
+`public/_headers` deve manter `/assets/*` como `immutable` (os arquivos têm hash no nome) e
+`no-cache` só em `/index.html`, `/sw.js` e `/manifest.webmanifest`. Deixar `/assets/*` como
+`no-cache` faz o tablet rebaixar o app inteiro a cada abertura.

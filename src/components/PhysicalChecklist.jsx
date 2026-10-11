@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { fetchPhysicalChecklist, upsertPhysicalChecklist } from "../lib/api";
+import { todayLocalISODate } from "../lib/format";
 
 const AREAS = [
   "Ruas", "Térreo", "Primeiro andar", "Mezanino",
@@ -7,7 +8,7 @@ const AREAS = [
   "Demais áreas do CD",
 ];
 
-const todayISO = () => new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+const todayISO = () => todayLocalISODate();
 
 export default function PhysicalChecklist({ currentOperator }) {
   const date = todayISO();

@@ -78,7 +78,11 @@ self.addEventListener("fetch", (event) => {
         const cached = await caches.match(request);
         if (cached) return cached;
         const res = await fetch(request);
-        if (res.ok) {
+        // Só guarda se for mesmo o arquivo. Quando um arquivo antigo some depois
+        // de uma publicação, o servidor responde com a página inicial (HTML);
+        // guardar isso no cache deixaria o app quebrado para sempre.
+        const type = res.headers.get("content-type") || "";
+        if (res.ok && !type.includes("text/html")) {
           const cache = await caches.open(ASSET_CACHE);
           cache.put(request, res.clone());
         }

@@ -1,5 +1,5 @@
 /* ==================================================================
-   MAPA — Controles flutuantes estilo Google Maps
+   MAPA
    ================================================================== */
 
 .map-wrapper {
@@ -17,7 +17,6 @@
   outline: none;
 }
 
-/* Botões flutuantes */
 .map-ctrl {
   position: absolute;
   background: var(--glass-bg-strong, rgba(22, 27, 34, 0.85));
@@ -32,20 +31,9 @@
   z-index: 20;
 }
 
-.map-ctrl-top-right {
-  top: 20px;
-  right: 20px;
-}
-
-.map-ctrl-top-right-2 {
-  top: 140px;
-  right: 20px;
-}
-
-.map-ctrl-bottom-right {
-  bottom: 20px;
-  right: 20px;
-}
+.map-ctrl-top-right { top: 20px; right: 20px; }
+.map-ctrl-top-right-2 { top: 140px; right: 20px; }
+.map-ctrl-bottom-right { bottom: 20px; right: 20px; }
 
 .map-ctrl-btn {
   background: transparent;
@@ -67,18 +55,14 @@
   color: #00d4ff;
 }
 
-.map-ctrl-btn:active {
-  transform: scale(0.94);
-}
+.map-ctrl-btn:active { transform: scale(0.94); }
 
 .map-ctrl-divider {
   height: 1px;
   background: rgba(255, 255, 255, 0.08);
 }
 
-.map-compass {
-  padding: 0;
-}
+.map-compass { padding: 0; }
 
 .map-compass-needle {
   display: flex;
@@ -88,7 +72,6 @@
   height: 100%;
 }
 
-/* Painel de camadas */
 .map-layers-panel {
   position: absolute;
   bottom: 20px;
@@ -135,7 +118,6 @@
   cursor: pointer;
 }
 
-/* Escala */
 .map-scale {
   position: absolute;
   bottom: 20px;
@@ -169,7 +151,6 @@
   font-weight: 600;
 }
 
-/* Badge de zoom */
 .map-zoom-badge {
   position: absolute;
   top: 20px;
@@ -188,7 +169,6 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
-/* Bússola N */
 .map-north {
   position: absolute;
   top: 20px;
@@ -214,7 +194,6 @@
   font-family: var(--font-mono);
 }
 
-/* Tooltip */
 .map-tooltip {
   position: fixed;
   background: rgba(22, 27, 34, 0.96);
@@ -251,33 +230,20 @@
   font-family: var(--font-mono);
 }
 
-/* Painel lateral do mapa */
 .map-panel {
   animation: slideIn 220ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @keyframes slideIn {
-  from {
-    opacity: 0;
-    transform: translateX(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
+  from { opacity: 0; transform: translateX(20px); }
+  to   { opacity: 1; transform: translateX(0); }
 }
 
 @keyframes fadeUp {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
-/* Painel do slider de rotação */
+
 .map-rotate-panel {
   position: absolute;
   top: 250px;
@@ -384,3 +350,4 @@
   border-color: #00d4ff;
   font-weight: 800;
 }
+

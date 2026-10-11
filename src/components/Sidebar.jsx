@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { useMediaQuery, MOBILE_QUERY } from "../hooks/useMediaQuery";
 import ThemeToggle from "./ThemeToggle";
 import { useAuth } from "../context/AuthContext";
 import {
@@ -109,12 +110,14 @@ const SECTIONS = [
   },
 ];
 
-export default function Sidebar({ tab, setTab, isAdmin, onLock, currentOperator, mobileOpen }) {
+export default function Sidebar({ id, tab, setTab, isAdmin, onLock, currentOperator, mobileOpen }) {
   const { session, signOut } = useAuth();
 
   const isLeader = currentOperator?.role === "lider" || isAdmin;
 
-  const [collapsed, setCollapsed] = useState(() => {
+  // Preferência do desktop (salva no aparelho). No celular o menu é uma gaveta
+  // e sempre mostra os textos, sem mexer na preferência salva.
+  const [collapsedPref, setCollapsed] = useState(() => {
     try { return localStorage.getItem(STORAGE_KEY) === "1"; } catch { return false; }
   });
 
@@ -135,8 +138,30 @@ export default function Sidebar({ tab, setTab, isAdmin, onLock, currentOperator,
   });
 
   useEffect(() => {
-    try { localStorage.setItem(STORAGE_KEY, collapsed ? "1" : "0"); } catch {}
-  }, [collapsed]);
+    try { localStorage.setItem(STORAGE_KEY, collapsedPref ? "1" : "0"); } catch {}
+  }, [collapsedPref]);
+
+  const isMobile = useMediaQuery(MOBILE_QUERY);
+  const collapsed = collapsedPref && !isMobile;
+
+  // Ao abrir a gaveta no celular, leva o foco para o primeiro item do menu.
+  const navRef = useRef(null);
+  useEffect(() => {
+    if (mobileOpen) navRef.current?.querySelector(".nav-item")?.focus();
+  }, [mobileOpen]);
+
+  // Itens do menu são <div>: dá a eles comportamento de botão (Tab, Enter e Espaço).
+  const press = (fn) => ({
+    role: "button",
+    tabIndex: 0,
+    onClick: fn,
+    onKeyDown: (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        fn();
+      }
+    },
+  });
 
   useEffect(() => {
     try { localStorage.setItem(SECTIONS_KEY, JSON.stringify(sectionOpen)); } catch {}
@@ -181,11 +206,12 @@ export default function Sidebar({ tab, setTab, isAdmin, onLock, currentOperator,
   ].filter(Boolean).join(" ");
 
   return (
-    <nav className={navClasses}>
+    <nav id={id} ref={navRef} className={navClasses} aria-label="Menu principal">
       <div className="sidebar-brand-row">
         <div className="sidebar-brand">
           {!collapsed && <div className="sidebar-brand-text">Aponta CD</div>}
         </div>
+        {!isMobile && (
         <button
           className="sidebar-toggle"
           onClick={toggle}
@@ -194,6 +220,7 @@ export default function Sidebar({ tab, setTab, isAdmin, onLock, currentOperator,
         >
           {collapsed ? <IconChevronRight size={16} /> : <IconChevronLeft size={16} />}
         </button>
+        )}
       </div>
 
       <div className="sidebar-nav">
@@ -248,13 +275,14 @@ export default function Sidebar({ tab, setTab, isAdmin, onLock, currentOperator,
                     <div key={item.key}>
                       <div
                         className={`nav-item ${hasActiveChild ? "active" : ""}`}
-                        onClick={() => {
+                        {...press(() => {
                           if (collapsed) {
                             setTab(item.children[0].key);
                           } else {
                             toggleGroup(item.key);
                           }
-                        }}
+                        })}
+                        aria-expanded={collapsed ? undefined : !!isGroupOpen}
                         title={collapsed ? item.label : undefined}
                         style={{ cursor: "pointer" }}
                       >
@@ -284,7 +312,8 @@ export default function Sidebar({ tab, setTab, isAdmin, onLock, currentOperator,
                               <div
                                 key={child.key}
                                 className={`nav-item ${tab === child.key ? "active" : ""}`}
-                                onClick={() => setTab(child.key)}
+                                {...press(() => setTab(child.key))}
+                                aria-current={tab === child.key ? "page" : undefined}
                                 style={{ fontSize: 13 }}
                               >
                                 <span className="nav-item-icon">
@@ -305,7 +334,8 @@ export default function Sidebar({ tab, setTab, isAdmin, onLock, currentOperator,
                   <div
                     key={item.key}
                     className={`nav-item ${tab === item.key ? "active" : ""}`}
-                    onClick={() => setTab(item.key)}
+                    {...press(() => setTab(item.key))}
+                    aria-current={tab === item.key ? "page" : undefined}
                     title={collapsed ? item.label : undefined}
                   >
                     <span className="nav-item-icon">
@@ -324,7 +354,7 @@ export default function Sidebar({ tab, setTab, isAdmin, onLock, currentOperator,
             {!collapsed && <div className="sidebar-section-divider" />}
             <div
               className="nav-item nav-item-tv"
-              onClick={() => window.open("/tv", "_blank")}
+              {...press(() => window.open("/tv", "_blank"))}
               title={collapsed ? "Painel TV" : "Abrir painel de exibição numa nova aba"}
             >
               <span className="nav-item-icon"><IconTv size={18} /></span>

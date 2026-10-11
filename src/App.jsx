@@ -1,107 +1,127 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import { supabase, missingConfig } from "./supabaseClient";
+import React, { Suspense, useEffect, useRef, useState } from "react";
+import { missingConfig } from "./supabaseClient";
 import { useAuth } from "./context/AuthContext";
-import {
-  fetchOperators,
-  fetchActivities,
-  fetchAdminConfig,
-  fetchEntries,
-  fetchActiveSessions,
-  fetchSeparationErrors,
-  fetchErrorTypes,
-  fetchVehicles,
-  fetchShortages,
-  deleteAllEntries,
-  deleteAllSeparationErrors,
-  deleteAllShortages,
-} from "./lib/api";
-import {
-  isPushEnabled,
-  notifyNewConferenceItem,
-  notifyLateActivity,
-} from "./lib/pushNotifications";
+import { isPushEnabled, notifyLateActivity } from "./lib/pushNotifications";
+import { useAppData, DEFAULT_ALERT_THRESHOLD } from "./hooks/useAppData";
+import { startAutoSync } from "./lib/offlineSync";
+import { lazyWithRetry } from "./lib/lazyWithRetry";
+import { registerServiceWorker } from "./lib/registerSW";
+import { useMediaQuery, MOBILE_QUERY } from "./hooks/useMediaQuery";
+
+// Telas que todo mundo usa logo ao abrir: carregam junto com o app.
 import Sidebar from "./components/Sidebar";
 import Kiosk from "./components/Kiosk";
-import ErrorKiosk from "./components/ErrorKiosk";
 import AdminGate from "./components/AdminGate";
-import Panel from "./components/Panel";
-import TeamManager from "./components/TeamManager";
-import ManualEntry from "./components/ManualEntry";
-import AuditLog from "./components/AuditLog";
 import CommandPalette from "./components/CommandPalette";
-import ExecutiveView from "./components/ExecutiveView";
-import ScheduleManager from "./components/ScheduleManager";
-import SalesTeamQuery from "./components/SalesTeamQuery";
-import SalesTeamManager from "./components/SalesTeamManager";
-import ShortagePanel from "./components/ShortagePanel";
-import ConferenceTable from "./components/ConferenceTable";
-import AdminMaster from "./components/AdminMaster";
-import RotationManager from "./components/RotationManager";
-import GoalsManager from "./components/GoalsManager";
-import GoalsDashboard from "./components/GoalsDashboard";
-import CsvImport from "./components/CsvImport";
-import FraudPanel from "./components/FraudPanel";
-import ReportsScheduler from "./components/ReportsScheduler";
-import StockMap from "./components/StockMap";
 import PushSetup from "./components/PushSetup";
 import LoginScreen from "./components/LoginScreen";
-import CdChecklist from "./components/CdChecklist";
-import TurnComparison from "./components/TurnComparison";
-import SupplierShortages from "./components/SupplierShortages";
-import SoundSettings from "./components/SoundSettings";
-import AlertSettings from "./components/AlertSettings";
-import TeamGoals from "./components/TeamGoals";
-import Achievements from "./components/Achievements";
-import EquipmentManager from "./components/EquipmentManager";
-import StockMapHistory from "./components/StockMapHistory";
-import MonthlyReport from "./components/MonthlyReport";
-import DailyRoutine from "./components/DailyRoutine";
-import RoutineSettings from "./components/RoutineSettings";
-import {
-  DEFAULT_OPERATORS,
-  DEFAULT_ACTIVITIES,
-  DEFAULT_ERROR_TYPES,
-} from "./constants/defaults";
+import StatusBar from "./components/StatusBar";
 
-const DEFAULT_ALERT_THRESHOLD = 1800;
+// Todas as outras telas só são baixadas quando alguém abre a aba.
+// (O operador no kiosk não precisa baixar Painel, Mapa de Estoque, etc.)
+const ErrorKiosk = lazyWithRetry(() => import("./components/ErrorKiosk"));
+const Panel = lazyWithRetry(() => import("./components/Panel"));
+const TeamManager = lazyWithRetry(() => import("./components/TeamManager"));
+const ManualEntry = lazyWithRetry(() => import("./components/ManualEntry"));
+const AuditLog = lazyWithRetry(() => import("./components/AuditLog"));
+const ExecutiveView = lazyWithRetry(() => import("./components/ExecutiveView"));
+const ScheduleManager = lazyWithRetry(() => import("./components/ScheduleManager"));
+const SalesTeamQuery = lazyWithRetry(() => import("./components/SalesTeamQuery"));
+const SalesTeamManager = lazyWithRetry(() => import("./components/SalesTeamManager"));
+const ShortagePanel = lazyWithRetry(() => import("./components/ShortagePanel"));
+const ConferenceTable = lazyWithRetry(() => import("./components/ConferenceTable"));
+const AdminMaster = lazyWithRetry(() => import("./components/AdminMaster"));
+const RotationManager = lazyWithRetry(() => import("./components/RotationManager"));
+const GoalsManager = lazyWithRetry(() => import("./components/GoalsManager"));
+const GoalsDashboard = lazyWithRetry(() => import("./components/GoalsDashboard"));
+const CsvImport = lazyWithRetry(() => import("./components/CsvImport"));
+const FraudPanel = lazyWithRetry(() => import("./components/FraudPanel"));
+const ReportsScheduler = lazyWithRetry(() => import("./components/ReportsScheduler"));
+const StockMap = lazyWithRetry(() => import("./components/StockMap"));
+const CdChecklist = lazyWithRetry(() => import("./components/CdChecklist"));
+const TurnComparison = lazyWithRetry(() => import("./components/TurnComparison"));
+const SupplierShortages = lazyWithRetry(() => import("./components/SupplierShortages"));
+const SoundSettings = lazyWithRetry(() => import("./components/SoundSettings"));
+const AlertSettings = lazyWithRetry(() => import("./components/AlertSettings"));
+const TeamGoals = lazyWithRetry(() => import("./components/TeamGoals"));
+const Achievements = lazyWithRetry(() => import("./components/Achievements"));
+const EquipmentManager = lazyWithRetry(() => import("./components/EquipmentManager"));
+const StockMapHistory = lazyWithRetry(() => import("./components/StockMapHistory"));
+const MonthlyReport = lazyWithRetry(() => import("./components/MonthlyReport"));
+const DailyRoutine = lazyWithRetry(() => import("./components/DailyRoutine"));
+const RoutineSettings = lazyWithRetry(() => import("./components/RoutineSettings"));
+
+function ScreenFallback() {
+  return (
+    <div className="screen-fallback" role="status" aria-live="polite">
+      <div className="loading-spinner" />
+      <div>Carregando tela...</div>
+    </div>
+  );
+}
 
 export default function App() {
   const { session, loading: authLoading } = useAuth();
 
   const [tab, setTab] = useState("kiosk");
   const [isAdmin, setIsAdmin] = useState(false);
-  const [loaded, setLoaded] = useState(false);
-  const [connectionError, setConnectionError] = useState(null);
-  const [actionError, setActionError] = useState(null);
-  const [usingDefaults, setUsingDefaults] = useState(false);
 
   const [cmdOpen, setCmdOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const menuButtonRef = useRef(null);
+  const isMobile = useMediaQuery(MOBILE_QUERY);
   const [globalFilter, setGlobalFilter] = useState(null);
   const [profileOperator, setProfileOperator] = useState(null);
 
-  const [operators, setOperators] = useState(DEFAULT_OPERATORS);
-  const [activities, setActivities] = useState(DEFAULT_ACTIVITIES);
-  const [errorTypes, setErrorTypes] = useState(DEFAULT_ERROR_TYPES);
-  const [vehicles, setVehicles] = useState([]);
-  const [shortages, setShortages] = useState([]);
-  const [adminPin, setAdminPin] = useState("2026");
-  const [alertThreshold, setAlertThreshold] = useState(DEFAULT_ALERT_THRESHOLD);
-  const [entries, setEntries] = useState([]);
-  const [activeSessions, setActiveSessions] = useState([]);
-  const [separationErrors, setSeparationErrors] = useState([]);
+  const {
+    loaded, connectionError, actionError, usingDefaults, realtimeStatus,
+    operators, activities, errorTypes, vehicles, shortages, alertThreshold,
+    entries, activeSessions, separationErrors,
+    loadAll, loadEntries, resetEntries, resetSeparationErrors, resetShortages,
+  } = useAppData(session);
 
+  // Operador logado (para checar role: 'operator' | 'lider' | 'admin')
   const [currentOperator, setCurrentOperator] = useState(null);
 
+  // Líder OU admin pode acessar a Rotina do Líder
   const isLeader = currentOperator?.role === "lider" || isAdmin;
 
   const alertedRef = useRef(new Set());
 
-  useEffect(() => {
-    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
-    navigator.serviceWorker.register("/sw.js").catch(() => {});
-  }, []);
+  const [updateReady, setUpdateReady] = useState(null);
+  useEffect(() => registerServiceWorker({ onUpdateReady: setUpdateReady }), []);
 
+  // Girou a tela / redimensionou para largura de desktop: fecha a gaveta
+  // (senão o fundo escuro ficaria cobrindo a tela).
+  useEffect(() => {
+    if (!isMobile) setMobileMenuOpen(false);
+  }, [isMobile]);
+
+  // Gaveta aberta: Esc fecha (e devolve o foco ao botão) e o fundo não rola.
+  useEffect(() => {
+    if (!mobileMenuOpen) return undefined;
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        setMobileMenuOpen(false);
+        menuButtonRef.current?.focus();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [mobileMenuOpen]);
+
+  // Reenvia o que ficou guardado offline (iniciar/finalizar atividade)
+  useEffect(() => {
+    if (!session) return undefined;
+    return startAutoSync(() => { loadEntries(); });
+  }, [session, loadEntries]);
+
+  // Carrega operador logado do sessionStorage (o Kiosk guarda ao logar)
   useEffect(() => {
     try {
       const raw = sessionStorage.getItem("aponta_schedule_operator");
@@ -110,165 +130,8 @@ export default function App() {
         const found = operators.find((o) => o.code === parsed.code);
         if (found) setCurrentOperator(found);
       }
-    } catch {}
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    } catch { /* sessionStorage indisponível */ }
   }, [operators]);
-
-  const loadOperators = useCallback(async () => {
-    const { data, error } = await fetchOperators();
-    if (error) return error;
-    const list = data && data.length ? data : DEFAULT_OPERATORS;
-    setOperators(list);
-    try {
-      const raw = sessionStorage.getItem("aponta_schedule_operator");
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        const found = list.find((o) => o.code === parsed.code);
-        if (found) setCurrentOperator(found);
-      }
-    } catch {}
-    return null;
-  }, []);
-
-  const loadActivities = useCallback(async () => {
-    const { data, error } = await fetchActivities();
-    if (error) return error;
-    setActivities(data && data.length ? data : DEFAULT_ACTIVITIES);
-    return null;
-  }, []);
-
-  const loadErrorTypes = useCallback(async () => {
-    const { data, error } = await fetchErrorTypes();
-    if (error) return error;
-    setErrorTypes(data && data.length ? data : DEFAULT_ERROR_TYPES);
-    return null;
-  }, []);
-
-  const loadVehicles = useCallback(async () => {
-    const { data, error } = await fetchVehicles();
-    if (error) return error;
-    setVehicles(data || []);
-    return null;
-  }, []);
-
-  const loadAdminConfig = useCallback(async () => {
-    const { data, error } = await fetchAdminConfig();
-    if (error) return error;
-    if (data) {
-      if (data.pin) setAdminPin(data.pin);
-      if (data.alert_threshold_seconds) setAlertThreshold(data.alert_threshold_seconds);
-    }
-    return null;
-  }, []);
-
-  const loadEntries = useCallback(async () => {
-    const { data, error } = await fetchEntries();
-    if (!error && data) setEntries(data);
-  }, []);
-
-  const loadActiveSessions = useCallback(async () => {
-    const { data, error } = await fetchActiveSessions();
-    if (!error && data) setActiveSessions(data);
-  }, []);
-
-  const loadSeparationErrors = useCallback(async () => {
-    const { data, error } = await fetchSeparationErrors();
-    if (!error && data) setSeparationErrors(data);
-  }, []);
-
-  const loadShortages = useCallback(async () => {
-    const { data, error } = await fetchShortages();
-    if (!error && data) setShortages(data);
-  }, []);
-
-  const loadAll = useCallback(async () => {
-    const results = await Promise.all([
-      loadOperators(), loadActivities(), loadErrorTypes(), loadVehicles(), loadAdminConfig(),
-    ]);
-    const firstError = results.find((e) => e);
-    if (firstError) {
-      setConnectionError(firstError.message || "Erro desconhecido ao conectar com o banco.");
-      setUsingDefaults(true);
-    } else {
-      setConnectionError(null);
-      setUsingDefaults(false);
-    }
-    await Promise.all([loadEntries(), loadActiveSessions(), loadSeparationErrors(), loadShortages()]);
-  }, [loadOperators, loadActivities, loadErrorTypes, loadVehicles, loadAdminConfig, loadEntries, loadActiveSessions, loadSeparationErrors, loadShortages]);
-
-  const resetEntries = useCallback(async () => {
-    const { error } = await deleteAllEntries();
-    if (error) { setActionError("Não foi possível apagar o histórico. Tente novamente."); return { error }; }
-    setActionError(null);
-    await Promise.all([loadEntries(), loadShortages()]);
-    return { error: null };
-  }, [loadEntries, loadShortages]);
-
-  const resetSeparationErrors = useCallback(async () => {
-    const { error } = await deleteAllSeparationErrors();
-    if (error) { setActionError("Não foi possível apagar os erros de separação. Tente novamente."); return { error }; }
-    setActionError(null);
-    await loadSeparationErrors();
-    return { error: null };
-  }, [loadSeparationErrors]);
-
-  const resetShortages = useCallback(async () => {
-    const { error } = await deleteAllShortages();
-    if (error) { setActionError("Não foi possível apagar as faltas. Tente novamente."); return { error }; }
-    setActionError(null);
-    await loadShortages();
-    return { error: null };
-  }, [loadShortages]);
-
-  useEffect(() => {
-    if (!session) return;
-
-    (async () => {
-      try { await loadAll(); }
-      catch (err) { setConnectionError(err?.message || "Erro inesperado ao carregar o aplicativo."); }
-      finally { setLoaded(true); }
-    })();
-
-    const debounced = (fn, ms = 250) => {
-      let t = null;
-      return () => { if (t) clearTimeout(t); t = setTimeout(fn, ms); };
-    };
-
-    const reloadOperators = debounced(loadOperators);
-    const reloadActivities = debounced(loadActivities);
-    const reloadErrorTypes = debounced(loadErrorTypes);
-    const reloadVehicles = debounced(loadVehicles);
-    const reloadAdminConfig = debounced(loadAdminConfig);
-    const reloadEntries = debounced(loadEntries);
-    const reloadSessions = debounced(loadActiveSessions);
-    const reloadSepErrors = debounced(loadSeparationErrors);
-    const reloadShortages = debounced(loadShortages);
-
-    const channels = [
-      supabase.channel("entries-changes").on("postgres_changes", { event: "*", schema: "public", table: "entries" }, () => { reloadEntries(); reloadShortages(); }).subscribe(),
-      supabase.channel("sessions-changes").on("postgres_changes", { event: "*", schema: "public", table: "active_sessions" }, reloadSessions).subscribe(),
-      supabase.channel("operators-changes").on("postgres_changes", { event: "*", schema: "public", table: "operators" }, reloadOperators).subscribe(),
-      supabase.channel("activities-changes").on("postgres_changes", { event: "*", schema: "public", table: "activities" }, reloadActivities).subscribe(),
-      supabase.channel("error-types-changes").on("postgres_changes", { event: "*", schema: "public", table: "error_types" }, reloadErrorTypes).subscribe(),
-      supabase.channel("vehicles-changes").on("postgres_changes", { event: "*", schema: "public", table: "vehicles" }, reloadVehicles).subscribe(),
-      supabase.channel("admin-config-changes").on("postgres_changes", { event: "*", schema: "public", table: "admin_config" }, reloadAdminConfig).subscribe(),
-      supabase.channel("separation-errors-changes").on("postgres_changes", { event: "*", schema: "public", table: "separation_errors" }, reloadSepErrors).subscribe(),
-      supabase.channel("shortages-changes").on("postgres_changes", { event: "*", schema: "public", table: "entry_shortages" }, reloadShortages).subscribe(),
-    ];
-
-    const confChannel = supabase
-      .channel("notify-conference")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "conference_queue" }, (payload) => {
-        if (!isPushEnabled()) return;
-        if (payload.new) notifyNewConferenceItem(payload.new);
-      })
-      .subscribe();
-
-    return () => {
-      channels.forEach((ch) => supabase.removeChannel(ch));
-      supabase.removeChannel(confChannel);
-    };
-  }, [session, loadOperators, loadActivities, loadErrorTypes, loadVehicles, loadAdminConfig, loadEntries, loadActiveSessions, loadSeparationErrors, loadShortages, loadAll]);
 
   useEffect(() => {
     if (!isPushEnabled()) return;
@@ -339,6 +202,7 @@ export default function App() {
     "stock-map-edit", "turn-comparison", "supplier-shortages", "sound-settings",
     "alert-settings", "team-goals", "achievements", "equipment",
     "stock-map-history", "monthly-report",
+    // ↓↓↓ NOVO: Configuração da Rotina ↓↓↓
     "routine-settings",
   ];
 
@@ -359,17 +223,21 @@ export default function App() {
         </div>
       )}
 
-      {/* Botão hambúrguer — só aparece no mobile (via CSS) */}
+      {/* ↓↓↓ NOVO: Sidebar recebe currentOperator para filtrar itens ↓↓↓ */}
+      {/* Botão hambúrguer: só aparece no celular (via CSS) */}
       <button
+        ref={menuButtonRef}
         className="mobile-menu-btn"
+        type="button"
         onClick={() => setMobileMenuOpen(true)}
         aria-label="Abrir menu"
-        type="button"
+        aria-expanded={mobileMenuOpen}
+        aria-controls="app-sidebar"
       >
         ☰
       </button>
 
-      {/* Backdrop escuro no mobile quando o menu está aberto */}
+      {/* Fundo escuro atrás da gaveta; tocar nele fecha o menu */}
       {mobileMenuOpen && (
         <div
           className="mobile-menu-backdrop visible"
@@ -379,6 +247,7 @@ export default function App() {
       )}
 
       <Sidebar
+        id="app-sidebar"
         tab={tab}
         setTab={(t) => {
           setTab(t);
@@ -391,6 +260,7 @@ export default function App() {
       />
 
       <main className="main">
+        <StatusBar realtimeStatus={realtimeStatus} updateReady={updateReady} />
         {connectionError && (
           <div className="alert-card alert-danger">
             <strong>Sem conexão com o banco de dados.</strong>
@@ -409,6 +279,7 @@ export default function App() {
 
         {actionError && <div className="alert-card alert-danger">{actionError}</div>}
 
+        <Suspense fallback={<ScreenFallback />}>
         <div key={tab}>
           {tab === "kiosk" && (
             <Kiosk operators={operators} activities={activities} vehicles={vehicles} refreshEntries={loadEntries} />
@@ -448,12 +319,13 @@ export default function App() {
             <StockMap isAdmin={isAdmin} />
           )}
 
+          {/* ↓↓↓ NOVO: Rotina do Líder (líder ou admin) ↓↓↓ */}
           {tab === "daily-routine" && (isLeader || isAdmin) && (
             <DailyRoutine currentOperator={currentOperator} />
           )}
 
           {adminTabs.includes(tab) && !isAdmin && (
-            <AdminGate correctPin={adminPin} onUnlock={() => setIsAdmin(true)} />
+            <AdminGate onUnlock={() => setIsAdmin(true)} />
           )}
 
           {tab === "executive" && isAdmin && (
@@ -508,10 +380,10 @@ export default function App() {
             <ManualEntry operators={operators} activities={activities} refreshEntries={loadEntries} />
           )}
           {tab === "admin-master" && isAdmin && (
-            <AdminMaster operators={operators} adminPin={adminPin} />
+            <AdminMaster operators={operators} />
           )}
           {tab === "team" && isAdmin && (
-            <TeamManager operators={operators} activities={activities} errorTypes={errorTypes} vehicles={vehicles} adminPin={adminPin} alertThreshold={alertThreshold} refreshConfig={loadAll} />
+            <TeamManager operators={operators} activities={activities} errorTypes={errorTypes} vehicles={vehicles} alertThreshold={alertThreshold} refreshConfig={loadAll} />
           )}
           {tab === "sound-settings" && isAdmin && (
             <SoundSettings />
@@ -534,10 +406,12 @@ export default function App() {
           {tab === "reports-scheduler" && isAdmin && (
             <ReportsScheduler />
           )}
+          {/* ↓↓↓ NOVO: Config. Rotina (só admin) ↓↓↓ */}
           {tab === "routine-settings" && isAdmin && (
             <RoutineSettings />
           )}
         </div>
+        </Suspense>
 
         <div className="footer-note">
           Aponta CD

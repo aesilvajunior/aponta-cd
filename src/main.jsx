@@ -14,10 +14,9 @@ import "./styles/05-schedules.css";
 import "./styles/06-screens.css";
 import "./styles/07-utilities.css";
 import "./styles/08-stock-map.css";
-import "./styles/09-sidebar-menu.css";
-import "./styles/10-routine-checklist.css";
-import "./styles/11-responsive-mobile.css";
-import "./styles/12-status-a11y.css";
+import "./styles/09-routine-checklist.css";
+import "./styles/10-responsive.css";
+import "./styles/11-status-a11y.css";
 
 // Roteamento bem simples, sem biblioteca: /tv abre só o painel de
 // exibição (pensado pra TV/monitor externo), sem menu nem navegação.

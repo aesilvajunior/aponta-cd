@@ -1,0 +1,301 @@
+/* ==================================================================
+   RESPONSIVO — ALTURA
+   ================================================================== */
+
+@media (max-height: 800px) {
+  .sidebar-brand-row { padding: 16px 16px 16px 20px; }
+  .sidebar-section-title { padding: 10px 20px 6px 20px; }
+  .nav-item { padding: 8px 12px; }
+  .main { padding: 24px 32px 32px 32px; }
+  .kiosk-page { margin: -24px -32px 0 -32px; }
+  .kiosk-header { padding: 14px 32px; }
+  .kiosk-main { padding: 28px 20px 32px 20px; }
+  .footer-note { margin-top: 24px; }
+}
+
+@media (max-height: 700px) {
+  .sidebar-brand-row { padding: 14px 14px 14px 18px; }
+  .sidebar-section-title { padding: 8px 18px 4px 18px; font-size: 10px; }
+  .nav-item { padding: 7px 11px; font-size: 13px; }
+  .nav-item-icon { width: 16px; height: 16px; }
+  .main { padding: 20px 26px 24px 26px; }
+  .kiosk-page { margin: -20px -26px 0 -26px; }
+  .kiosk-header { padding: 12px 26px; }
+  .kiosk-header-time { font-size: 18px; }
+  .kiosk-main { padding: 20px 16px 24px 16px; }
+  .kiosk-terminal-wrap { padding: 28px 24px 22px 24px; max-width: 360px; }
+  .kiosk-session-timer-value { font-size: 38px; }
+  .kiosk-session-activity { font-size: 22px; }
+  .kiosk-activity-card { min-height: 90px; padding: 16px 12px; }
+  .footer-note { margin-top: 18px; }
+}
+
+@media (min-width: 1800px) {
+  .main { max-width: 1600px; }
+  .kiosk-page { max-width: 100%; }
+  .kiosk-logged { max-width: 1000px; }
+}
+
+@media (max-width: 1100px) {
+  .sidebar:not(.sidebar-collapsed) {
+    width: 210px;
+    min-width: 210px;
+    max-width: 210px;
+  }
+  .main { padding: 24px 28px 28px 28px; }
+  .kiosk-page { margin: -24px -28px 0 -28px; }
+  .kiosk-header { padding: 14px 28px; }
+}
+
+@media (max-width: 900px) {
+  .main { padding: 20px 24px 24px 24px; }
+  .kiosk-page { margin: -20px -24px 0 -24px; }
+  .kiosk-header { padding: 12px 24px; }
+  .kiosk-logged { max-width: 100%; }
+  .schedule-modal-grid { grid-template-columns: 1fr; }
+  .exec-kpis { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+}
+
+/* ==================================================================
+   RESPONSIVO — MOBILE (drawer + layout)
+   ================================================================== */
+
+.mobile-menu-btn {
+  display: none;
+  position: fixed;
+  top: 14px;
+  left: 14px;
+  z-index: 1200;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-md);
+  font-family: inherit;
+}
+
+.mobile-menu-btn:hover {
+  background: var(--surface-raised);
+}
+
+.mobile-menu-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 1100;
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+/* Só existe no celular: se a janela virar desktop, nunca cobre a tela */
+@media (max-width: 720px) {
+  .mobile-menu-backdrop.visible {
+    display: block;
+  }
+}
+
+@media (max-width: 720px) {
+  .mobile-menu-btn {
+    display: inline-flex;
+  }
+
+  /* Sidebar vira gaveta lateral */
+  .sidebar {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    width: 280px !important;
+    min-width: 0 !important;
+    max-width: 85vw !important;
+    z-index: 1150 !important;
+    transform: translateX(-100%) !important;
+    transition: transform 220ms ease !important;
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.4) !important;
+    border-right: 1px solid var(--border) !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+  }
+
+  .sidebar.sidebar-open {
+    transform: translateX(0) !important;
+  }
+
+  /* Ignora o estado collapsed no mobile: sempre mostra labels */
+  .sidebar.sidebar-collapsed {
+    width: 280px !important;
+    min-width: 0 !important;
+    max-width: 85vw !important;
+  }
+
+  .sidebar .sidebar-toggle { display: none !important; }
+
+  .sidebar.sidebar-collapsed .nav-item-label,
+  .sidebar.sidebar-collapsed .sidebar-brand-text,
+  .sidebar.sidebar-collapsed .sidebar-user,
+  .sidebar.sidebar-collapsed .sidebar-logout span,
+  .sidebar.sidebar-collapsed .sidebar-section-title,
+  .sidebar.sidebar-collapsed .sidebar-section-divider {
+    display: initial !important;
+  }
+
+  .sidebar.sidebar-collapsed .nav-item {
+    justify-content: flex-start !important;
+    padding: 10px 14px !important;
+  }
+
+  .sidebar.sidebar-collapsed .nav-item.active::before {
+    display: none !important;
+  }
+
+  /* Main ocupa tudo, com espaço pro botão hambúrguer */
+  .main {
+    width: 100% !important;
+    flex: 1 1 100% !important;
+    min-width: 0 !important;
+    margin-left: 0 !important;
+    padding: 68px 16px 24px 16px !important;
+  }
+
+  /* App shell vira bloco no mobile */
+  .app-shell {
+    display: block !important;
+  }
+
+  /* Ajustes de tipografia mobile */
+  .kiosk-page { margin: -68px -16px 0 -16px; padding-top: 68px; }
+  .kiosk-header { padding: 12px 16px; gap: 12px; flex-wrap: wrap; }
+  .kiosk-header-time { font-size: 18px; }
+  .kiosk-header-shift { display: none; }
+  .kiosk-main { padding: 20px 14px 28px 14px; }
+
+  /* Rotina do Líder */
+  .daily-routine { padding: 8px 0 !important; max-width: 100% !important; }
+  .dr-header { flex-direction: column; align-items: flex-start; gap: 10px; }
+  .dr-header h1 { font-size: 22px; line-height: 1.15; }
+  .dr-date { font-size: 12px; }
+  .dr-progress-ring { width: 52px; height: 52px; font-size: 12px; align-self: flex-end; }
+
+  .dr-tabs { overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .dr-tabs::-webkit-scrollbar { display: none; }
+  .dr-tabs button { flex: 0 0 auto; min-width: 110px; padding: 10px 14px; font-size: 13px; }
+
+  .dr-steps { gap: 10px; }
+  .dr-step { border-radius: 12px; }
+  .dr-step-main { padding: 14px; gap: 12px; align-items: flex-start; }
+  .dr-check { width: 28px; height: 28px; margin-top: 0; }
+  .dr-info strong { font-size: 15px; line-height: 1.25; overflow-wrap: anywhere; }
+  .dr-info small { font-size: 12.5px; line-height: 1.4; }
+
+  /* Checklist físico */
+  .pc-card { padding: 14px; }
+  .pc-checks { gap: 8px; flex-direction: column; }
+  .pc-checks label { width: 100%; justify-content: flex-start; }
+
+  /* Inconsistências */
+  .inc-toolbar { flex-direction: column; align-items: stretch; gap: 8px; }
+  .inc-toolbar select, .inc-toolbar button { width: 100%; }
+
+  /* Config. Rotina */
+  .rs-wrap { padding: 14px; }
+  .rs-step { grid-template-columns: 1fr; padding: 14px; }
+  .rs-step > button { grid-column: 1 / -1; width: 100%; }
+  .rs-sub-form { flex-direction: column; align-items: stretch; }
+  .rs-sub-form input, .rs-sub-form button { width: 100%; }
+  .rs-subs li { flex-wrap: wrap; gap: 6px; }
+  .rs-subs button { margin-left: 0; width: 100%; }
+
+  /* Toast */
+  .dr-toast { left: 14px; right: 14px; transform: none; bottom: 14px; }
+
+  /* Kiosk ajustes finos */
+  .kiosk-branch-grid { grid-template-columns: 1fr; }
+  .kiosk-session-activity { font-size: 22px; }
+  .kiosk-session-timer-value { font-size: 36px; }
+  .kiosk-modal-simnao { flex-direction: column; }
+  .kiosk-shortage-row { flex-wrap: wrap; }
+
+  /* Schedule */
+  .schedule-item { flex-direction: column; gap: 10px; }
+  .schedule-item-time { min-width: 0; }
+  .schedule-day { min-height: 80px; }
+  .schedule-day-event { font-size: 10px; padding: 2px 5px; }
+  .schedule-day-event-invoice { display: none; }
+  .schedule-calendar { padding: 16px; }
+  .schedule-calendar-title { font-size: 16px; }
+  .schedule-weekday { font-size: 10.5px; padding: 6px 0; }
+
+  /* ErrorKiosk */
+  .kiosk-error-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+  .kiosk-error-card { min-height: 100px; padding: 16px 10px; }
+  .kiosk-error-name { font-size: 13px; }
+  .kiosk-error-row-2 { grid-template-columns: 1fr; }
+  .kiosk-error-operator-input { flex-direction: column; }
+  .kiosk-error-selected-operator { flex-direction: column; align-items: flex-start; }
+
+  /* Login */
+  .login-card { padding: 28px 22px 22px 22px; }
+  .login-brand { margin-bottom: 20px; padding-bottom: 14px; }
+  .login-title { font-size: 20px; }
+
+  /* Stats */
+  .stat-strip { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+  .stat-cell { padding: 16px 18px; }
+  .stat-num { font-size: 24px; }
+
+  /* Perfil */
+  .profile-header { flex-direction: column; text-align: center; }
+  .profile-back { position: static; align-self: center; margin-bottom: 10px; }
+
+  /* Cmd palette */
+  .cmd-palette { max-width: 100%; margin: 0 14px; }
+  .cmd-footer { display: none; }
+
+  /* Tabelas */
+  table.data-table { font-size: 12px; }
+  table.data-table th, table.data-table td { padding: 9px 10px; }
+}
+
+@media (max-width: 480px) {
+  .main { padding: 62px 12px 20px 12px !important; }
+  .kiosk-page { margin: -62px -12px 0 -12px; }
+  .kiosk-header { padding: 10px 14px; }
+  .kiosk-header-time { font-size: 16px; }
+  .kiosk-main { padding: 14px 10px 22px 10px; }
+  .kiosk-terminal-wrap { padding: 24px 20px 20px 20px; max-width: 100%; border-radius: var(--radius-xl); }
+  .kiosk-keypad { gap: 10px; }
+  .kiosk-key { font-size: 20px; border-radius: var(--radius-sm); }
+  .kiosk-confirm { padding: 28px 20px; border-radius: var(--radius-xl); }
+  .kiosk-session { padding: 24px 20px; border-radius: var(--radius-xl); }
+  .kiosk-session-timer-value { font-size: 32px; }
+  .kiosk-session-activity { font-size: 20px; }
+  .kiosk-operator-bar { padding: 12px 16px; gap: 10px; }
+  .kiosk-operator-avatar { width: 38px; height: 38px; font-size: 16px; }
+  .kiosk-operator-name { font-size: 14px; }
+  .kiosk-activities { padding: 16px; border-radius: var(--radius-lg); }
+  .kiosk-activities-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .kiosk-activity-card { padding: 16px 10px; min-height: 90px; }
+  .kiosk-activity-name { font-size: 12.5px; }
+  .exec-kpis { grid-template-columns: 1fr; }
+  .profile-stats { grid-template-columns: repeat(2, 1fr); }
+  .schedule-item { padding: 14px 16px; }
+  .schedule-item-time { font-size: 16px; }
+  .schedule-item-supplier { font-size: 14.5px; }
+}
+
+@media (max-width: 380px) {
+  .dr-header h1 { font-size: 20px; }
+  .dr-tabs button { min-width: 90px; font-size: 12px; padding: 9px 10px; }
+  .dr-info strong { font-size: 14px; }
+  .dr-info small { font-size: 11.5px; }
+}

@@ -7,7 +7,7 @@ import {
   fetchAllAchievements,
   unlockAchievement,
 } from "../lib/api";
-import { fmtDate } from "../lib/format";
+import { fmtDate, localISODate } from "../lib/format";
 import {
   IconRefresh,
   IconAward,
@@ -93,7 +93,7 @@ export default function Achievements({ operators = [] }) {
 
       const dayCount = {};
       list.forEach((e) => {
-        const d = e.start_time.slice(0, 10);
+        const d = localISODate(e.start_time);
         dayCount[d] = (dayCount[d] || 0) + 1;
       });
       const days = Object.keys(dayCount).sort();
@@ -119,7 +119,7 @@ export default function Achievements({ operators = [] }) {
 
       const sameDay = {};
       list.forEach((e) => {
-        const d = e.start_time.slice(0, 10);
+        const d = localISODate(e.start_time);
         if (!sameDay[d]) sameDay[d] = [];
         sameDay[d].push(e);
       });

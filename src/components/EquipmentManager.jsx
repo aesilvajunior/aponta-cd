@@ -9,7 +9,7 @@ import {
   addEquipmentMaintenance,
   deleteEquipmentMaintenance,
 } from "../lib/api";
-import { fmtDate } from "../lib/format";
+import { fmtDate, todayLocalISODate } from "../lib/format";
 import {
   IconTruck,
   IconPlus,
@@ -70,7 +70,7 @@ export default function EquipmentManager() {
     description: "",
     performedBy: "",
     cost: "",
-    performedAt: new Date().toISOString().slice(0, 10),
+    performedAt: todayLocalISODate(),
     nextDueAt: "",
     note: "",
   });
@@ -177,7 +177,7 @@ export default function EquipmentManager() {
     // Atualiza last_maintenance e next_maintenance do equipamento
     if (!err) {
       await updateEquipment(equipmentId, {
-        last_maintenance: newMaint.performedAt || new Date().toISOString().slice(0, 10),
+        last_maintenance: newMaint.performedAt || todayLocalISODate(),
         next_maintenance: newMaint.nextDueAt || null,
       });
     }
@@ -188,7 +188,7 @@ export default function EquipmentManager() {
       description: "",
       performedBy: "",
       cost: "",
-      performedAt: new Date().toISOString().slice(0, 10),
+      performedAt: todayLocalISODate(),
       nextDueAt: "",
       note: "",
     });

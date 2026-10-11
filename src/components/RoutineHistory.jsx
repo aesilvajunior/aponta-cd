@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { fetchRoutineHistory, fetchRoutineConfig } from "../lib/api";
+import { localISODate } from "../lib/format";
 
 export default function RoutineHistory() {
   const [rows, setRows] = useState([]);
@@ -7,7 +8,7 @@ export default function RoutineHistory() {
   const [days, setDays] = useState(14);
 
   const load = useCallback(async () => {
-    const from = new Date(Date.now() - days * 864e5).toISOString().slice(0, 10);
+    const from = localISODate(new Date(Date.now() - days * 864e5));
     const [{ data: hist }, { data: steps }] = await Promise.all([
       fetchRoutineHistory({ from }),
       fetchRoutineConfig(),
