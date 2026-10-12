@@ -17,7 +17,7 @@
     "db:diff": "npx supabase db diff"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.45.4",
+    "@supabase/supabase-js": "^2.117.3",
     "konva": "^9.3.16",
     "papaparse": "^5.7.0",
     "react": "^18.3.1",
