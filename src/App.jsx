@@ -4,6 +4,7 @@ import { useAuth } from "./context/AuthContext";
 import { isPushEnabled, notifyLateActivity } from "./lib/pushNotifications";
 import { useAppData, DEFAULT_ALERT_THRESHOLD } from "./hooks/useAppData";
 import { startAutoSync } from "./lib/offlineSync";
+import { checkAdminSession, lockAdminSession } from "./lib/api";
 import { lazyWithRetry } from "./lib/lazyWithRetry";
 import { registerServiceWorker } from "./lib/registerSW";
 import { useMediaQuery, MOBILE_QUERY } from "./hooks/useMediaQuery";
@@ -50,6 +51,10 @@ const StockMapHistory = lazyWithRetry(() => import("./components/StockMapHistory
 const MonthlyReport = lazyWithRetry(() => import("./components/MonthlyReport"));
 const DailyRoutine = lazyWithRetry(() => import("./components/DailyRoutine"));
 const RoutineSettings = lazyWithRetry(() => import("./components/RoutineSettings"));
+const Workload = lazyWithRetry(() => import("./components/Workload"));
+const PauseReasons = lazyWithRetry(() => import("./components/PauseReasons"));
+const SystemHealth = lazyWithRetry(() => import("./components/SystemHealth"));
+const BadgePrinter = lazyWithRetry(() => import("./components/BadgePrinter"));
 
 function ScreenFallback() {
   return (
@@ -115,6 +120,37 @@ export default function App() {
     };
   }, [mobileMenuOpen]);
 
+  // Admin: trava sozinho depois de 30 min sem uso e confere no servidor se a
+  // sessão de admin (aberta pelo PIN) ainda vale. Se expirou, volta ao PIN.
+  const lastActivityRef = useRef(Date.now());
+  useEffect(() => {
+    if (!isAdmin) return undefined;
+    const IDLE_MS = 30 * 60 * 1000;
+    lastActivityRef.current = Date.now();
+    const touch = () => { lastActivityRef.current = Date.now(); };
+    const events = ["pointerdown", "keydown", "touchstart"];
+    events.forEach((ev) => window.addEventListener(ev, touch, { passive: true }));
+
+    const iv = setInterval(async () => {
+      if (Date.now() - lastActivityRef.current > IDLE_MS) {
+        setIsAdmin(false);
+        setTab("kiosk");
+        lockAdminSession();
+        return;
+      }
+      const stillValid = await checkAdminSession();
+      if (stillValid === false) {
+        setIsAdmin(false);
+        setTab("kiosk");
+      }
+    }, 60 * 1000);
+
+    return () => {
+      events.forEach((ev) => window.removeEventListener(ev, touch));
+      clearInterval(iv);
+    };
+  }, [isAdmin]);
+
   // Reenvia o que ficou guardado offline (iniciar/finalizar atividade)
   useEffect(() => {
     if (!session) return undefined;
@@ -165,7 +201,11 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  function lockAdmin() { setIsAdmin(false); setTab("kiosk"); }
+  function lockAdmin() {
+    setIsAdmin(false);
+    setTab("kiosk");
+    lockAdminSession(); // encerra também a sessão de admin no servidor
+  }
   function handleViewOperator(op) { setProfileOperator(op); setTab("panel"); }
   function handleApplyFilter({ type, value }) { setGlobalFilter({ type, value, ts: Date.now() }); }
   function handleOpenAdminMaster(payload) {
@@ -201,7 +241,7 @@ export default function App() {
     "admin-master", "goals", "csv-import", "fraud", "reports-scheduler",
     "stock-map-edit", "turn-comparison", "supplier-shortages", "sound-settings",
     "alert-settings", "team-goals", "achievements", "equipment",
-    "stock-map-history", "monthly-report",
+    "stock-map-history", "monthly-report", "workload", "pauses", "health", "badges",
     // ↓↓↓ NOVO: Configuração da Rotina ↓↓↓
     "routine-settings",
   ];
@@ -260,6 +300,9 @@ export default function App() {
       />
 
       <main className="main">
+        {import.meta.env.VITE_APP_ENV && import.meta.env.VITE_APP_ENV !== "production" && (
+          <div className="env-banner" role="note">AMBIENTE DE {String(import.meta.env.VITE_APP_ENV).toUpperCase()}: os dados daqui não são os reais</div>
+        )}
         <StatusBar realtimeStatus={realtimeStatus} updateReady={updateReady} />
         {connectionError && (
           <div className="alert-card alert-danger">
@@ -388,6 +431,12 @@ export default function App() {
           {tab === "sound-settings" && isAdmin && (
             <SoundSettings />
           )}
+          {tab === "workload" && isAdmin && <Workload entries={entries} />}
+          {tab === "pauses" && isAdmin && <PauseReasons />}
+          {tab === "health" && isAdmin && (
+            <SystemHealth realtimeStatus={realtimeStatus} entriesCount={entries.length} updateReady={updateReady} />
+          )}
+          {tab === "badges" && isAdmin && <BadgePrinter operators={operators} />}
           {tab === "audit" && isAdmin && (
             <AuditLog />
           )}

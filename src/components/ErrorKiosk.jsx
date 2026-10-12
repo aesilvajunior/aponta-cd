@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { logSeparationError } from "../lib/api";
+import { logSeparationErrorSafe } from "../lib/offlineSync";
 import { fmtClock, fmtDate, shiftFor } from "../lib/format";
 import { getStationName, promptForStationName } from "../lib/station";
 import { playSuccess, playError, playKey } from "../utils/sound";
@@ -256,7 +256,7 @@ export default function ErrorKiosk({ operators, errorTypes }) {
         ? `${transferZone} ${orderNumber}`
         : orderNumber;
 
-    const { error } = await logSeparationError({
+    const { error, queued } = await logSeparationErrorSafe({
       operatorCode: loggedOperator.code,
       operatorName: loggedOperator.name,
       errorType,
@@ -270,7 +270,7 @@ export default function ErrorKiosk({ operators, errorTypes }) {
     setBusy(false);
     if (!error) {
       playSuccess();
-      setConfirmation({ errorType });
+      setConfirmation({ errorType, queued: !!queued });
       autoReturnTimeoutRef.current = setTimeout(reset, AUTO_RETURN_MS);
     } else {
       playError();
@@ -355,12 +355,17 @@ export default function ErrorKiosk({ operators, errorTypes }) {
         )}
 
         {loggedOperator && confirmation && (
-          <div className="kiosk-confirm">
+          <div className="kiosk-confirm" role="status" aria-live="polite">
             <div className="kiosk-confirm-icon" style={{ background: "var(--ok-soft)", color: "var(--ok)" }}>
               <IconCheck size={30} />
             </div>
             <div className="kiosk-confirm-title">Erro registrado</div>
             <div className="kiosk-confirm-sub">{confirmation.errorType}</div>
+            {confirmation.queued && (
+              <div className="kiosk-confirm-sub kiosk-confirm-offline">
+                Sem conexão: salvo neste aparelho e será enviado automaticamente.
+              </div>
+            )}
           </div>
         )}
 

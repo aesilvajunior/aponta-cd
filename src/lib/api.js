@@ -552,8 +552,10 @@ export async function fetchSeparationErrors() {
 export async function logSeparationError({
   operatorCode, operatorName, errorType, note, station,
   orderType, orderNumber, errorOperatorCode, errorOperatorName,
+  createdAt = null, // usado ao reenviar da fila offline: mantém a hora original
 }) {
   return supabase.from("separation_errors").insert({
+    ...(createdAt ? { created_at: createdAt } : {}),
     operator_code: operatorCode,
     operator_name: operatorName,
     error_type: errorType,
@@ -1336,4 +1338,96 @@ export async function fetchRoutineHistory({ from, to } = {}) {
 // ============================================================
 export async function fetchOperatorRanking(fromISO, toISO) {
   return supabase.rpc("get_operator_ranking", { p_from: fromISO, p_to: toISO });
+}
+
+// ============================================================
+// SESSÃO DE ADMIN NO SERVIDOR (requer 2026-10-11_roles_rls.sql)
+// Antes da migração, as funções abaixo não existem e o app ignora o erro.
+// ============================================================
+function isMissingFn(error) {
+  const code = error?.code || "";
+  return code === "PGRST202" || code === "42883" || /could not find the function/i.test(error?.message || "");
+}
+
+// true = sessão de admin ativa · false = expirou · null = recurso não instalado/sem rede
+export async function checkAdminSession() {
+  const { data, error } = await supabase.rpc("is_admin_session");
+  if (error) return null;
+  return data === true;
+}
+
+export async function lockAdminSession() {
+  const { error } = await supabase.rpc("lock_admin");
+  return { error: error && !isMissingFn(error) ? error : null };
+}
+
+// ============================================================
+// PAUSAS (sessão ativa + registro com motivo)
+// ============================================================
+export async function setSessionPaused(operatorCode, pausedAtIso) {
+  return supabase.from("active_sessions").update({ paused_at: pausedAtIso }).eq("operator_code", operatorCode);
+}
+
+export async function setSessionResumed(operatorCode, totalPausedSeconds) {
+  return supabase
+    .from("active_sessions")
+    .update({ paused_at: null, total_paused_seconds: totalPausedSeconds })
+    .eq("operator_code", operatorCode);
+}
+
+// O registro com motivo é "melhor esforço": se a tabela ainda não existe
+// (migração não aplicada), o erro é ignorado e a pausa funciona igual.
+export async function insertPauseLog({ operatorCode, operatorName, activity, station, reason, pausedAt }) {
+  const { error } = await supabase.from("session_pauses").insert({
+    operator_code: operatorCode,
+    operator_name: operatorName || null,
+    activity: activity || null,
+    station: station || null,
+    reason,
+    paused_at: pausedAt,
+  });
+  return { error };
+}
+
+export async function closePauseLog(operatorCode, resumedAtIso, durationSeconds) {
+  const { error } = await supabase
+    .from("session_pauses")
+    .update({ resumed_at: resumedAtIso, duration_seconds: durationSeconds })
+    .eq("operator_code", operatorCode)
+    .is("resumed_at", null);
+  return { error };
+}
+
+export async function fetchPauseLogs({ days = 30, limit = 5000 } = {}) {
+  const since = new Date(Date.now() - days * 86400000).toISOString();
+  return supabase
+    .from("session_pauses")
+    .select("*")
+    .gte("paused_at", since)
+    .order("paused_at", { ascending: false })
+    .limit(limit);
+}
+
+// ============================================================
+// SAÚDE DO SISTEMA
+// ============================================================
+export async function fetchClientErrors({ limit = 50 } = {}) {
+  return supabase.from("client_errors").select("*").order("created_at", { ascending: false }).limit(limit);
+}
+
+export async function fetchSystemStatus() {
+  return supabase.from("system_status").select("*");
+}
+
+export async function upsertSystemStatus(key, value) {
+  return supabase
+    .from("system_status")
+    .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: "key" });
+}
+
+// Mede o tempo de resposta do banco (ms)
+export async function pingDatabase() {
+  const t0 = performance.now();
+  const { error } = await supabase.from("admin_config").select("id").eq("id", 1).maybeSingle();
+  return { ms: Math.round(performance.now() - t0), error };
 }

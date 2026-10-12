@@ -64,6 +64,13 @@ const ALERT_TYPES = [
     description: "Quando uma equipe bate a meta do período",
     example: "Meta atingida!\nEquipe Manhã — 210 registros",
   },
+  {
+    field: "alert_system_enabled",
+    icon: <IconAlertTriangle size={16} />,
+    label: "Erros no sistema",
+    description: "Quando tablets ou a TV registram vários erros em poucos minutos",
+    example: "8 erros no sistema nos últimos 15 min\nÚltimo: Failed to fetch\nVeja em Sistema > Saúde do sistema.",
+  },
 ];
 
 export default function AlertSettings() {
@@ -77,6 +84,7 @@ export default function AlertSettings() {
     alert_mesa_enabled: true,
     alert_missing_enabled: true,
     alert_goal_enabled: false,
+    alert_system_enabled: true,
     alert_conference_problem_enabled: true,
     alert_shortage_realtime_enabled: false,
     message_header: "Aponta CD",

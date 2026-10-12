@@ -35,6 +35,7 @@ import {
   IconDownload,
   IconBuilding,
   IconHistory,
+  IconPause,
 } from "./Icons";
 
 const STORAGE_KEY = "aponta_sidebar_collapsed";
@@ -60,6 +61,8 @@ const SECTIONS = [
       { key: "executive", label: "Visão geral", Icon: IconTrendingUp },
       { key: "panel", label: "Indicadores", Icon: IconLayoutDashboard },
       { key: "turn-comparison", label: "Comparação de turnos", Icon: IconActivity },
+      { key: "workload", label: "Carga de trabalho", Icon: IconTrendingUp },
+      { key: "pauses", label: "Pausas", Icon: IconPause },
       {
         key: "faltas-group",
         label: "Faltas",
@@ -90,6 +93,7 @@ const SECTIONS = [
       { key: "sales-query", label: "Líder da equipe", Icon: IconSearch },
       { key: "sales-team", label: "Equipe comercial", Icon: IconUsers },
       { key: "team", label: "Cadastros", Icon: IconSettings },
+      { key: "badges", label: "Crachás", Icon: IconUsers },
       { key: "equipment", label: "Equipamentos", Icon: IconTruck },
     ],
   },
@@ -104,6 +108,7 @@ const SECTIONS = [
       { key: "reports-scheduler", label: "Export agendado", Icon: IconVolume2 },
       { key: "alert-settings", label: "Alertas Telegram", Icon: IconAlertCircle },
       { key: "sound-settings", label: "Sons do sistema", Icon: IconVolume2 },
+      { key: "health", label: "Saúde do sistema", Icon: IconAlertCircle },
       { key: "audit", label: "Auditoria", Icon: IconClock },
       { key: "routine-settings", label: "Config. Rotina", Icon: IconSettings, requiresAdmin: true },
     ],

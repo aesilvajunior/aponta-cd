@@ -28,20 +28,47 @@ on conflict (id) do nothing;
 
 update public.admin_config set pin = '' where coalesce(pin, '') <> '';
 
+-- Controle de tentativas erradas (bloqueia 5 min depois de 5 erros seguidos)
+create table if not exists public.admin_pin_attempts (
+  user_id uuid primary key,
+  fails integer not null default 0,
+  locked_until timestamptz
+);
+alter table public.admin_pin_attempts enable row level security;
+revoke all on public.admin_pin_attempts from anon, authenticated;
+
 create or replace function public.verify_admin_pin(p_pin text)
 returns boolean
 language plpgsql
 security definer
 set search_path = public, extensions
 as $$
-declare ok boolean;
+declare
+  ok boolean;
+  uid uuid := coalesce(auth.uid(), '00000000-0000-0000-0000-000000000000'::uuid);
+  lock_until timestamptz;
 begin
+  select locked_until into lock_until from admin_pin_attempts where user_id = uid;
+  if lock_until is not null and lock_until > now() then
+    raise exception 'Muitas tentativas erradas. Aguarde alguns minutos.' using errcode = 'P0001';
+  end if;
+
   select (pin_hash = crypt(coalesce(p_pin, ''), pin_hash))
     into ok from admin_secrets where id = 1;
-  if not coalesce(ok, false) then
-    perform pg_sleep(0.7); -- freia tentativa de força bruta
+
+  if coalesce(ok, false) then
+    delete from admin_pin_attempts where user_id = uid;
+    return true;
   end if;
-  return coalesce(ok, false);
+
+  insert into admin_pin_attempts (user_id, fails, locked_until)
+  values (uid, 1, null)
+  on conflict (user_id) do update
+    set fails = admin_pin_attempts.fails + 1,
+        locked_until = case when admin_pin_attempts.fails + 1 >= 5
+                            then now() + interval '5 minutes' else null end;
+  perform pg_sleep(0.7); -- freia tentativa de força bruta
+  return false;
 end $$;
 
 create or replace function public.set_admin_pin(p_current text, p_new text)
@@ -63,8 +90,10 @@ begin
   return true;
 end $$;
 
-revoke all on function public.verify_admin_pin(text) from public;
-revoke all on function public.set_admin_pin(text, text) from public;
+-- IMPORTANTE: o Supabase concede EXECUTE a anon/authenticated em funções novas por padrão,
+-- então revogar só de "public" não basta. Sem login ninguém pode tentar PINs.
+revoke all on function public.verify_admin_pin(text) from public, anon, authenticated;
+revoke all on function public.set_admin_pin(text, text) from public, anon, authenticated;
 grant execute on function public.verify_admin_pin(text) to authenticated;
 grant execute on function public.set_admin_pin(text, text) to authenticated;
 
@@ -136,4 +165,5 @@ as $$
    order by count(*) desc;
 $$;
 
+revoke all on function public.get_operator_ranking(date, date) from public, anon;
 grant execute on function public.get_operator_ranking(date, date) to authenticated;

@@ -13,8 +13,17 @@ function manualChunks(id) {
   return undefined;
 }
 
+// Identificação da versão publicada (aparece em "Saúde do sistema")
+const BUILD_INFO = {
+  builtAt: new Date().toISOString(),
+  commit: (process.env.CF_PAGES_COMMIT_SHA || process.env.GITHUB_SHA || "local").slice(0, 7),
+};
+
 export default defineConfig({
   plugins: [react()],
+  define: {
+    __APP_BUILD__: JSON.stringify(BUILD_INFO),
+  },
   server: {
     port: 5173,
   },

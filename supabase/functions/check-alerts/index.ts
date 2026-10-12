@@ -99,9 +99,39 @@ serve(async () => {
     }
   });
 
+  // 4) Erros do sistema (tablets/TV): vários erros em pouco tempo
+  if (settings.alert_system_enabled !== false) {
+    const sinceErrors = new Date(now - 15 * 60 * 1000).toISOString();
+    const { data: errs } = await supabase
+      .from("client_errors")
+      .select("id, message, station")
+      .gte("created_at", sinceErrors);
+    const errThreshold = settings.alert_errors_threshold || 5;
+    if ((errs || []).length >= errThreshold) {
+      const last = (errs || [])[0];
+      alertsToSend.push({
+        alertType: "system_errors",
+        message: `🛠️ ${errs!.length} erros no sistema nos últimos 15 min\nÚltimo: ${String(last?.message || "").slice(0, 120)}\nVeja em Sistema > Saúde do sistema.`,
+        payload: { count: errs!.length },
+      });
+    }
+  }
+
+  // Evita repetir o mesmo alerta a cada execução (a função roda de poucos em poucos minutos):
+  // um alerta igual só é reenviado depois de 60 min.
+  const sinceDedup = new Date(now - 60 * 60 * 1000).toISOString();
+  const { data: recent } = await supabase
+    .from("alert_log")
+    .select("alert_type, payload, success")
+    .gte("sent_at", sinceDedup)
+    .eq("success", true);
+  const keyOf = (type: string, p: any) => `${type}:${p?.operator_code || ""}:${p?.activity || ""}`;
+  const alreadySent = new Set((recent || []).map((r: any) => keyOf(r.alert_type, r.payload)));
+  const fresh = alertsToSend.filter((a) => !alreadySent.has(keyOf(a.alertType, a.payload)));
+
   // Envia cada um
   let sent = 0;
-  for (const alert of alertsToSend) {
+  for (const alert of fresh) {
     const res = await sendWhatsApp(settings.whatsapp_number, alert.message);
     await supabase.from("alert_log").insert({
       alert_type: alert.alertType,
@@ -113,7 +143,7 @@ serve(async () => {
   }
 
   return new Response(
-    JSON.stringify({ checked: (sessions || []).length, alertsSent: sent }),
+    JSON.stringify({ checked: (sessions || []).length, alertsSent: sent, skippedDuplicates: alertsToSend.length - fresh.length }),
     { headers: { "Content-Type": "application/json" } }
   );
 });

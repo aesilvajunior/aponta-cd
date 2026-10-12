@@ -13,7 +13,7 @@ export default [
     languageOptions: {
       ecmaVersion: "latest",
       sourceType: "module",
-      globals: { ...globals.browser },
+      globals: { ...globals.browser, __APP_BUILD__: "readonly" },
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
     settings: { react: { version: "detect" } },
@@ -36,7 +36,11 @@ export default [
     languageOptions: { globals: { ...globals.node, ...globals.browser, vi: "readonly" } },
   },
   {
-    files: ["functions/**/*.js", "vite.config.js", "eslint.config.js"],
+    files: ["e2e/**/*.js"],
+    languageOptions: { globals: { ...globals.node, ...globals.browser } },
+  },
+  {
+    files: ["functions/**/*.js", "vite.config.js", "eslint.config.js", "playwright.config.js"],
     languageOptions: { globals: { ...globals.node, ...globals.serviceworker } },
   },
 ];

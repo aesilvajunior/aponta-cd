@@ -17,7 +17,12 @@ export default function AdminGate({ onUnlock }) {
     if (ok) {
       onUnlock();
     } else if (verifyError) {
-      setError("Não foi possível verificar o PIN. Confira a conexão e tente de novo.");
+      // O servidor bloqueia por alguns minutos depois de 5 erros seguidos
+      setError(
+        /tentativas/i.test(verifyError.message || "")
+          ? verifyError.message
+          : "Não foi possível verificar o PIN. Confira a conexão e tente de novo."
+      );
     } else {
       setError("PIN incorreto.");
     }

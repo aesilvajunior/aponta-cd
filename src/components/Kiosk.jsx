@@ -3,6 +3,8 @@ import { fetchActiveSessionFor, saveShortages, addToConferenceQueue, undoFinishS
 import {
   startSessionSafe,
   finishSessionSafe,
+  pauseSessionSafe,
+  resumeSessionSafe,
   pendingSessionFor,
   isNetworkError,
   queueShortages,
@@ -11,12 +13,14 @@ import {
 } from "../lib/offlineSync";
 import { fmtDuration, fmtClock, fmtDate, shiftFor } from "../lib/format";
 import { getStationName, promptForStationName } from "../lib/station";
+import PauseReasonModal from "./kiosk/PauseReasonModal";
+import { shouldAskShortage, isSeparationEntry } from "../lib/kioskRules";
+import BadgeScanner, { badgeScannerSupported } from "./kiosk/BadgeScanner";
 import { playSuccess, playError, playKey } from "../utils/sound";
 import { playEventSound } from "../lib/sounds";
 import { fetchOperatorPrefs, saveOperatorPrefs, shouldShowWelcome, markWelcomeShown } from "../lib/operatorPrefs";
 import useKeyboardNav from "../hooks/useKeyboardNav";
 import { useTheme } from "../context/ThemeContext";
-import { supabase } from "../supabaseClient";
 import ConfettiBurst from "./ConfettiBurst";
 import WelcomeScreen from "./WelcomeScreen";
 import KioskPrefsModal from "./KioskPrefsModal";
@@ -50,19 +54,6 @@ const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
 const TRANSFER_TYPES = ["AP", "ZN"];
 const KIOSK_THEME_KEY = "aponta_kiosk_theme";
 
-function shouldAskShortage(session, activities) {
-  if (!session) return false;
-  const config = activities.find((a) => a.name === session.activity);
-  if (config && config.asks_shortage === true) return true;
-  if (config && config.asks_shortage === false) return false;
-  const askedForOrder = !!(session.order_number || session.customer_name || session.transfer_type);
-  return askedForOrder;
-}
-
-function isSeparationEntry(entry) {
-  return !!(entry.order_number || entry.transfer_type);
-}
-
 function activityIcon(name) {
   const n = (name || "").toLowerCase();
   if (n.includes("receb")) return <IconInbox size={26} />;
@@ -86,6 +77,8 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
   const [msgType, setMsgType] = useState("info");
   const [now, setNow] = useState(Date.now());
   const [busy, setBusy] = useState(false);
+  const [showPauseModal, setShowPauseModal] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
   // O estado "busy" só atualiza no próximo render; o ref bloqueia o duplo toque
   // (dois cliques rápidos antes do React redesenhar) na hora.
   const busyRef = useRef(false);
@@ -294,6 +287,14 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
   function triggerShake() {
     setShake(true);
     setTimeout(() => setShake(false), 400);
+  }
+
+  // Crachá lido pela câmera: preenche o código e entra direto.
+  function loginWithScannedCode(code) {
+    setShowScanner(false);
+    codeInputRef.current = code;
+    setCodeInput(code);
+    handleLogin();
   }
 
   async function handleLogin() {
@@ -553,24 +554,36 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
     setOrderError("Escolha uma opção acima.");
   }
 
-  async function handlePause() {
+  // Tocar em "Pausar" abre a pergunta do motivo; a pausa acontece ao escolher.
+  function handlePause() {
     if (!session || busy || busyRef.current) return;
     bump();
+    setShowPauseModal(true);
+  }
+
+  async function confirmPause(reason) {
+    if (!session || busyRef.current) return;
+    bump();
     lock();
-    const nowIso = new Date().toISOString();
-    const { error: err } = await supabase
-      .from("active_sessions")
-      .update({ paused_at: nowIso })
-      .eq("operator_code", session.operator_code);
+    const { pausedAt: nowIso, error: err, queued } = await pauseSessionSafe({
+      session,
+      reason,
+      station: stationName || null,
+    });
     unlock();
+    setShowPauseModal(false);
     if (err) {
       playError();
       setMsgType("error");
       setMsg(`Erro ao pausar. ${err.message}`);
       return;
     }
+    if (queued) {
+      setMsgType("info");
+      setMsg("Sem conexão: a pausa foi guardada e será enviada quando a internet voltar.");
+    }
     setPaused(true);
-    setPausedAt(Date.now());
+    setPausedAt(new Date(nowIso).getTime());
     setSession((s) => s ? { ...s, paused_at: nowIso } : s);
   }
 
@@ -580,16 +593,17 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
     lock();
     const addedPause = Math.round((Date.now() - pausedAt) / 1000);
     const newTotal = (session.total_paused_seconds || 0) + addedPause;
-    const { error: err } = await supabase
-      .from("active_sessions")
-      .update({ paused_at: null, total_paused_seconds: newTotal })
-      .eq("operator_code", session.operator_code);
+    const { error: err, queued } = await resumeSessionSafe({ session, addedPause, newTotal });
     unlock();
     if (err) {
       playError();
       setMsgType("error");
       setMsg(`Erro ao retomar. ${err.message}`);
       return;
+    }
+    if (queued) {
+      setMsgType("info");
+      setMsg("Sem conexão: o retorno foi guardado e será enviado quando a internet voltar.");
     }
     playSuccess();
     setPaused(false);
@@ -931,6 +945,16 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
                 {checkingLogin ? "..." : "OK"}
               </button>
             </div>
+            {badgeScannerSupported() && (
+              <button
+                type="button"
+                className="kiosk-btn kiosk-btn-secondary kiosk-scan-btn"
+                onClick={() => { bump(); setShowScanner(true); }}
+                disabled={checkingLogin}
+              >
+                Escanear crachá
+              </button>
+            )}
             {msg ? (
               <p className="kiosk-terminal-error" role="alert">{msg}</p>
             ) : (
@@ -1302,6 +1326,14 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
           </div>
         )}
       </main>
+
+      {showScanner && (
+        <BadgeScanner onCode={loginWithScannedCode} onClose={() => setShowScanner(false)} codeLength={CODE_LENGTH} />
+      )}
+
+      {showPauseModal && (
+        <PauseReasonModal busy={busy} onChoose={confirmPause} onCancel={() => setShowPauseModal(false)} />
+      )}
 
       {showFinishModal && (
         <div className="kiosk-modal-backdrop" onClick={bump}>

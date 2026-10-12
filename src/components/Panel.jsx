@@ -4,7 +4,8 @@ import {
 } from "recharts";
 import { fmtClock, fmtDate, fmtDuration, todayLocalISODate, localISODate } from "../lib/format";
 import { computeMetrics, computeWeeklyTrend, computeMonthlyBuckets, monthLabel, mean as meanM } from "../lib/metrics";
-import { exportHistoricoExcel, exportShortagesExcel, exportErrorsExcel } from "../utils/excel";
+// A biblioteca de Excel (pesada) só é baixada quando alguém clica em exportar.
+const loadExcel = () => import("../utils/excel");
 import OperatorProfile from "./OperatorProfile";
 import DeleteEntryModal from "./panel/DeleteEntryModal";
 import { fmtDateTime, csvEscape, periodFilename, periodLabel, downloadCsv, quickRange } from "./panel/panelHelpers";
@@ -671,7 +672,8 @@ export default function Panel({
     downloadCsv(lines, periodFilename("apontamentos", "csv", dateFrom, dateTo, filteredEntries));
   }
 
-  function exportHistoricoXLSX() {
+  async function exportHistoricoXLSX() {
+    const { exportHistoricoExcel } = await loadExcel();
     exportHistoricoExcel({
       entries: filteredEntries,
       shortagesByEntry,
@@ -739,7 +741,8 @@ export default function Panel({
     downloadCsv(lines, periodFilename("faltas", "csv", dateFrom, dateTo, shortageEntries));
   }
 
-  function exportShortagesXLSX() {
+  async function exportShortagesXLSX() {
+    const { exportShortagesExcel } = await loadExcel();
     exportShortagesExcel({
       shortageEntries,
       shortagesByEntry,
@@ -798,7 +801,8 @@ export default function Panel({
     downloadCsv(lines, periodFilename("erros_separacao", "csv", dateFrom, dateTo, dateFilteredErrors.map((e) => ({ start_time: e.created_at }))));
   }
 
-  function exportErrorsXLSX() {
+  async function exportErrorsXLSX() {
+    const { exportErrorsExcel } = await loadExcel();
     exportErrorsExcel({
       errors: dateFilteredErrors,
       errorsByType,

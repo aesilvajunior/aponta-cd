@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRealtimeSync } from "../hooks/useRealtimeSync";
+import { upsertSystemStatus } from "../lib/api";
 import { supabase } from "../supabaseClient";
 import {
   fetchActiveSessions,
@@ -273,6 +274,14 @@ export default function TvBoard() {
     loadAll();
     return () => clearTimeout(loadTimer.current);
   }, [loadAll]);
+
+  // Batimento: avisa a cada 5 min que a TV está de pé (aparece em "Saúde do sistema").
+  useEffect(() => {
+    const beat = () => { upsertSystemStatus("tv_heartbeat", { ua: navigator.userAgent.slice(0, 80) }).catch(() => {}); };
+    beat();
+    const iv = setInterval(beat, 5 * 60 * 1000);
+    return () => clearInterval(iv);
+  }, []);
 
   useRealtimeSync({
     channelName: "tv-board",

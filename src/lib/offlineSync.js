@@ -3,7 +3,17 @@
 // Use startSessionSafe / finishSessionSafe no Kiosk: online funcionam
 // como antes; sem internet guardam na fila e reenviam sozinhas.
 // ============================================================
-import { startSession, finishSession, saveShortages, addToConferenceQueue } from "./api";
+import {
+  startSession,
+  finishSession,
+  saveShortages,
+  addToConferenceQueue,
+  setSessionPaused,
+  setSessionResumed,
+  insertPauseLog,
+  closePauseLog,
+  logSeparationError,
+} from "./api";
 import {
   enqueue,
   flushQueue,
@@ -131,7 +141,110 @@ export async function finishSessionSafe({
   return { ...res, entryId };
 }
 
+// Pausar / retomar: também funcionam sem internet (entram na fila, em ordem).
+export async function pauseSessionSafe({ session, reason, station }) {
+  const pausedAt = new Date().toISOString();
+  const res = await setSessionPaused(session.operator_code, pausedAt);
+  if (res.error && (session.__offline || isNetworkError(res.error))) {
+    enqueue({
+      type: "pause",
+      operatorCode: session.operator_code,
+      payload: { session, reason, station, pausedAt },
+    });
+    return { pausedAt, error: null, queued: true };
+  }
+  if (!res.error) {
+    // melhor esforço: o motivo não pode impedir a pausa
+    const log = await insertPauseLog({
+      operatorCode: session.operator_code,
+      operatorName: session.operator_name,
+      activity: session.activity,
+      station,
+      reason,
+      pausedAt,
+    });
+    if (log.error && isNetworkError(log.error)) {
+      enqueue({ type: "pauseLog", operatorCode: session.operator_code, payload: { session, reason, station, pausedAt } });
+    }
+  }
+  return { pausedAt, error: res.error, queued: false };
+}
+
+export async function resumeSessionSafe({ session, addedPause, newTotal }) {
+  const resumedAt = new Date().toISOString();
+  const res = await setSessionResumed(session.operator_code, newTotal);
+  if (res.error && (session.__offline || isNetworkError(res.error))) {
+    enqueue({
+      type: "resume",
+      operatorCode: session.operator_code,
+      payload: { operatorCode: session.operator_code, addedPause, newTotal, resumedAt },
+    });
+    return { resumedAt, error: null, queued: true };
+  }
+  if (!res.error) {
+    const log = await closePauseLog(session.operator_code, resumedAt, addedPause);
+    if (log.error && isNetworkError(log.error)) {
+      enqueue({ type: "resumeLog", operatorCode: session.operator_code, payload: { operatorCode: session.operator_code, addedPause, resumedAt } });
+    }
+  }
+  return { resumedAt, error: res.error, queued: false };
+}
+
+// Erro de separação (tela "Apontar erro"): guarda na fila se estiver sem internet.
+export async function logSeparationErrorSafe(args) {
+  const createdAt = new Date().toISOString();
+  const res = await logSeparationError({ ...args, createdAt });
+  if (res.error && isNetworkError(res.error)) {
+    enqueue({ type: "separationError", operatorCode: args.operatorCode, payload: { ...args, createdAt } });
+    return { error: null, queued: true };
+  }
+  return { error: res.error, queued: false };
+}
+
 const executors = {
+  separationError: async (op) => {
+    const { error } = await logSeparationError(op.payload);
+    return { error };
+  },
+  pause: async (op) => {
+    const p = op.payload;
+    const { error } = await setSessionPaused(p.session.operator_code, p.pausedAt);
+    if (error) return { error };
+    const log = await insertPauseLog({
+      operatorCode: p.session.operator_code,
+      operatorName: p.session.operator_name,
+      activity: p.session.activity,
+      station: p.station,
+      reason: p.reason,
+      pausedAt: p.pausedAt,
+    });
+    // tabela de motivos ausente (migração não aplicada) não pode travar a fila
+    return log.error && isNetworkError(log.error) ? { error: log.error } : {};
+  },
+  pauseLog: async (op) => {
+    const p = op.payload;
+    const { error } = await insertPauseLog({
+      operatorCode: p.session.operator_code,
+      operatorName: p.session.operator_name,
+      activity: p.session.activity,
+      station: p.station,
+      reason: p.reason,
+      pausedAt: p.pausedAt,
+    });
+    return error && isNetworkError(error) ? { error } : {};
+  },
+  resume: async (op) => {
+    const p = op.payload;
+    const { error } = await setSessionResumed(p.operatorCode, p.newTotal);
+    if (error) return { error };
+    const log = await closePauseLog(p.operatorCode, p.resumedAt, p.addedPause);
+    return log.error && isNetworkError(log.error) ? { error: log.error } : {};
+  },
+  resumeLog: async (op) => {
+    const p = op.payload;
+    const { error } = await closePauseLog(p.operatorCode, p.resumedAt, p.addedPause);
+    return error && isNetworkError(error) ? { error } : {};
+  },
   start: async (op) => {
     const { error } = await startSession(op.payload);
     if (error?.message === "OPERATOR_ALREADY_ACTIVE") return { drop: true };

@@ -115,7 +115,7 @@ export default function ReportsScheduler() {
         <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
           <IconAlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
           <div>
-            <strong>Configuração adicional necessária:</strong> o envio por email depende de uma Edge Function do Supabase configurada com um serviço de email (Resend, SendGrid, etc). O agendamento fica salvo aqui e é processado automaticamente quando a função estiver ativa.
+            <strong>Configuração adicional necessária:</strong> o envio é feito pela função <code>run-scheduled-reports</code> do Supabase, agendada de hora em hora e usando o Resend para e-mail. Se os relatórios não estão chegando, siga o passo a passo em <code>docs/RELATORIOS-AGENDADOS.md</code>. Cada relatório sai uma vez por dia, na hora configurada (horário de Brasília).
           </div>
         </div>
       </div>

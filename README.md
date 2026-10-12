@@ -178,3 +178,42 @@ da gaveta (visibilidade, foco) em `11-status-a11y.css`.
 `public/_headers` deve manter `/assets/*` como `immutable` (os arquivos têm hash no nome) e
 `no-cache` só em `/index.html`, `/sw.js` e `/manifest.webmanifest`. Deixar `/assets/*` como
 `no-cache` faz o tablet rebaixar o app inteiro a cada abertura.
+
+---
+
+## Terceira rodada: novos recursos e guias
+
+### Telas novas (menu lateral, só admin)
+| Tela | Onde | Para quê |
+|---|---|---|
+| **Carga de trabalho** | Análise | Mapa de calor por dia/hora, previsão dos próximos 7 dias, ranking justo (índice por atividade) e ocupação (trabalho x espera) |
+| **Pausas** | Análise | Tempo pausado por motivo, por operador e últimas pausas |
+| **Crachás** | Pessoas | Gera e imprime crachás com QR code |
+| **Saúde do sistema** | Sistema | Conexão, fila offline, versão do app, sinal da TV e erros dos tablets |
+
+### No Kiosk
+- **Pausar** pergunta o **motivo** (almoço, falta de material, aguardando empilhadeira...).
+- Pausar/retomar e **Apontar erro** também funcionam **sem internet** (ficam na fila e sobem sozinhos).
+- **Escanear crachá** (Chrome/Edge com câmera) ou leitor USB de código de barras.
+
+### Servidor
+- `run-scheduled-reports`: envia por e-mail os relatórios do "Export agendado" (antes só salvava a agenda).
+- `check-alerts`: não repete mais o mesmo alerta a cada execução (espera 60 min) e avisa quando os tablets
+  registram vários erros seguidos.
+
+### Guias (pasta `docs/`)
+| Guia | Assunto |
+|---|---|
+| `SEGURANCA.md` | Revogar a chave do Google, limpar o histórico do Git, permissões reais por PIN |
+| `AMBIENTES.md` | Banco e site de teste (preview do Cloudflare) |
+| `MIGRACOES.md` | Ordem das migrações SQL, foto do banco real, retenção e backup |
+| `RELATORIOS-AGENDADOS.md` | Ativar o envio de relatórios por e-mail |
+| `MANUAL-OPERACAO.md` | O que fazer quando a internet cai, a TV trava, o tablet é trocado |
+
+### Migrações novas (rodar no SQL Editor, nesta ordem)
+`2026-10-10_hardening.sql` → `2026-10-11_features.sql` → (opcional) `2026-10-11_roles_rls.sql` → (opcional) `2026-10-11_retention.sql`.
+Veja `docs/MIGRACOES.md`.
+
+### Testes
+`npm test` (Vitest) cobre regras de negócio, fila offline, análises e relatórios. `npm run test:e2e`
+(Playwright) abre o app em celular e desktop; no CI roda sem bloquear até ser validado.

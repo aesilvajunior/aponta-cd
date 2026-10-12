@@ -11,7 +11,10 @@
     "test:watch": "vitest",
     "lint": "eslint .",
     "format": "prettier --write \"src/**/*.{js,jsx}\"",
-    "check": "npm run lint && npm test && npm run build"
+    "check": "npm run lint && npm test && npm run build",
+    "test:e2e": "playwright test",
+    "db:pull": "npx supabase db pull",
+    "db:diff": "npx supabase db diff"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",
@@ -21,7 +24,8 @@
     "react-dom": "^18.3.1",
     "react-konva": "^18.2.10",
     "recharts": "^2.12.7",
-    "xlsx": "https://cdn.sheetjs.com/xlsx-latest/xlsx-latest.tgz"
+    "xlsx": "https://cdn.sheetjs.com/xlsx-latest/xlsx-latest.tgz",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.1",
@@ -33,6 +37,7 @@
     "eslint-plugin-react": "^7.37.2",
     "eslint-plugin-react-hooks": "^5.1.0",
     "globals": "^15.14.0",
-    "prettier": "^3.4.2"
+    "prettier": "^3.4.2",
+    "@playwright/test": "^1.49.1"
   }
 }
