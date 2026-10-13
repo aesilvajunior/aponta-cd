@@ -1,0 +1,521 @@
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import * as THREE from "three";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { fetchMapAreas, fetchMapItems, colorForType, labelForType, labelForSide } from "../lib/stockMap";
+import { fetchSystemStatus, upsertSystemStatus } from "../lib/api";
+import {
+  mergeConfig, floorIndex, areaToMeters, rackGeometry, layoutItems, matchItems, categoryColor, exportForBlender,
+} from "../lib/map3dLayout";
+
+const GOLD = new THREE.Color("#ffd54a");
+
+function disposeObject(root) {
+  root.traverse((o) => {
+    o.geometry?.dispose?.();
+    const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
+    mats.forEach((m) => { m.map?.dispose?.(); m.dispose?.(); });
+  });
+}
+
+function makeLabel(text) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 256;
+  canvas.height = 96;
+  const ctx = canvas.getContext("2d");
+  ctx.font = "bold 56px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.lineWidth = 10;
+  ctx.strokeStyle = "rgba(10,14,20,0.95)";
+  ctx.strokeText(text, 128, 48);
+  ctx.fillStyle = "#ffffff";
+  ctx.fillText(text, 128, 48);
+  const tex = new THREE.CanvasTexture(canvas);
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
+  sprite.scale.set(3.2, 1.2, 1);
+  return sprite;
+}
+
+function webglAvailable() {
+  try {
+    const c = document.createElement("canvas");
+    return !!(c.getContext("webgl2") || c.getContext("webgl"));
+  } catch {
+    return false;
+  }
+}
+
+export default function StockMap3D({ isAdmin, onScanArea, onOpenMap }) {
+  const mountRef = useRef(null);
+  const three = useRef({}); // renderer, scene, camera, controls, world, floors, fly...
+
+  const [areas, setAreas] = useState([]);
+  const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [cfg, setCfg] = useState(() => mergeConfig());
+  const [cfgDraft, setCfgDraft] = useState(null);
+  const [floorFilter, setFloorFilter] = useState("all");
+  const [query, setQuery] = useState("");
+  const [selected, setSelected] = useState(null); // { areaId, itemId? }
+  const [shellStatus, setShellStatus] = useState("");
+  const [webgl] = useState(() => webglAvailable());
+  const [saveMsg, setSaveMsg] = useState("");
+
+  // ---------- dados ----------
+  useEffect(() => {
+    (async () => {
+      const [a, i, st] = await Promise.all([fetchMapAreas(), fetchMapItems(), fetchSystemStatus()]);
+      if (a.error) setError(a.error.message || "Erro ao carregar o mapa.");
+      setAreas(a.data);
+      setItems(i.data);
+      const saved = (st.data || []).find((r) => r.key === "map3d_config");
+      if (saved?.value) setCfg(mergeConfig(saved.value));
+      setLoading(false);
+    })();
+  }, []);
+
+  const itemsByArea = useMemo(() => {
+    const m = new Map();
+    items.forEach((it) => {
+      const k = String(it.area_id);
+      if (!m.has(k)) m.set(k, []);
+      m.get(k).push(it);
+    });
+    return m;
+  }, [items]);
+
+  const floors = useMemo(() => [...new Set(areas.map((a) => floorIndex(a.floor)))].sort((x, y) => x - y), [areas]);
+  const matches = useMemo(() => matchItems(items, query), [items, query]);
+
+  // ---------- cena (uma vez) ----------
+  useEffect(() => {
+    if (!webgl || !mountRef.current) return undefined;
+    const mount = mountRef.current;
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setClearColor("#10151c");
+    mount.appendChild(renderer.domElement);
+    renderer.domElement.style.display = "block";
+    renderer.domElement.style.touchAction = "none";
+
+    const scene = new THREE.Scene();
+    scene.add(new THREE.HemisphereLight("#ffffff", "#334155", 1.1));
+    const sun = new THREE.DirectionalLight("#ffffff", 1.2);
+    sun.position.set(20, 40, 15);
+    scene.add(sun);
+
+    const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 400);
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.maxPolarAngle = Math.PI * 0.49;
+    controls.minDistance = 2;
+    controls.maxDistance = 150;
+
+    const world = new THREE.Group();
+    scene.add(world);
+
+    const outline = new THREE.LineSegments(
+      new THREE.BufferGeometry(),
+      new THREE.LineBasicMaterial({ color: 0xffd54a })
+    );
+    outline.visible = false;
+    scene.add(outline);
+
+    const resize = () => {
+      const w = mount.clientWidth || 800;
+      const h = mount.clientHeight || 500;
+      renderer.setSize(w, h);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    };
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(mount);
+
+    const t = three.current;
+    Object.assign(t, { renderer, scene, camera, controls, world, outline, floors: new Map(), fly: null });
+
+    renderer.setAnimationLoop(() => {
+      const f = t.fly;
+      if (f) {
+        camera.position.lerp(f.pos, 0.08);
+        controls.target.lerp(f.target, 0.08);
+        if (camera.position.distanceTo(f.pos) < 0.05) t.fly = null;
+      }
+      controls.update();
+      renderer.render(scene, camera);
+    });
+
+    // clique (sem arrastar) seleciona
+    let down = null;
+    const onDown = (e) => { down = { x: e.clientX, y: e.clientY }; };
+    const onUp = (e) => {
+      if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5) return;
+      const rect = renderer.domElement.getBoundingClientRect();
+      const ndc = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+      const ray = new THREE.Raycaster();
+      ray.setFromCamera(ndc, camera);
+      const visible = [...t.floors.values()].filter((fl) => fl.group.visible);
+      const products = visible.map((fl) => fl.products).filter(Boolean);
+      const hitP = ray.intersectObjects(products, false)[0];
+      const hitA = ray.intersectObjects(visible.flatMap((fl) => fl.picks), false)[0];
+      // produto só vale se estiver na frente da estante clicada
+      if (hitP && (!hitA || hitP.distance <= hitA.distance + 0.5)) {
+        const meta = hitP.object.userData.meta[hitP.instanceId];
+        setSelected({ areaId: meta.areaId, itemId: meta.item.id });
+      } else if (hitA) {
+        setSelected({ areaId: hitA.object.userData.areaId });
+      } else {
+        setSelected(null);
+      }
+    };
+    renderer.domElement.addEventListener("pointerdown", onDown);
+    renderer.domElement.addEventListener("pointerup", onUp);
+
+    return () => {
+      renderer.setAnimationLoop(null);
+      ro.disconnect();
+      renderer.domElement.removeEventListener("pointerdown", onDown);
+      renderer.domElement.removeEventListener("pointerup", onUp);
+      controls.dispose();
+      disposeObject(scene);
+      renderer.dispose();
+      mount.removeChild(renderer.domElement);
+      three.current = {};
+    };
+  }, [webgl]);
+
+  // ---------- reconstrói o galpão quando dados/ajustes mudam ----------
+  useEffect(() => {
+    const t = three.current;
+    if (!t.world || loading) return undefined;
+
+    // limpa o que havia
+    [...t.world.children].forEach((c) => { t.world.remove(c); disposeObject(c); });
+    t.floors = new Map();
+
+    const dummy = new THREE.Object3D();
+    const floorsPresent = [...new Set(areas.map((a) => floorIndex(a.floor)))];
+    if (floorsPresent.length === 0) floorsPresent.push(0);
+
+    const levelH = Math.min(1.2, (cfg.floorHeightM - 0.6) / cfg.levels);
+
+    floorsPresent.forEach((fl) => {
+      const group = new THREE.Group();
+      t.world.add(group);
+
+      const ground = new THREE.Mesh(
+        new THREE.BoxGeometry(cfg.widthM, 0.1, cfg.depthM),
+        new THREE.MeshStandardMaterial({ color: fl === 0 ? "#1b2430" : "#232d3b", roughness: 0.95 })
+      );
+      ground.position.set(0, fl * cfg.floorHeightM - 0.06, 0);
+      group.add(ground);
+      if (fl === 0) {
+        const grid = new THREE.GridHelper(Math.max(cfg.widthM, cfg.depthM), Math.round(Math.max(cfg.widthM, cfg.depthM) / 2), "#2c3a4d", "#222c3a");
+        grid.position.y = 0;
+        group.add(grid);
+      }
+
+      const floorAreas = areas.filter((a) => floorIndex(a.floor) === fl);
+      const racks = floorAreas.filter((a) => a.area_type === "prateleira");
+      const others = floorAreas.filter((a) => a.area_type !== "prateleira");
+      const picks = [];
+
+      // áreas que não são estante: lajes/blocos coloridos
+      others.forEach((a) => {
+        const m = areaToMeters(a, cfg);
+        const h = a.area_type === "escritorio" ? 2.8 : a.area_type === "infra" ? 1.2 : a.area_type === "corredor" ? 0.04 : 0.08;
+        const mesh = new THREE.Mesh(
+          new THREE.BoxGeometry(m.w, h, m.d),
+          new THREE.MeshStandardMaterial({ color: colorForType(a.area_type), transparent: true, opacity: h < 0.1 ? 0.55 : 0.85 })
+        );
+        mesh.position.set(m.x, m.y + h / 2, m.z);
+        mesh.userData = { areaId: a.id, floor: fl };
+        group.add(mesh);
+        picks.push(mesh);
+        if (a.area_type !== "corredor") {
+          const label = makeLabel(a.code || "");
+          label.position.set(m.x, m.y + h + 0.9, m.z);
+          group.add(label);
+        }
+      });
+
+      // estantes: postes e tábuas instanciados (poucos objetos mesmo com muitas ruas)
+      const postsPer = racks.map((a) => rackGeometry(a, cfg)).map((g) => 2 * (g.bays + 1));
+      const totalPosts = postsPer.reduce((s, n) => s + n, 0);
+      const totalBoards = racks.length * (cfg.levels + 1);
+      const posts = new THREE.InstancedMesh(new THREE.BoxGeometry(0.06, 1, 0.06), new THREE.MeshStandardMaterial({ color: "#f59e0b" }), Math.max(1, totalPosts));
+      const boards = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 0.05, 1), new THREE.MeshStandardMaterial({ color: "#64748b" }), Math.max(1, totalBoards));
+      posts.count = totalPosts;
+      boards.count = totalBoards;
+      let pi = 0;
+      let bi = 0;
+      const rackH = cfg.levels * levelH + 0.3;
+
+      racks.forEach((a) => {
+        const g = rackGeometry(a, cfg);
+        const bayLen = g.length / g.bays;
+        for (let i = 0; i <= g.bays; i++) {
+          [-1, 1].forEach((sgn) => {
+            const u = -g.length / 2 + i * bayLen;
+            const v = (sgn * g.thickness) / 2;
+            dummy.position.set(g.x + (g.alongX ? u : v), g.y + rackH / 2, g.z + (g.alongX ? v : u));
+            dummy.scale.set(1, rackH, 1);
+            dummy.rotation.set(0, 0, 0);
+            dummy.updateMatrix();
+            posts.setMatrixAt(pi++, dummy.matrix);
+          });
+        }
+        for (let k = 0; k <= cfg.levels; k++) {
+          dummy.position.set(g.x, g.y + 0.08 + k * levelH, g.z);
+          dummy.scale.set(g.alongX ? g.length : g.thickness, 1, g.alongX ? g.thickness : g.length);
+          dummy.updateMatrix();
+          boards.setMatrixAt(bi++, dummy.matrix);
+        }
+
+        const pick = new THREE.Mesh(
+          new THREE.BoxGeometry(g.alongX ? g.length : g.thickness, rackH, g.alongX ? g.thickness : g.length),
+          new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
+        );
+        pick.position.set(g.x, g.y + rackH / 2, g.z);
+        pick.userData = { areaId: a.id, floor: fl };
+        group.add(pick);
+        picks.push(pick);
+
+        const label = makeLabel(a.code || "");
+        label.position.set(g.x, g.y + rackH + 0.9, g.z);
+        group.add(label);
+      });
+      posts.instanceMatrix.needsUpdate = true;
+      boards.instanceMatrix.needsUpdate = true;
+      group.add(posts, boards);
+
+      // produtos (uma caixa por item), colorida por categoria
+      const placed = racks.flatMap((a) => layoutItems(a, itemsByArea.get(String(a.id)) || [], cfg).map((p) => ({ ...p, areaId: a.id })));
+      let productsMesh = null;
+      if (placed.length > 0) {
+        productsMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ roughness: 0.7 }), placed.length);
+        const baseColors = [];
+        placed.forEach((p, i) => {
+          dummy.position.set(...p.position);
+          dummy.scale.set(...p.size);
+          dummy.updateMatrix();
+          productsMesh.setMatrixAt(i, dummy.matrix);
+          const c = categoryColor(p.item.category);
+          const color = new THREE.Color().setHSL(c.h / 360, c.s / 100, c.l / 100);
+          baseColors.push(color);
+          productsMesh.setColorAt(i, color);
+        });
+        productsMesh.instanceMatrix.needsUpdate = true;
+        productsMesh.instanceColor.needsUpdate = true;
+        productsMesh.userData = { meta: placed, baseColors };
+        group.add(productsMesh);
+      }
+
+      t.floors.set(fl, { group, picks, products: productsMesh });
+    });
+
+    // enquadra a câmera uma vez
+    t.camera.position.set(0, cfg.widthM * 0.55, cfg.depthM * 0.85);
+    t.controls.target.set(0, 0, 0);
+
+    // casca feita no Blender (opcional)
+    let cancelled = false;
+    (async () => {
+      setShellStatus("");
+      const s = cfg.shell;
+      if (!s?.url) return;
+      try {
+        const head = await fetch(s.url, { method: "HEAD" });
+        const type = head.headers.get("content-type") || "";
+        // o site devolve a página inicial (HTML) para arquivos que não existem
+        if (!head.ok || type.includes("text/html")) return;
+        const gltf = await new GLTFLoader().loadAsync(s.url);
+        if (cancelled) { disposeObject(gltf.scene); return; }
+        gltf.scene.scale.setScalar(s.scale || 1);
+        gltf.scene.position.set(s.offsetX || 0, s.offsetY || 0, s.offsetZ || 0);
+        gltf.scene.rotation.y = ((s.rotationY || 0) * Math.PI) / 180;
+        t.world.add(gltf.scene);
+        setShellStatus("Modelo do Blender carregado.");
+      } catch {
+        setShellStatus("Não foi possível carregar o modelo do Blender (confira o arquivo).");
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [areas, itemsByArea, cfg, loading, webgl]);
+
+  // ---------- andar visível ----------
+  useEffect(() => {
+    three.current.floors?.forEach((fl, idx) => { fl.group.visible = floorFilter === "all" || Number(floorFilter) === idx; });
+  }, [floorFilter, areas, cfg, loading]);
+
+  // ---------- destaque da busca + voo da câmera ----------
+  useEffect(() => {
+    const t = three.current;
+    if (!t.floors) return;
+    const ids = new Set(matches.map((m) => m.id));
+    const active = query.trim().length > 0;
+    let first = null;
+    t.floors.forEach((fl) => {
+      const mesh = fl.products;
+      if (!mesh) return;
+      const { meta, baseColors } = mesh.userData;
+      const c = new THREE.Color();
+      meta.forEach((p, i) => {
+        const hit = ids.has(p.item.id);
+        if (hit && !first) first = p.position;
+        if (!active) c.copy(baseColors[i]);
+        else if (hit) c.copy(GOLD);
+        else c.copy(baseColors[i]).multiplyScalar(0.22);
+        mesh.setColorAt(i, c);
+      });
+      mesh.instanceColor.needsUpdate = true;
+    });
+    if (active && first) {
+      const target = new THREE.Vector3(...first);
+      t.fly = { target, pos: target.clone().add(new THREE.Vector3(4, 4, 6)) };
+    }
+  }, [matches, query, areas, cfg, loading]);
+
+  // ---------- contorno da área selecionada ----------
+  useEffect(() => {
+    const t = three.current;
+    if (!t.outline) return;
+    if (!selected) { t.outline.visible = false; return; }
+    let pickMesh = null;
+    t.floors.forEach((fl) => fl.picks.forEach((p) => { if (String(p.userData.areaId) === String(selected.areaId)) pickMesh = p; }));
+    if (!pickMesh) { t.outline.visible = false; return; }
+    t.outline.geometry.dispose();
+    t.outline.geometry = new THREE.EdgesGeometry(pickMesh.geometry);
+    t.outline.position.copy(pickMesh.position);
+    t.outline.visible = true;
+  }, [selected, areas, cfg, loading]);
+
+  const selArea = selected ? areas.find((a) => String(a.id) === String(selected.areaId)) : null;
+  const selItems = selArea ? itemsByArea.get(String(selArea.id)) || [] : [];
+  const selItem = selected?.itemId ? items.find((i) => i.id === selected.itemId) : null;
+
+  const resetCamera = useCallback(() => {
+    const t = three.current;
+    if (!t.camera) return;
+    t.fly = { target: new THREE.Vector3(0, 0, 0), pos: new THREE.Vector3(0, cfg.widthM * 0.55, cfg.depthM * 0.85) };
+  }, [cfg]);
+
+  function exportJson() {
+    const blob = new Blob([JSON.stringify(exportForBlender(areas, cfg), null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "areas-para-blender.json";
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  async function saveCfg() {
+    const next = mergeConfig(cfgDraft);
+    const { error: err } = await upsertSystemStatus("map3d_config", next);
+    if (err) { setSaveMsg("Não foi possível salvar (rode a migração 2026-10-11_features.sql)."); return; }
+    setCfg(next);
+    setCfgDraft(null);
+    setSaveMsg("Ajustes salvos.");
+    setTimeout(() => setSaveMsg(""), 3000);
+  }
+
+  const setDraft = (key, value) => setCfgDraft((d) => ({ ...(d || cfg), [key]: value }));
+  const setShell = (key, value) => setCfgDraft((d) => ({ ...(d || cfg), shell: { ...(d || cfg).shell, [key]: value } }));
+  const draft = cfgDraft || cfg;
+
+  return (
+    <div>
+      <div className="page-header-row" style={{ marginBottom: 14 }}>
+        <div>
+          <h1 className="page-title">Mapa 3D</h1>
+          <p className="page-sub" style={{ marginBottom: 0 }}>
+            Arraste para girar · role/pinça para aproximar · toque numa estante ou produto para ver os detalhes.
+          </p>
+        </div>
+      </div>
+
+      {!webgl && (
+        <div className="alert-card alert-danger"><strong>Este aparelho/navegador não suporta gráficos 3D (WebGL).</strong> Use o Mapa 2D.</div>
+      )}
+      {error && <div className="alert-card alert-danger"><strong>Erro:</strong> {error}</div>}
+
+      <div className="map3d-toolbar">
+        <input className="field" style={{ maxWidth: 300 }} placeholder="Buscar produto (código, nome ou código de barras)" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Buscar produto" />
+        {query.trim() && <span className="map3d-count">{matches.length} encontrado(s)</span>}
+        <div className="scan-chips" style={{ margin: 0 }} role="group" aria-label="Andar">
+          <button type="button" className={`scan-chip ${floorFilter === "all" ? "active" : ""}`} onClick={() => setFloorFilter("all")} aria-pressed={floorFilter === "all"}>Todos os andares</button>
+          {floors.map((f) => (
+            <button key={f} type="button" className={`scan-chip ${String(floorFilter) === String(f) ? "active" : ""}`} onClick={() => setFloorFilter(String(f))} aria-pressed={String(floorFilter) === String(f)}>
+              {f === 0 ? "Térreo" : `${f}º andar`}
+            </button>
+          ))}
+        </div>
+        <button type="button" className="btn-small" onClick={resetCamera}>Recentralizar</button>
+      </div>
+
+      <div className="map3d-wrap">
+        <div ref={mountRef} className="map3d-canvas" aria-label="Mapa 3D do estoque" role="img" />
+        {loading && <div className="map3d-overlay">Carregando mapa...</div>}
+
+        {selArea && (
+          <aside className="map3d-panel" aria-live="polite">
+            <button type="button" className="map3d-close" onClick={() => setSelected(null)} aria-label="Fechar">×</button>
+            <div className="map3d-panel-title">{selArea.code}{selArea.label ? ` · ${selArea.label}` : ""}</div>
+            <div className="map3d-panel-sub">{labelForType(selArea.area_type)} · andar {selArea.floor || "térreo"} · {selItems.length} produto(s)</div>
+            {selItem && (
+              <div className="map3d-item-card">
+                <strong>{selItem.product_name || selItem.product_code}</strong>
+                <div>Código: {selItem.product_code}{selItem.barcode ? ` · EAN ${selItem.barcode}` : ""}</div>
+                <div>{[selItem.side ? labelForSide(selItem.side) : null, selItem.slot ? `pos. ${selItem.slot}` : null, selItem.level ? `nível ${selItem.level}` : null].filter(Boolean).join(" · ") || "Sem posição"}</div>
+                <div>Quantidade: {selItem.quantity ?? 0}{selItem.counted_at ? ` · bipado em ${new Date(selItem.counted_at).toLocaleDateString("pt-BR")}` : ""}</div>
+              </div>
+            )}
+            <div className="map3d-list">
+              {selItems.slice(0, 40).map((it) => (
+                <button key={it.id} type="button" className={`map3d-row ${selected.itemId === it.id ? "active" : ""}`} onClick={() => setSelected({ areaId: selArea.id, itemId: it.id })}>
+                  <span>{it.product_name || it.product_code}</span>
+                  <span style={{ opacity: 0.7 }}>{it.slot ? `p${it.slot}` : ""}{it.level ? ` n${it.level}` : ""}</span>
+                </button>
+              ))}
+              {selItems.length > 40 && <div style={{ fontSize: 12, opacity: 0.7 }}>+ {selItems.length - 40} produtos (veja no Mapa 2D)</div>}
+              {selItems.length === 0 && <div style={{ fontSize: 13, opacity: 0.7 }}>Nenhum produto cadastrado aqui ainda.</div>}
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+              {selArea.area_type === "prateleira" && <button type="button" className="btn-small" onClick={() => onScanArea?.(selArea)}>Coletar aqui</button>}
+              <button type="button" className="btn-small" onClick={() => onOpenMap?.(selArea)}>Ver no 2D</button>
+            </div>
+          </aside>
+        )}
+      </div>
+
+      <div className="card" style={{ marginTop: 16 }}>
+        <div className="card-title">Modelo do Blender e medidas do galpão</div>
+        <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 0 }}>
+          As estantes e produtos vêm do mapa 2D automaticamente. Um modelo feito no Blender (paredes, piso, docas) pode ser
+          colocado em <code>public/models/cd-shell.glb</code>. {shellStatus || "Nenhum modelo carregado no momento."} Veja <code>docs/MAPA-3D-BLENDER.md</code>.
+        </p>
+        <div className="map3d-settings">
+          {[["widthM", "Largura do galpão (m)"], ["depthM", "Profundidade (m)"], ["floorHeightM", "Altura entre andares (m)"], ["levels", "Níveis por estante"]].map(([k, label]) => (
+            <label key={k} className="scan-label">{label}
+              <input className="field" type="number" step="0.5" min="1" disabled={!isAdmin} value={draft[k]} onChange={(e) => setDraft(k, Number(e.target.value))} />
+            </label>
+          ))}
+          {[["scale", "Modelo: escala"], ["offsetX", "Modelo: deslocar X (m)"], ["offsetZ", "Modelo: deslocar Z (m)"], ["rotationY", "Modelo: girar (graus)"]].map(([k, label]) => (
+            <label key={k} className="scan-label">{label}
+              <input className="field" type="number" step="0.1" disabled={!isAdmin} value={draft.shell[k]} onChange={(e) => setShell(k, Number(e.target.value))} />
+            </label>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
+          {isAdmin && <button type="button" className="btn-small" onClick={saveCfg} disabled={!cfgDraft}>Salvar ajustes</button>}
+          <button type="button" className="btn-small" onClick={exportJson} disabled={areas.length === 0}>Exportar áreas para o Blender (JSON)</button>
+          {!isAdmin && <span style={{ fontSize: 12, color: "var(--text-faint)" }}>Só o administrador altera as medidas.</span>}
+          {saveMsg && <span role="status" style={{ fontSize: 13 }}>{saveMsg}</span>}
+        </div>
+      </div>
+    </div>
+  );
+}

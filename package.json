@@ -25,7 +25,10 @@
     "react-konva": "^18.2.10",
     "recharts": "^2.12.7",
     "xlsx": "https://cdn.sheetjs.com/xlsx-latest/xlsx-latest.tgz",
-    "qrcode": "^1.5.4"
+    "qrcode": "^1.5.4",
+    "three": "^0.170.0",
+    "@zxing/browser": "^0.1.5",
+    "@zxing/library": "^0.21.3"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.1",

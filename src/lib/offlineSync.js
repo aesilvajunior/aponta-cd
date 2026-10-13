@@ -14,6 +14,7 @@ import {
   closePauseLog,
   logSeparationError,
 } from "./api";
+import { recordScan, saveCatalogEntry } from "./mapScan";
 import {
   enqueue,
   flushQueue,
@@ -201,7 +202,35 @@ export async function logSeparationErrorSafe(args) {
   return { error: res.error, queued: false };
 }
 
+// Bip do mapa do estoque: se estiver sem internet, guarda e reenvia depois.
+export async function recordScanSafe(args) {
+  const scanId = args.scanId || makeId();
+  const res = await recordScan({ ...args, scanId });
+  if (res.error && isNetworkError(res.error)) {
+    enqueue({ type: "mapScan", entryId: scanId, operatorCode: args.operator?.code, payload: { ...args, scanId } });
+    return { error: null, queued: true, action: "pendente", scanId };
+  }
+  return { ...res, scanId, queued: false };
+}
+
+export async function saveCatalogEntrySafe(args) {
+  const res = await saveCatalogEntry(args);
+  if (res.error && isNetworkError(res.error)) {
+    enqueue({ type: "catalogSave", operatorCode: args.createdBy, payload: args });
+    return { entry: res.entry, error: null, queued: true };
+  }
+  return res;
+}
+
 const executors = {
+  mapScan: async (op) => {
+    const res = await recordScan(op.payload);
+    return res.error ? { error: res.error } : {};
+  },
+  catalogSave: async (op) => {
+    const res = await saveCatalogEntry(op.payload);
+    return res.error && isNetworkError(res.error) ? { error: res.error } : {};
+  },
   separationError: async (op) => {
     const { error } = await logSeparationError(op.payload);
     return { error };

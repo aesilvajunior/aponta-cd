@@ -55,6 +55,9 @@ const Workload = lazyWithRetry(() => import("./components/Workload"));
 const PauseReasons = lazyWithRetry(() => import("./components/PauseReasons"));
 const SystemHealth = lazyWithRetry(() => import("./components/SystemHealth"));
 const BadgePrinter = lazyWithRetry(() => import("./components/BadgePrinter"));
+const StockScan = lazyWithRetry(() => import("./components/StockScan"));
+const StockMap3D = lazyWithRetry(() => import("./components/StockMap3D"));
+const AddressLabels = lazyWithRetry(() => import("./components/AddressLabels"));
 
 function ScreenFallback() {
   return (
@@ -72,6 +75,7 @@ export default function App() {
   const [isAdmin, setIsAdmin] = useState(false);
 
   const [cmdOpen, setCmdOpen] = useState(false);
+  const [mapFocusAreaId, setMapFocusAreaId] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const menuButtonRef = useRef(null);
   const isMobile = useMediaQuery(MOBILE_QUERY);
@@ -201,6 +205,16 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  // Atalhos entre o mapa 2D, o mapa 3D e a coleta por código de barras
+  function goScanArea(area) {
+    try { sessionStorage.setItem("aponta_scan_prefill", JSON.stringify({ areaId: area.id })); } catch { /* ignora */ }
+    setTab("stock-scan");
+  }
+  function goMapArea(area) {
+    setMapFocusAreaId(area.id);
+    setTab("stock-map");
+  }
+
   function lockAdmin() {
     setIsAdmin(false);
     setTab("kiosk");
@@ -241,7 +255,7 @@ export default function App() {
     "admin-master", "goals", "csv-import", "fraud", "reports-scheduler",
     "stock-map-edit", "turn-comparison", "supplier-shortages", "sound-settings",
     "alert-settings", "team-goals", "achievements", "equipment",
-    "stock-map-history", "monthly-report", "workload", "pauses", "health", "badges",
+    "stock-map-history", "monthly-report", "workload", "pauses", "health", "badges", "address-labels",
     // ↓↓↓ NOVO: Configuração da Rotina ↓↓↓
     "routine-settings",
   ];
@@ -359,7 +373,7 @@ export default function App() {
             <GoalsDashboard />
           )}
           {tab === "stock-map" && (
-            <StockMap isAdmin={isAdmin} />
+            <StockMap isAdmin={isAdmin} onScanArea={goScanArea} focusAreaId={mapFocusAreaId} />
           )}
 
           {/* ↓↓↓ NOVO: Rotina do Líder (líder ou admin) ↓↓↓ */}
@@ -431,6 +445,9 @@ export default function App() {
           {tab === "sound-settings" && isAdmin && (
             <SoundSettings />
           )}
+          {tab === "stock-map-3d" && <StockMap3D isAdmin={isAdmin} onScanArea={goScanArea} onOpenMap={goMapArea} />}
+          {tab === "stock-scan" && <StockScan operators={operators} currentOperator={currentOperator} onOpenMap={goMapArea} />}
+          {tab === "address-labels" && isAdmin && <AddressLabels />}
           {tab === "workload" && isAdmin && <Workload entries={entries} />}
           {tab === "pauses" && isAdmin && <PauseReasons />}
           {tab === "health" && isAdmin && (

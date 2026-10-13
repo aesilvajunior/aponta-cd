@@ -169,3 +169,74 @@ a:focus:not(:focus-visible) { outline: none; }
   font-size: 12px; font-weight: 700; letter-spacing: 0.04em;
   background: #f59e0b; color: #1a1200;
 }
+
+/* ---------- Coleta de endereços (leitor de código de barras) ---------- */
+.scan-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+.scan-label { display: block; font-size: 12px; font-weight: 600; color: var(--text-muted, #8d95a0); margin: 10px 0 4px; }
+.scan-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.scan-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.scan-chip {
+  min-height: 44px; padding: 8px 16px; border-radius: 999px; font: inherit; font-weight: 600; cursor: pointer;
+  border: 1px solid var(--border, rgba(128, 128, 128, 0.35)); background: transparent; color: var(--text, inherit);
+}
+.scan-chip.active { background: var(--accent, #4a7ba7); border-color: var(--accent, #4a7ba7); color: #fff; }
+.scan-field-row { display: flex; gap: 8px; }
+.scan-field { flex: 1; font-size: 18px; min-height: 48px; letter-spacing: 0.04em; }
+.scan-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.scan-hidden-input { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+
+.scan-flash {
+  margin-top: 14px; padding: 14px 16px; border-radius: 12px; font-size: 16px; font-weight: 600; line-height: 1.35;
+  border: 1px solid transparent; animation: scan-pop 180ms ease-out;
+}
+.scan-flash-ok { background: rgba(34, 197, 94, 0.14); border-color: rgba(34, 197, 94, 0.5); }
+.scan-flash-new { background: rgba(74, 123, 167, 0.18); border-color: rgba(74, 123, 167, 0.6); }
+.scan-flash-error { background: rgba(239, 68, 68, 0.14); border-color: rgba(239, 68, 68, 0.55); }
+.scan-flash-info { background: rgba(128, 128, 128, 0.12); border-color: rgba(128, 128, 128, 0.35); }
+@keyframes scan-pop { from { transform: scale(0.97); opacity: 0.4; } to { transform: scale(1); opacity: 1; } }
+
+.camera-scanner { margin-top: 12px; }
+.camera-scanner-frame { position: relative; border-radius: 12px; overflow: hidden; background: #000; }
+.camera-scanner-video { display: block; width: 100%; max-height: 44vh; object-fit: cover; }
+.camera-scanner-aim {
+  position: absolute; left: 12%; right: 12%; top: 30%; bottom: 30%; border-radius: 10px;
+  border: 2px solid rgba(255, 255, 255, 0.85); box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.28); pointer-events: none;
+}
+.camera-scanner-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+
+/* ---------- Etiquetas de endereço ---------- */
+.label-sheet { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.label-card {
+  display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 8px; text-align: center;
+  background: #fff; color: #111; border: 1px dashed var(--border-strong, rgba(128, 128, 128, 0.5)); border-radius: 10px; break-inside: avoid;
+}
+.label-card img { image-rendering: pixelated; }
+.label-code { font-size: 22px; font-weight: 800; letter-spacing: 0.06em; line-height: 1; }
+.label-sub { font-size: 12px; font-weight: 600; color: #333; }
+@media print {
+  .label-sheet, .label-sheet * { visibility: visible !important; }
+  .label-sheet { position: absolute; left: 0; top: 0; width: 100%; grid-template-columns: repeat(3, 1fr); }
+}
+
+/* ---------- Mapa 3D ---------- */
+.map3d-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 10px; }
+.map3d-count { font-size: 13px; color: var(--text-muted, #8d95a0); }
+.map3d-wrap { position: relative; border-radius: 14px; overflow: hidden; border: 1px solid var(--border, rgba(128, 128, 128, 0.25)); background: #10151c; }
+.map3d-canvas { width: 100%; height: min(68vh, 640px); min-height: 360px; }
+.map3d-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #cbd5e1; background: rgba(16, 21, 28, 0.7); }
+.map3d-panel {
+  position: absolute; top: 12px; right: 12px; width: min(320px, calc(100% - 24px)); max-height: calc(100% - 24px); overflow: auto;
+  padding: 14px; border-radius: 12px; background: rgba(16, 21, 28, 0.94); color: #e5e7eb; border: 1px solid rgba(148, 163, 184, 0.3);
+}
+.map3d-close { position: absolute; top: 6px; right: 8px; background: none; border: 0; color: inherit; font-size: 22px; cursor: pointer; min-width: 44px; min-height: 44px; }
+.map3d-panel-title { font-size: 18px; font-weight: 700; padding-right: 36px; }
+.map3d-panel-sub { font-size: 12px; opacity: 0.75; margin-bottom: 10px; }
+.map3d-item-card { padding: 10px; margin-bottom: 10px; border-radius: 8px; background: rgba(255, 213, 74, 0.12); border: 1px solid rgba(255, 213, 74, 0.45); font-size: 13px; line-height: 1.5; }
+.map3d-list { display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow: auto; }
+.map3d-row { display: flex; justify-content: space-between; gap: 8px; text-align: left; padding: 8px 10px; border-radius: 8px; border: 0; background: rgba(148, 163, 184, 0.12); color: inherit; font: inherit; font-size: 13px; cursor: pointer; min-height: 40px; }
+.map3d-row.active, .map3d-row:hover { background: rgba(74, 123, 167, 0.4); }
+.map3d-settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+@media (max-width: 720px) {
+  .map3d-panel { position: static; width: auto; max-height: none; border-radius: 0; border-left: 0; border-right: 0; }
+  .map3d-canvas { height: 56vh; }
+}

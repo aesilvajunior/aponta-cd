@@ -65,7 +65,7 @@ const MIN_WORLD_H = 0.02 * WORLD_H;
 const GRID_COLS = 20;
 const GRID_ROWS = 15;
 
-export default function StockMap({ isAdmin }) {
+export default function StockMap({ isAdmin, onScanArea, focusAreaId }) {
   const [areas, setAreas] = useState([]);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -82,6 +82,8 @@ export default function StockMap({ isAdmin }) {
   const [editMode, setEditMode] = useState(false);
   const [panelView, setPanelView] = useState("lista");
   const [pickerOpen, setPickerOpen] = useState(false);
+  // Veio de outra tela (ex.: Mapa 3D "Ver no 2D"): já abre a área escolhida
+  const appliedFocusRef = useRef(null);
   const [editingItem, setEditingItem] = useState(null);
 
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -209,6 +211,16 @@ export default function StockMap({ isAdmin }) {
     return max;
   }, [itemsByArea]);
 
+  useEffect(() => {
+    if (!focusAreaId || areas.length === 0 || appliedFocusRef.current === focusAreaId) return;
+    const a = areas.find((x) => String(x.id) === String(focusAreaId));
+    if (a) {
+      setSelectedArea(a);
+      setPanelView("lista");
+      appliedFocusRef.current = focusAreaId;
+    }
+  }, [focusAreaId, areas]);
+
   const decoratedAreas = useMemo(() => {
     const q = search.trim().toLowerCase();
     return areas
@@ -225,7 +237,8 @@ export default function StockMap({ isAdmin }) {
             (it) =>
               it.product_code.toLowerCase().includes(q) ||
               (it.product_name || "").toLowerCase().includes(q) ||
-              (it.category || "").toLowerCase().includes(q)
+              (it.category || "").toLowerCase().includes(q) ||
+              (it.barcode || "").toLowerCase().includes(q)
           );
         return { ...a, stats, occupancy, matches, itemList: list };
       });
@@ -872,6 +885,12 @@ export default function StockMap({ isAdmin }) {
               </button>
             </div>
 
+            {selectedArea.area_type === "prateleira" && onScanArea && (
+              <button className="btn-small" style={{ marginBottom: 12 }} onClick={() => onScanArea(selectedArea)}>
+                Coletar aqui (bipar produtos)
+              </button>
+            )}
+
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 14, paddingBottom: 14, borderBottom: "1px solid var(--border)" }}>
               <div>
                 <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 3 }}>SKUs</div>
@@ -1070,7 +1089,17 @@ function SimpleItemList({ items, isAdmin, onEdit, onDelete, compact = false }) {
                 )}
               </div>
               {it.product_name && <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 3 }}>{it.product_name}</div>}
-              {it.slot && <div style={{ fontSize: 10.5, color: "var(--text-faint)", marginTop: 3 }}>Slot {it.slot}</div>}
+              {(it.slot || it.level) && (
+                <div style={{ fontSize: 10.5, color: "var(--text-faint)", marginTop: 3 }}>
+                  {[it.slot ? `Slot ${it.slot}` : null, it.level ? `Nível ${it.level}` : null].filter(Boolean).join(" · ")}
+                </div>
+              )}
+              {it.barcode && <div style={{ fontSize: 10.5, color: "var(--text-faint)", marginTop: 2, fontFamily: "var(--font-mono)" }}>EAN {it.barcode}</div>}
+              {it.counted_at && (
+                <div style={{ fontSize: 10.5, color: "var(--success, #22c55e)", marginTop: 2 }}>
+                  ✓ bipado em {new Date(it.counted_at).toLocaleDateString("pt-BR")}
+                </div>
+              )}
             </div>
             {isAdmin && (
               <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>

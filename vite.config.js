@@ -9,6 +9,9 @@ function manualChunks(id) {
   if (id.includes("@supabase")) return "vendor-supabase";
   if (/node_modules\/(recharts|d3-|victory-vendor|recharts-scale)/.test(id)) return "vendor-recharts";
   if (/node_modules\/(konva|react-konva)\//.test(id)) return "vendor-konva";
+  if (/node_modules\/three\//.test(id)) return "vendor-three";
+  if (/node_modules\/@zxing\//.test(id)) return "vendor-zxing";
+  if (/node_modules\/(qrcode|pngjs|dijkstrajs)\//.test(id)) return "vendor-qrcode";
   if (/node_modules\/(xlsx|papaparse)\//.test(id)) return "vendor-data-files";
   return undefined;
 }

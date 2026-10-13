@@ -217,3 +217,17 @@ Veja `docs/MIGRACOES.md`.
 ### Testes
 `npm test` (Vitest) cobre regras de negócio, fila offline, análises e relatórios. `npm run test:e2e`
 (Playwright) abre o app em celular e desktop; no CI roda sem bloquear até ser validado.
+
+
+---
+
+## Quarta rodada: coleta por código de barras e Mapa 3D
+
+| Tela | Onde | Para quê |
+|---|---|---|
+| **Coletar endereços** | Operação | Bipar etiqueta de endereço e produtos (leitor USB/Bluetooth ou câmera); entra no mapa na hora, funciona offline |
+| **Mapa 3D** | Operação | Galpão em 3D gerado do mapa 2D, com busca que acende o produto; aceita modelo do Blender |
+| **Etiquetas de endereço** | Pessoas (admin) | Imprime QR de rua/lado/posição/nível |
+
+Guias: `docs/COLETA-CODIGO-BARRAS.md` e `docs/MAPA-3D-BLENDER.md`.
+Migração nova: `supabase/migrations/2026-10-12_map_scan.sql` (rodar depois das anteriores). Rode `npm install` (entraram `three`, `@zxing/browser`, `@zxing/library`).
