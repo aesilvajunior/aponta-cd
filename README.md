@@ -231,3 +231,7 @@ Veja `docs/MIGRACOES.md`.
 
 Guias: `docs/COLETA-CODIGO-BARRAS.md` e `docs/MAPA-3D-BLENDER.md`.
 Migração nova: `supabase/migrations/2026-10-12_map_scan.sql` (rodar depois das anteriores). Rode `npm install` (entraram `three`, `@zxing/browser`, `@zxing/library`).
+
+> **Dependências:** o `package-lock.json` precisa acompanhar o `package.json` (o Cloudflare e o CI usam `npm ci`,
+> que recusa o build se os dois divergirem). Sempre que alterar dependências, rode `npm install` e commite os dois arquivos.
+> O Playwright (testes de tela) não está no `package.json` de propósito: o CI o instala só no job `e2e`.

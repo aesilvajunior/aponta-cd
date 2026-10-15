@@ -15,8 +15,6 @@ jobs:
           node-version: 20
           cache: npm
 
-      # Depois de rodar `npm install` localmente e commitar o package-lock.json
-      # atualizado, troque por `npm ci` (instalação exata e mais rápida).
       - run: npm ci --no-audit --no-fund
 
       - name: Lint (erros quebram, avisos não)
@@ -44,7 +42,10 @@ jobs:
         with:
           node-version: 20
           cache: npm
-      - run: npm install --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund
+      # O Playwright fica fora do package.json de propósito: assim o deploy do site não baixa
+      # ferramenta de teste. Só este job o instala.
+      - run: npm install --no-save @playwright/test@^1.49.1
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
       - uses: actions/upload-artifact@v4
