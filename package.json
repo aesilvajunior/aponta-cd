@@ -23,7 +23,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-konva": "^18.2.10",
-    "recharts": "^2.12.7",
+    "recharts": "^3.10.1",
     "xlsx": "https://cdn.sheetjs.com/xlsx-latest/xlsx-latest.tgz",
     "qrcode": "^1.5.4",
     "three": "^0.170.0",
