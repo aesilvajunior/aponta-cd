@@ -132,7 +132,13 @@ export default function MonthlyReport() {
   }
 
   function openPrintable() {
-    const esc = (s) => String(s ?? "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const esc = (s) =>
+      String(s ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
 
     const rankingRows = stats.ranking
       .map((o, i) => `<tr><td class="center">${i + 1}º</td><td>${esc(o.name)}</td><td class="right">${o.count}</td><td>${esc(fmtDuration(o.avg))}</td><td>${esc(fmtDuration(o.totalSec))}</td></tr>`)
@@ -151,7 +157,7 @@ export default function MonthlyReport() {
       .join("");
 
     const html = `<!doctype html>
-<html lang="pt-BR"><head><meta charset="utf-8"><title>Relatório Mensal — ${monthLabel(month)}</title>
+<html lang="pt-BR"><head><meta charset="utf-8"><title>Relatório Mensal — ${esc(monthLabel(month))}</title>
 <style>
   @page { size: A4; margin: 14mm 12mm; }
   body { font-family: Inter, Arial, sans-serif; color: #1a1d21; font-size: 11.5px; margin: 0; }
@@ -171,7 +177,7 @@ export default function MonthlyReport() {
 </style></head>
 <body>
   <header>
-    <h1>Relatório Mensal — ${monthLabel(month)}</h1>
+    <h1>Relatório Mensal — ${esc(monthLabel(month))}</h1>
     <div class="meta">Aponta CD · Gerado em ${new Date().toLocaleString("pt-BR")}</div>
   </header>
 

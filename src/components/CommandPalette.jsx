@@ -101,7 +101,7 @@ export default function CommandPalette({
       { id: "nav-team", type: "action", actionKey: "nav-team", title: "Ir para Cadastros", subtitle: "Operadores, atividades, veículos", onSelect: () => onNavigate?.("team") },
       { id: "nav-sales-team", type: "action", actionKey: "nav-sales-team", title: "Ir para Equipe comercial", subtitle: "Líderes e vendedores", onSelect: () => onNavigate?.("sales-team") },
       { id: "nav-audit", type: "action", actionKey: "nav-audit", title: "Ir para Auditoria", subtitle: "Histórico de alterações", onSelect: () => onNavigate?.("audit") },
-      { id: "action-tv", type: "action", actionKey: "action-tv", title: "Abrir Painel TV", subtitle: "Painel de exibição em nova aba", onSelect: () => window.open("/tv", "_blank") },
+      { id: "action-tv", type: "action", actionKey: "action-tv", title: "Abrir Painel TV", subtitle: "Painel de exibição em nova aba", onSelect: () => window.open("/tv", "_blank", "noopener,noreferrer") },
       { id: "action-today", type: "action", actionKey: "nav-panel", title: "Filtrar Indicadores por Hoje", subtitle: "Aplica filtro de período rápido", onSelect: () => { onNavigate?.("panel"); onApplyFilter?.({ type: "hoje" }); } },
       { id: "action-week", type: "action", actionKey: "nav-panel", title: "Filtrar Indicadores por Últimos 7 dias", subtitle: "Aplica filtro de período rápido", onSelect: () => { onNavigate?.("panel"); onApplyFilter?.({ type: "7dias" }); } },
       { id: "action-month", type: "action", actionKey: "nav-panel", title: "Filtrar Indicadores por Este mês", subtitle: "Aplica filtro de período rápido", onSelect: () => { onNavigate?.("panel"); onApplyFilter?.({ type: "mes" }); } },

@@ -3,7 +3,9 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { fetchMapAreas, fetchMapItems, colorForType, labelForType, labelForSide } from "../lib/stockMap";
-import { fetchSystemStatus, upsertSystemStatus } from "../lib/api";
+import { fetchSystemStatus, upsertSystemStatus, fetchStockMapHistory, fetchConferenceHistory } from "../lib/api";
+import { fetchRecentScans } from "../lib/mapScan";
+import { computeSlottingAnalysis, heatmapColor, abcColor } from "../lib/slotting";
 import {
   mergeConfig, floorIndex, areaToMeters, rackGeometry, layoutItems, matchItems, categoryColor, exportForBlender,
 } from "../lib/map3dLayout";
@@ -46,12 +48,17 @@ function webglAvailable() {
   }
 }
 
-export default function StockMap3D({ isAdmin, onScanArea, onOpenMap }) {
+export default function StockMap3D({ isAdmin, onScanArea, onOpenMap, entries = [], shortages = [] }) {
   const mountRef = useRef(null);
   const three = useRef({}); // renderer, scene, camera, controls, world, floors, fly...
 
   const [areas, setAreas] = useState([]);
   const [items, setItems] = useState([]);
+  const [scans, setScans] = useState([]);
+  const [mapHistory, setMapHistory] = useState([]);
+  const [conferenceHistory, setConferenceHistory] = useState([]);
+  const [colorMode, setColorMode] = useState("category"); // "category" | "heatmap"
+  const [slottingOpen, setSlottingOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [cfg, setCfg] = useState(() => mergeConfig());
@@ -73,6 +80,16 @@ export default function StockMap3D({ isAdmin, onScanArea, onOpenMap }) {
       const saved = (st.data || []).find((r) => r.key === "map3d_config");
       if (saved?.value) setCfg(mergeConfig(saved.value));
       setLoading(false);
+
+      Promise.all([
+        fetchRecentScans({ limit: 500 }).catch(() => ({ data: [] })),
+        fetchStockMapHistory({ limit: 500 }).catch(() => ({ data: [] })),
+        fetchConferenceHistory({ limit: 200 }).catch(() => ({ data: [] })),
+      ]).then(([sc, hi, ch]) => {
+        setScans(sc?.data || []);
+        setMapHistory(hi?.data || []);
+        setConferenceHistory(ch?.data || []);
+      });
     })();
   }, []);
 
@@ -88,6 +105,29 @@ export default function StockMap3D({ isAdmin, onScanArea, onOpenMap }) {
 
   const floors = useMemo(() => [...new Set(areas.map((a) => floorIndex(a.floor)))].sort((x, y) => x - y), [areas]);
   const matches = useMemo(() => matchItems(items, query), [items, query]);
+  const slotting = useMemo(
+    () =>
+      computeSlottingAnalysis({
+        areas,
+        items,
+        scans,
+        shortages,
+        history: mapHistory,
+        entries,
+        conferenceHistory,
+        warehouseConfig: cfg,
+      }),
+    [areas, items, scans, shortages, mapHistory, entries, conferenceHistory, cfg]
+  );
+
+  const flyToArea = useCallback((area, itemId = null) => {
+    const t = three.current;
+    if (!t.camera || !area) return;
+    const m = areaToMeters(area, cfg);
+    const target = new THREE.Vector3(m.x, m.y + 1.5, m.z);
+    t.fly = { target, pos: target.clone().add(new THREE.Vector3(6, 6, 8)) };
+    setSelected({ areaId: area.id, itemId: itemId || undefined });
+  }, [cfg]);
 
   // ---------- cena (uma vez) ----------
   useEffect(() => {
@@ -351,7 +391,7 @@ export default function StockMap3D({ isAdmin, onScanArea, onOpenMap }) {
     three.current.floors?.forEach((fl, idx) => { fl.group.visible = floorFilter === "all" || Number(floorFilter) === idx; });
   }, [floorFilter, areas, cfg, loading]);
 
-  // ---------- destaque da busca + voo da câmera ----------
+  // ---------- destaque da busca / mapa de calor + voo da câmera ----------
   useEffect(() => {
     const t = three.current;
     if (!t.floors) return;
@@ -366,9 +406,15 @@ export default function StockMap3D({ isAdmin, onScanArea, onOpenMap }) {
       meta.forEach((p, i) => {
         const hit = ids.has(p.item.id);
         if (hit && !first) first = p.position;
-        if (!active) c.copy(baseColors[i]);
-        else if (hit) c.copy(GOLD);
-        else c.copy(baseColors[i]).multiplyScalar(0.22);
+        if (active) {
+          if (hit) c.copy(GOLD);
+          else c.copy(baseColors[i]).multiplyScalar(0.22);
+        } else if (colorMode === "heatmap") {
+          const im = slotting.itemMetrics[String(p.item.id)];
+          c.set(im ? heatmapColor(im.heat) : "#334155");
+        } else {
+          c.copy(baseColors[i]);
+        }
         mesh.setColorAt(i, c);
       });
       mesh.instanceColor.needsUpdate = true;
@@ -377,7 +423,7 @@ export default function StockMap3D({ isAdmin, onScanArea, onOpenMap }) {
       const target = new THREE.Vector3(...first);
       t.fly = { target, pos: target.clone().add(new THREE.Vector3(4, 4, 6)) };
     }
-  }, [matches, query, areas, cfg, loading]);
+  }, [matches, query, areas, cfg, loading, colorMode, slotting.itemMetrics]);
 
   // ---------- contorno da área selecionada ----------
   useEffect(() => {
@@ -453,8 +499,59 @@ export default function StockMap3D({ isAdmin, onScanArea, onOpenMap }) {
             </button>
           ))}
         </div>
+        <div className="scan-chips" style={{ margin: 0 }} role="group" aria-label="Modo de cor">
+          <button type="button" className={`scan-chip ${colorMode === "category" ? "active" : ""}`} onClick={() => setColorMode("category")} aria-pressed={colorMode === "category"}>Categorias</button>
+          <button type="button" className={`scan-chip ${colorMode === "heatmap" ? "active" : ""}`} onClick={() => setColorMode("heatmap")} aria-pressed={colorMode === "heatmap"}>🔥 Mapa de Calor (ABC)</button>
+        </div>
+        <button type="button" className="btn-small" onClick={() => setSlottingOpen((v) => !v)}>
+          Slotting ({slotting.suggestions.length})
+        </button>
         <button type="button" className="btn-small" onClick={resetCamera}>Recentralizar</button>
       </div>
+
+      {slottingOpen && (
+        <div className="card" style={{ marginBottom: 14 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 8 }}>
+            <strong>Sugestões de Slotting 3D (Curva A longe de {slotting.origin.label})</strong>
+            <button type="button" className="btn-small" onClick={() => setSlottingOpen(false)}>Fechar</button>
+          </div>
+          {slotting.suggestions.length === 0 ? (
+            <p style={{ margin: 0, fontSize: 13, color: "var(--text-muted)" }}>
+              Nenhum item Curva A distante da expedição encontrado.
+            </p>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 8 }}>
+              {slotting.suggestions.slice(0, 8).map((sug) => (
+                <button
+                  key={sug.id}
+                  type="button"
+                  onClick={() => {
+                    setColorMode("heatmap");
+                    flyToArea(sug.fromArea, sug.item.id);
+                  }}
+                  style={{
+                    textAlign: "left",
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: "1px solid var(--border)",
+                    borderLeft: "4px solid #ef4444",
+                    background: "var(--surface-raised)",
+                    color: "var(--text)",
+                    cursor: "pointer",
+                  }}
+                >
+                  <div style={{ fontFamily: "var(--font-mono)", fontWeight: 700, fontSize: 12.5 }}>
+                    {sug.productCode} <span style={{ color: "var(--ok)", fontWeight: 700 }}>(-{sug.savedPct}%)</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>
+                    {sug.fromArea.code} ({sug.fromDistanceM}m) → {sug.toArea.code} ({sug.toDistanceM}m)
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="map3d-wrap">
         <div ref={mountRef} className="map3d-canvas" aria-label="Mapa 3D do estoque" role="img" />
@@ -464,7 +561,18 @@ export default function StockMap3D({ isAdmin, onScanArea, onOpenMap }) {
           <aside className="map3d-panel" aria-live="polite">
             <button type="button" className="map3d-close" onClick={() => setSelected(null)} aria-label="Fechar">×</button>
             <div className="map3d-panel-title">{selArea.code}{selArea.label ? ` · ${selArea.label}` : ""}</div>
-            <div className="map3d-panel-sub">{labelForType(selArea.area_type)} · andar {selArea.floor || "térreo"} · {selItems.length} produto(s)</div>
+            <div className="map3d-panel-sub">
+              {labelForType(selArea.area_type)} · andar {selArea.floor || "térreo"} · {selItems.length} produto(s)
+              {slotting.areaMetrics[String(selArea.id)] && (
+                <>
+                  {" · "}
+                  <strong style={{ color: abcColor(slotting.areaMetrics[String(selArea.id)].abc) }}>
+                    Curva {slotting.areaMetrics[String(selArea.id)].abc}
+                  </strong>
+                  {" "}({slotting.areaMetrics[String(selArea.id)].distanceM}m da expedição)
+                </>
+              )}
+            </div>
             {selItem && (
               <div className="map3d-item-card">
                 <strong>{selItem.product_name || selItem.product_code}</strong>

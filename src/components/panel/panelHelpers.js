@@ -9,7 +9,10 @@ export function fmtDateTime(iso) {
 
 export function csvEscape(v) {
   if (v == null) return "";
-  const s = String(v);
+  let s = String(v);
+  if (/^[=+\-@\t\r]/.test(s) && !/^-\d+([.,]\d+)?$/.test(s)) {
+    s = `'${s}`;
+  }
   if (/[";\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
   return s;
 }

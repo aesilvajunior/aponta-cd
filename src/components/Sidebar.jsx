@@ -105,7 +105,7 @@ const SECTIONS = [
     items: [
       { key: "admin-master", label: "Central de controle", Icon: IconStar },
       { key: "manual", label: "Lançamento manual", Icon: IconEdit3 },
-      { key: "csv-import", label: "Importar CSV", Icon: IconUpload },
+      { key: "csv-import", label: "Importar CSV / Excel", Icon: IconUpload },
       { key: "monthly-report", label: "Relatório mensal", Icon: IconDownload },
       { key: "fraud", label: "Detecção de fraude", Icon: IconShield },
       { key: "reports-scheduler", label: "Export agendado", Icon: IconVolume2 },
@@ -362,7 +362,7 @@ export default function Sidebar({ id, tab, setTab, isAdmin, onLock, currentOpera
             {!collapsed && <div className="sidebar-section-divider" />}
             <div
               className="nav-item nav-item-tv"
-              {...press(() => window.open("/tv", "_blank"))}
+              {...press(() => window.open("/tv", "_blank", "noopener,noreferrer"))}
               title={collapsed ? "Painel TV" : "Abrir painel de exibição numa nova aba"}
             >
               <span className="nav-item-icon"><IconTv size={18} /></span>

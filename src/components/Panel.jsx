@@ -816,7 +816,13 @@ export default function Panel({
 
   function openPrintableReport() {
     const period = periodLabel(dateFrom, dateTo, filteredEntries);
-    const esc = (s) => String(s ?? "").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const esc = (s) =>
+      String(s ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
 
     const activityRows = metrics.avgByActivity.filter((a) => a.registros > 0)
       .map((a) => `<tr><td>${esc(a.name)}</td><td class="right">${a.registros}</td><td>${esc(fmtDuration(a.media))}</td></tr>`).join("");

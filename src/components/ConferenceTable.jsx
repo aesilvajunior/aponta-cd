@@ -14,6 +14,8 @@ import {
   resetConferenceItem,
   logAudit,
 } from "../lib/api";
+import { fetchMapAreas, fetchMapItems } from "../lib/stockMap";
+import { buildCyclicTaskFromConference, createCyclicCountTask } from "../lib/cyclicInventory";
 import { fmtClock, fmtDate, fmtDuration, todayLocalISODate, localISODate } from "../lib/format";
 import { supabase } from "../supabaseClient";
 import useKeyboardNav from "../hooks/useKeyboardNav";
@@ -268,10 +270,32 @@ export default function ConferenceTable({ operators, isAdmin = false }) {
     const { error: err } = await reportConferenceProblem(problemModal.id, loggedOperator, problemReason.trim(), problemNote.trim());
     setBusy(false);
     if (err) { setError(err.message); return; }
+
+    // Gatilho automático de inventário cíclico (contagem cega) ao registrar divergência na conferência
+    let cyclicArea = null;
+    try {
+      const [{ data: areas }, { data: items }] = await Promise.all([fetchMapAreas(), fetchMapItems()]);
+      const taskPayload = buildCyclicTaskFromConference({
+        conferenceItem: problemModal,
+        reason: problemReason.trim(),
+        note: problemNote.trim(),
+        areas: areas || [],
+        items: items || [],
+      });
+      const res = await createCyclicCountTask(taskPayload);
+      if (res.data) cyclicArea = res.data.area_code;
+    } catch {
+      /* melhor esforço */
+    }
+
     setProblemModal(null);
     setProblemReason("");
     setProblemNote("");
-    setConfirmation({ kind: "problema", order: problemModal.order_number || problemModal.transfer_number });
+    setConfirmation({
+      kind: "problema",
+      order: problemModal.order_number || problemModal.transfer_number,
+      cyclicArea,
+    });
     autoReturnRef.current = setTimeout(() => setConfirmation(null), AUTO_RETURN_MS);
     await load();
   }
@@ -438,6 +462,7 @@ export default function ConferenceTable({ operators, isAdmin = false }) {
           </div>
           <div className="kiosk-confirm-sub">
             {confirmation.order ? `Pedido ${confirmation.order}` : "Item"}
+            {confirmation.cyclicArea && ` · Contagem cega gerada automaticamente (${confirmation.cyclicArea})`}
           </div>
         </div>
       )}

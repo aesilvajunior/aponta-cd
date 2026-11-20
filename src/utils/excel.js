@@ -1,9 +1,114 @@
 import * as XLSX from "xlsx";
+import Papa from "papaparse";
 
 // ============================================================
 // Helpers de Excel — geram arquivos .xlsx formatados (com
-// cabeçalho-resumo, tabelas coloridas e totais no final).
+// cabeçalho-resumo, tabelas coloridas e totais no final) e
+// leem planilhas .xlsx/.xls/.csv para importação inteligente.
 // ============================================================
+
+// Lê uma planilha Excel (ArrayBuffer) detectando automaticamente a linha de cabeçalho
+// (útil para relatórios do ERP que vêm com linhas de título antes da tabela).
+export function parseSpreadsheetBuffer(buffer, { sheetName = null } = {}) {
+  const wb = XLSX.read(buffer, { type: "array" });
+  const sheetNames = wb.SheetNames || [];
+  if (sheetNames.length === 0) {
+    return { headers: [], rows: [], sheetNames: [], activeSheet: "" };
+  }
+  const activeSheet = sheetName && sheetNames.includes(sheetName) ? sheetName : sheetNames[0];
+  const ws = wb.Sheets[activeSheet];
+  const matrix = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", raw: false });
+
+  // Detecta a primeira linha com >= 2 células preenchidas como cabeçalho
+  let headerIdx = matrix.findIndex(
+    (r) => Array.isArray(r) && r.filter((c) => String(c ?? "").trim() !== "").length >= 2
+  );
+  if (headerIdx < 0) headerIdx = 0;
+
+  const rawHeaders = (matrix[headerIdx] || []).map((h, i) => {
+    const clean = String(h ?? "").trim();
+    return clean || `Coluna_${i + 1}`;
+  });
+
+  // Garante nomes de coluna únicos
+  const seen = {};
+  const headers = rawHeaders.map((h) => {
+    if (!seen[h]) {
+      seen[h] = 1;
+      return h;
+    }
+    seen[h] += 1;
+    return `${h}_${seen[h]}`;
+  });
+
+  const rows = [];
+  for (let i = headerIdx + 1; i < matrix.length; i++) {
+    const line = matrix[i];
+    if (!Array.isArray(line)) continue;
+    const nonEmpty = line.some((c) => String(c ?? "").trim() !== "");
+    if (!nonEmpty) continue;
+    const obj = {};
+    headers.forEach((h, idx) => {
+      obj[h] = line[idx] !== undefined && line[idx] !== null ? String(line[idx]).trim() : "";
+    });
+    rows.push(obj);
+  }
+
+  return { headers, rows, sheetNames, activeSheet };
+}
+
+// Lê arquivo .csv, .xlsx ou .xls enviado pelo <input type="file">
+export async function parseSpreadsheetFile(file, { sheetName = null } = {}) {
+  const name = String(file?.name || "").toLowerCase();
+  if (name.endsWith(".xlsx") || name.endsWith(".xls")) {
+    const buf = await file.arrayBuffer();
+    const parsed = parseSpreadsheetBuffer(buf, { sheetName });
+    return { ...parsed, fileType: "excel", buffer: buf };
+  }
+
+  return new Promise((resolve, reject) => {
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      encoding: "UTF-8",
+      complete: (results) => {
+        if (results.errors && results.errors.length > 0 && (!results.data || results.data.length === 0)) {
+          reject(new Error(`Erro ao interpretar CSV: ${results.errors[0].message}`));
+          return;
+        }
+        const rows = results.data || [];
+        const headers = results.meta?.fields || Object.keys(rows[0] || {});
+        resolve({ headers, rows, sheetNames: ["CSV"], activeSheet: "CSV", fileType: "csv", buffer: null });
+      },
+      error: (err) => reject(err),
+    });
+  });
+}
+
+// Exporta o resumo de divergências detectadas antes da importação
+export function exportDivergencesExcel(divergences = [], profileName = "importacao") {
+  if (!divergences || divergences.length === 0) return;
+  const matrix = [
+    ["RESUMO DE DIVERGÊNCIAS — PRÉ-IMPORTAÇÃO"],
+    ["Perfil:", profileName],
+    [],
+    ["Linha", "Severidade", "Tipo", "Código / Pedido", "Atual no CD", "Planilha", "Diferença", "Detalhe"],
+    ...divergences.map((d) => [
+      d.line ?? "—",
+      d.severity === "error" ? "Erro" : "Atenção",
+      d.type,
+      d.code || "—",
+      d.currentValue ?? "—",
+      d.incomingValue ?? "—",
+      d.diff ?? "—",
+      d.detail || "",
+    ]),
+  ];
+  const wb = XLSX.utils.book_new();
+  const ws = sheetFromMatrix(matrix);
+  XLSX.utils.book_append_sheet(wb, ws, "Divergencias");
+  downloadWorkbook(wb, `divergencias_${profileName.toLowerCase().replace(/[^a-z0-9]+/g, "_")}.xlsx`);
+}
 
 // Formata célula como moeda/duração — usada pra deixar o Excel bonito
 function autoWidth(rows) {

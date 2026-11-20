@@ -88,6 +88,24 @@ async function getAccessToken(email, key) {
   return data.access_token;
 }
 
+const EVENT_ID_RE = /^[a-zA-Z0-9_-]{5,1024}$/;
+
+function sanitizeText(v, max = 300) {
+  return Array.from(String(v ?? ""))
+    .filter((ch) => {
+      const code = ch.charCodeAt(0);
+      return code >= 32 || code === 9 || code === 10 || code === 13;
+    })
+    .join("")
+    .trim()
+    .slice(0, max);
+}
+
+function validateEventId(id) {
+  const s = String(id ?? "").trim();
+  return EVENT_ID_RE.test(s) ? s : null;
+}
+
 function buildEventBody(payload) {
   const {
     scheduled_at,
@@ -98,23 +116,30 @@ function buildEventBody(payload) {
     volume_weight,
     responsible_name,
     observation,
-  } = payload;
+  } = payload || {};
 
   const start = new Date(scheduled_at);
+  if (Number.isNaN(start.getTime())) {
+    throw new Error("Data/hora do agendamento inválida.");
+  }
   const end = new Date(start.getTime() + 60 * 60 * 1000);
+  const supplier = sanitizeText(supplier_name, 160);
+  if (!supplier) {
+    throw new Error("Nome do fornecedor é obrigatório.");
+  }
 
   const descLines = [];
-  if (invoice_number) descLines.push(`Nota fiscal: ${invoice_number}`);
-  if (carrier) descLines.push(`Transportadora: ${carrier}`);
-  if (purchase_order) descLines.push(`Pedido de compra: ${purchase_order}`);
-  if (volume_weight) descLines.push(`Volume/Peso: ${volume_weight}`);
-  if (responsible_name) descLines.push(`Responsável: ${responsible_name}`);
-  if (observation) descLines.push(`Observação: ${observation}`);
+  if (invoice_number) descLines.push(`Nota fiscal: ${sanitizeText(invoice_number, 80)}`);
+  if (carrier) descLines.push(`Transportadora: ${sanitizeText(carrier, 120)}`);
+  if (purchase_order) descLines.push(`Pedido de compra: ${sanitizeText(purchase_order, 80)}`);
+  if (volume_weight) descLines.push(`Volume/Peso: ${sanitizeText(volume_weight, 80)}`);
+  if (responsible_name) descLines.push(`Responsável: ${sanitizeText(responsible_name, 120)}`);
+  if (observation) descLines.push(`Observação: ${sanitizeText(observation, 500)}`);
   descLines.push("");
   descLines.push("— Gerado automaticamente pelo Aponta CD");
 
   return {
-    summary: `📥 Recebimento — ${supplier_name}`,
+    summary: `📥 Recebimento — ${supplier}`,
     description: descLines.join("\n"),
     start: { dateTime: start.toISOString(), timeZone: "America/Sao_Paulo" },
     end: { dateTime: end.toISOString(), timeZone: "America/Sao_Paulo" },
@@ -208,21 +233,19 @@ export async function onRequest(context) {
     // DELETE
     if (request.method === "DELETE") {
       const body = await request.json().catch(() => ({}));
-      const eventId = body?.google_event_id;
-      if (!eventId) {
-        return new Response(JSON.stringify({ ok: true, skipped: "sem google_event_id" }), {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+      const rawEventId = body?.google_event_id;
+      if (!rawEventId) {
+        return json({ ok: true, skipped: "sem google_event_id" }, 200, corsHeaders);
       }
-      const delRes = await fetch(`${baseUrl}/${eventId}`, {
+      const eventId = validateEventId(rawEventId);
+      if (!eventId) {
+        return json({ error: "Identificador de evento inválido." }, 400, corsHeaders);
+      }
+      const delRes = await fetch(`${baseUrl}/${encodeURIComponent(eventId)}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${accessToken}` },
       });
-      return new Response(JSON.stringify({ ok: delRes.ok }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return json({ ok: delRes.ok }, 200, corsHeaders);
     }
 
     // POST / PUT
@@ -230,37 +253,33 @@ export async function onRequest(context) {
     const eventBody = buildEventBody(body);
 
     if (request.method === "PUT") {
-      const googleEventId = body.google_event_id;
-      if (!googleEventId) {
+      const rawEventId = body.google_event_id;
+      if (!rawEventId) {
         const createRes = await fetch(baseUrl, {
           method: "POST",
           headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
           body: JSON.stringify(eventBody),
         });
         if (!createRes.ok) {
-          const err = await createRes.text();
-          throw new Error(`Google retornou ${createRes.status}: ${err}`);
+          throw new Error(`Erro ao criar evento no Google Calendar (HTTP ${createRes.status}).`);
         }
         const created = await createRes.json();
-        return new Response(JSON.stringify({ eventId: created.id }), {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
+        return json({ eventId: created.id }, 200, corsHeaders);
       }
-      const updRes = await fetch(`${baseUrl}/${googleEventId}`, {
+      const googleEventId = validateEventId(rawEventId);
+      if (!googleEventId) {
+        return json({ error: "Identificador de evento inválido." }, 400, corsHeaders);
+      }
+      const updRes = await fetch(`${baseUrl}/${encodeURIComponent(googleEventId)}`, {
         method: "PUT",
         headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
         body: JSON.stringify(eventBody),
       });
       if (!updRes.ok) {
-        const err = await updRes.text();
-        throw new Error(`Google retornou ${updRes.status}: ${err}`);
+        throw new Error(`Erro ao atualizar evento no Google Calendar (HTTP ${updRes.status}).`);
       }
       const updated = await updRes.json();
-      return new Response(JSON.stringify({ eventId: updated.id }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return json({ eventId: updated.id }, 200, corsHeaders);
     }
 
     // POST (default)
@@ -271,19 +290,15 @@ export async function onRequest(context) {
     });
 
     if (!createRes.ok) {
-      const err = await createRes.text();
-      throw new Error(`Google retornou ${createRes.status}: ${err}`);
+      throw new Error(`Erro ao criar evento no Google Calendar (HTTP ${createRes.status}).`);
     }
 
     const created = await createRes.json();
-    return new Response(JSON.stringify({ eventId: created.id }), {
-      status: 200,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return json({ eventId: created.id }, 200, corsHeaders);
   } catch (err) {
-    return new Response(
-      JSON.stringify({ error: err.message || String(err) }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
+    const safeMsg = err?.message && /inválid|obrigatóri|HTTP \d+/i.test(err.message)
+      ? err.message
+      : "Erro interno ao processar agendamento no Google Calendar.";
+    return json({ error: safeMsg }, 500, corsHeaders);
   }
 }

@@ -2,7 +2,14 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { fetchMapAreas, DEFAULT_CATEGORIES, SIDES } from "../lib/stockMap";
 import { classifyScan } from "../lib/barcode";
 import { loadCatalog, lookupCatalog, undoScan } from "../lib/mapScan";
+import { buildOptimizedScanRoute, nextRouteStop } from "../lib/mapScanPlan";
+import {
+  fetchCyclicCountTasks,
+  completeCyclicCountTask,
+  cancelCyclicCountTask,
+} from "../lib/cyclicInventory";
 import { recordScanSafe, saveCatalogEntrySafe, removeByEntryId } from "../lib/offlineSync";
+import { supabase } from "../supabaseClient";
 import { getStationName } from "../lib/station";
 import { cameraSupported } from "../lib/scanner";
 import { beepOk, beepNew, beepError } from "../lib/beep";
@@ -27,6 +34,13 @@ const ACTION_TEXT = {
   contou: "+1 unidade",
   pendente: "Guardado (sem internet)",
   ja_processado: "Já registrado",
+};
+
+const TRIGGER_LABELS = {
+  falta: "Falta na separação",
+  conferencia: "Divergência na conferência",
+  inconsistencia: "Inconsistência do CD",
+  manual: "Contagem manual",
 };
 
 export default function StockScan({ operators, currentOperator, onOpenMap }) {
@@ -56,27 +70,81 @@ export default function StockScan({ operators, currentOperator, onOpenMap }) {
   const [catalogCount, setCatalogCount] = useState(0);
   const busyRef = useRef(false);
 
+  // ---------- Inventário Cíclico (Contagem Cega) ----------
+  const [cyclicTasks, setCyclicTasks] = useState([]);
+  const [activeCyclicTask, setActiveCyclicTask] = useState(null);
+  const [blindCountQty, setBlindCountQty] = useState(0);
+  const [blindUpdateMap, setBlindUpdateMap] = useState(true);
+  const [lastBlindResult, setLastBlindResult] = useState(null);
+
+  // ---------- Roteirização de Escaneamento / Picking ----------
+  const [routeState, setRouteState] = useState(null); // resultado de buildOptimizedScanRoute
+  const [routeCompleted, setRouteCompleted] = useState(() => new Set());
+  const [routeAreaIds, setRouteAreaIds] = useState([]);
+  const [routePickerOpen, setRoutePickerOpen] = useState(false);
+  const [routeBusy, setRouteBusy] = useState(false);
+
   const area = useMemo(() => areas.find((a) => String(a.id) === String(areaId)) || null, [areas, areaId]);
+
+  const loadCyclicTasks = useCallback(async () => {
+    const { data } = await fetchCyclicCountTasks({ status: "pendente", limit: 100 });
+    setCyclicTasks(data || []);
+    return data || [];
+  }, []);
+
+  const applyStopAddress = useCallback((stop, areaList = areas) => {
+    if (!stop) return;
+    const matchedArea =
+      areaList.find((a) => String(a.id) === String(stop.area_id)) ||
+      areaList.find((a) => String(a.code).toUpperCase() === String(stop.area_code || "").toUpperCase());
+    if (matchedArea) setAreaId(String(matchedArea.id));
+    if (stop.side) setSide(stop.side);
+    setSlot(stop.slot || "");
+    setLevel(stop.level || "");
+  }, [areas]);
+
+  const startBlindTask = useCallback((task, areaList = areas) => {
+    setActiveCyclicTask(task);
+    setBlindCountQty(0);
+    setLastBlindResult(null);
+    setMode("contar");
+    applyStopAddress(task, areaList);
+  }, [areas, applyStopAddress]);
 
   // ---------- carga inicial ----------
   useEffect(() => {
     (async () => {
-      const [{ data }, cat] = await Promise.all([fetchMapAreas(), loadCatalog()]);
-      setAreas(data.filter((a) => a.area_type === "prateleira" || a.area_type === "outro" || a.area_type === "recebimento"));
+      const [{ data }, cat, tasks] = await Promise.all([
+        fetchMapAreas(),
+        loadCatalog(),
+        loadCyclicTasks(),
+      ]);
+      const validAreas = (data || []).filter(
+        (a) => a.area_type === "prateleira" || a.area_type === "outro" || a.area_type === "recebimento"
+      );
+      setAreas(validAreas);
       setLoadingAreas(false);
       setCatalogCount(cat.count);
       if (cat.tableMissing) setTableMissing(true);
 
-      // veio do botão "Coletar aqui" do mapa
+      // veio do botão "Coletar aqui" do mapa OU de uma tarefa de contagem cega
       try {
         const pre = JSON.parse(sessionStorage.getItem(PREFILL_KEY) || "null");
-        if (pre?.areaId) {
-          setAreaId(String(pre.areaId));
-          if (pre.side) setSide(pre.side);
+        if (pre) {
+          if (pre.cyclicTaskId) {
+            const foundTask = tasks.find((t) => String(t.id) === String(pre.cyclicTaskId));
+            if (foundTask) startBlindTask(foundTask, validAreas);
+          } else if (pre.areaId) {
+            setAreaId(String(pre.areaId));
+            if (pre.side) setSide(pre.side);
+            if (pre.slot) setSlot(pre.slot);
+            if (pre.level) setLevel(pre.level);
+          }
           sessionStorage.removeItem(PREFILL_KEY);
         }
       } catch { /* ignora */ }
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -119,12 +187,16 @@ export default function StockScan({ operators, currentOperator, onOpenMap }) {
       say("error", `Não foi possível gravar: ${res.error.message || "tente de novo"}`);
       return;
     }
+    // Se estiver em contagem cega ativa, acumula automaticamente na contagem
+    if (activeCyclicTask) {
+      setBlindCountQty((q) => q + 1);
+    }
     const name = catalog?.product_name || catalog?.product_code || barcode;
     const isNew = res.action === "adicionou";
     isNew ? beepNew() : beepOk();
     say(isNew ? "new" : "ok", `${ACTION_TEXT[res.action] || "Registrado"}: ${name}`);
     setHistory((h) => [{ ...res, barcode, name, areaCode: area.code, side, slot: slot.trim(), level: level.trim(), mode, at: new Date() }, ...h].slice(0, 30));
-  }, [area, operator, side, slot, level, mode, say]);
+  }, [area, operator, side, slot, level, mode, say, activeCyclicTask]);
 
   // ---------- tratar o que foi lido (câmera, leitor USB ou digitado) ----------
   const handleScan = useCallback(async (raw) => {
@@ -207,6 +279,121 @@ export default function StockScan({ operators, currentOperator, onOpenMap }) {
     say("info", "Bip desfeito.");
   }
 
+  // ---------- concluir / cancelar contagem cega ----------
+  async function finishBlindCount() {
+    if (!activeCyclicTask) return;
+    const { evaluation, error } = await completeCyclicCountTask(activeCyclicTask, {
+      countedQuantity: Number(blindCountQty) || 0,
+      operator,
+      updateStockMap: blindUpdateMap,
+    });
+    if (error) {
+      beepError();
+      say("error", `Erro ao concluir contagem: ${error.message}`);
+      return;
+    }
+    beepOk();
+    setLastBlindResult({
+      areaCode: activeCyclicTask.area_code,
+      productCode: activeCyclicTask.product_code,
+      ...evaluation,
+    });
+    if (routeState) {
+      const matchStop = routeState.orderedStops.find((s) => String(s.id) === String(activeCyclicTask.id));
+      if (matchStop) {
+        const nextSet = new Set(routeCompleted);
+        nextSet.add(matchStop.routeKey);
+        setRouteCompleted(nextSet);
+        const nxt = nextRouteStop(routeState, nextSet);
+        if (nxt) applyStopAddress(nxt);
+      }
+    }
+    setActiveCyclicTask(null);
+    await loadCyclicTasks();
+    say("ok", evaluation.summary);
+  }
+
+  async function dismissCyclicTask(taskId) {
+    await cancelCyclicCountTask(taskId);
+    if (activeCyclicTask?.id === taskId) setActiveCyclicTask(null);
+    await loadCyclicTasks();
+  }
+
+  // ---------- roteirização otimizada (serpentina corredor/nível) ----------
+  function buildRouteFromCyclicTasks() {
+    if (cyclicTasks.length === 0) return;
+    const r = buildOptimizedScanRoute(cyclicTasks, areas, { serpentine: true, levelDirection: "asc" });
+    setRouteState({ ...r, sourceLabel: "Tarefas de inventário cíclico" });
+    setRouteCompleted(new Set());
+    if (r.orderedStops[0]) {
+      startBlindTask(r.orderedStops[0]);
+    }
+    say("info", `Rota otimizada criada: ${r.orderedStops.length} parada(s)${r.savedPct > 0 ? ` (-${r.savedPct}% deslocamento)` : ""}.`);
+  }
+
+  async function buildRouteFromSelectedAreas() {
+    if (routeAreaIds.length === 0) return;
+    setRouteBusy(true);
+    try {
+      let stops = [];
+      if (supabase?.from) {
+        const { data } = await supabase
+          .from("stock_map_items")
+          .select("*")
+          .in("area_id", routeAreaIds);
+        stops = (data || []).map((it) => {
+          const a = areas.find((x) => String(x.id) === String(it.area_id));
+          return {
+            id: `item-${it.id}`,
+            area_id: it.area_id,
+            area_code: a?.code || "",
+            side: it.side || null,
+            slot: it.slot || null,
+            level: it.level || null,
+            product_code: it.product_code,
+            product_name: it.product_name,
+          };
+        });
+      }
+      // Se as áreas ainda estiverem vazias, cria 1 parada por área selecionada
+      if (stops.length === 0) {
+        stops = routeAreaIds.map((id) => {
+          const a = areas.find((x) => String(x.id) === String(id));
+          return { id: `area-${id}`, area_id: id, area_code: a?.code || "", side: a?.has_sides ? "impar" : null, slot: "01", level: "1" };
+        });
+      }
+      const r = buildOptimizedScanRoute(stops, areas, { serpentine: true, levelDirection: "asc" });
+      setRouteState({ ...r, sourceLabel: `${routeAreaIds.length} corredor(es) selecionado(s)` });
+      setRouteCompleted(new Set());
+      setRoutePickerOpen(false);
+      if (r.orderedStops[0]) applyStopAddress(r.orderedStops[0]);
+      say("info", `Rota de escaneamento pronta: ${r.orderedStops.length} endereço(s) em serpentina.`);
+    } finally {
+      setRouteBusy(false);
+    }
+  }
+
+  const currentRouteStop = useMemo(
+    () => (routeState ? nextRouteStop(routeState, routeCompleted) : null),
+    [routeState, routeCompleted]
+  );
+
+  function markCurrentStopDone() {
+    if (!currentRouteStop || !routeState) return;
+    const nextDone = new Set(routeCompleted);
+    nextDone.add(currentRouteStop.routeKey);
+    setRouteCompleted(nextDone);
+    const next = nextRouteStop(routeState, nextDone);
+    if (next) {
+      applyStopAddress(next);
+      beepOk();
+      say("info", `Próximo endereço: ${next.area_code}${next.slot ? ` · pos. ${next.slot}` : ""}${next.level ? ` · n${next.level}` : ""}`);
+    } else {
+      beepNew();
+      say("ok", "Rota concluída! Todos os endereços foram percorridos sem vai-e-volta.");
+    }
+  }
+
   // ---------- tela ----------
   const grouped = useMemo(() => {
     const by = {};
@@ -254,12 +441,235 @@ export default function StockScan({ operators, currentOperator, onOpenMap }) {
             {" "}Operador: <strong>{operator.name}</strong> · {catalogCount} códigos conhecidos
           </p>
         </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            className="btn-small"
+            onClick={() => setRoutePickerOpen((v) => !v)}
+          >
+            🧭 Roteirizar corredores
+          </button>
+          {cyclicTasks.length > 0 && (
+            <button
+              type="button"
+              className="btn-small btn-excel"
+              onClick={buildRouteFromCyclicTasks}
+            >
+              Roteirizar {cyclicTasks.length} contagem(ns) cega(s)
+            </button>
+          )}
+        </div>
       </div>
 
       {tableMissing && (
         <div className="alert-card alert-danger" style={{ marginBottom: 16 }}>
           <strong>Falta ativar o banco para a coleta.</strong>
           <p className="alert-detail">Rode <code>supabase/migrations/2026-10-12_map_scan.sql</code> no SQL Editor do Supabase. Enquanto isso, produtos novos entram só com o código de barras.</p>
+        </div>
+      )}
+
+      {/* Seletor de corredores para roteirização em serpentina */}
+      {routePickerOpen && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <div className="card-title">Gerar rota otimizada (serpentina por corredor e nível)</div>
+          <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 0 }}>
+            Selecione os corredores/prateleiras para percorrer na sequência mais curta (ida/volta sem retornar no mesmo corredor).
+          </p>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+            {areas.map((a) => {
+              const checked = routeAreaIds.includes(a.id);
+              return (
+                <button
+                  key={a.id}
+                  type="button"
+                  className={`scan-chip ${checked ? "active" : ""}`}
+                  onClick={() =>
+                    setRouteAreaIds((prev) =>
+                      prev.includes(a.id) ? prev.filter((id) => id !== a.id) : [...prev, a.id]
+                    )
+                  }
+                >
+                  {a.code}{a.label ? ` · ${a.label}` : ""}
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              type="button"
+              className="btn-small btn-excel"
+              disabled={routeAreaIds.length === 0 || routeBusy}
+              onClick={buildRouteFromSelectedAreas}
+            >
+              {routeBusy ? "Calculando rota..." : `Iniciar rota (${routeAreaIds.length} áreas)`}
+            </button>
+            <button type="button" className="btn-small" onClick={() => setRoutePickerOpen(false)}>Fechar</button>
+          </div>
+        </div>
+      )}
+
+      {/* Painel de Rota Guiada Ativa */}
+      {routeState && (
+        <div className="card" style={{ marginBottom: 16, borderLeft: "4px solid var(--accent)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
+            <div>
+              <div className="card-title" style={{ marginBottom: 2 }}>
+                🧭 Rota Guiada · {routeState.sourceLabel}
+              </div>
+              <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>
+                {routeCompleted.size} de {routeState.orderedStops.length} parada(s) concluída(s)
+                {routeState.savedPct > 0 && (
+                  <> · <strong style={{ color: "var(--ok)" }}>-{routeState.savedPct}% deslocamento</strong></>
+                )}
+                {routeState.backtracksAvoided > 0 && ` · ${routeState.backtracksAvoided} vai-e-volta(s) evitado(s)`}
+              </div>
+            </div>
+            <button type="button" className="btn-small" onClick={() => setRouteState(null)}>Encerrar rota</button>
+          </div>
+
+          {currentRouteStop ? (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap", padding: "12px 14px", background: "var(--accent-soft)", borderRadius: 10 }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", color: "var(--accent)" }}>
+                  Parada #{currentRouteStop.stepIndex} · Corredor {currentRouteStop.corridorKey} ({currentRouteStop.direction === "ida" ? "Ida →" : "← Volta"})
+                </div>
+                <div style={{ fontSize: 16, fontWeight: 700, marginTop: 2 }}>
+                  {currentRouteStop.area_code}
+                  {currentRouteStop.side ? ` · ${currentRouteStop.side === "par" ? "PAR" : "ÍMPAR"}` : ""}
+                  {currentRouteStop.slot ? ` · Pos. ${currentRouteStop.slot}` : ""}
+                  {currentRouteStop.level ? ` · Nível ${currentRouteStop.level}` : ""}
+                </div>
+                {currentRouteStop.product_code && (
+                  <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 2 }}>
+                    Produto: <strong>{currentRouteStop.product_code}</strong> {currentRouteStop.product_name ? `— ${currentRouteStop.product_name}` : ""}
+                  </div>
+                )}
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button type="button" className="btn-small" onClick={() => applyStopAddress(currentRouteStop)}>
+                  Preencher endereço
+                </button>
+                <button type="button" className="btn-small btn-excel" onClick={markCurrentStopDone}>
+                  ✓ Concluir e avançar →
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ color: "var(--ok)", fontWeight: 600, fontSize: 13 }}>
+              ✓ Todas as paradas desta rota foram concluídas!
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Resultado da última contagem cega concluída */}
+      {lastBlindResult && (
+        <div
+          className="alert-card"
+          style={{
+            marginBottom: 16,
+            background: lastBlindResult.status === "ok" ? "var(--ok-soft)" : "var(--warning-soft)",
+            borderColor: lastBlindResult.status === "ok" ? "var(--ok)" : "var(--warning)",
+            color: "var(--text)",
+            justifyContent: "space-between",
+          }}
+        >
+          <div>
+            <strong>Resultado da contagem cega ({lastBlindResult.areaCode}{lastBlindResult.productCode ? ` · ${lastBlindResult.productCode}` : ""}):</strong>{" "}
+            {lastBlindResult.summary}
+          </div>
+          <button type="button" className="btn-small" onClick={() => setLastBlindResult(null)}>Fechar</button>
+        </div>
+      )}
+
+      {/* Contagem cega ativa */}
+      {activeCyclicTask && (
+        <div className="card" style={{ marginBottom: 16, borderLeft: "4px solid var(--warning)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
+            <div>
+              <div className="card-title" style={{ marginBottom: 2 }}>
+                🔒 Contagem Cega em Andamento · {activeCyclicTask.area_code}
+              </div>
+              <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>
+                Gatilho: <strong>{TRIGGER_LABELS[activeCyclicTask.trigger_source] || activeCyclicTask.trigger_source}</strong> · {activeCyclicTask.reason}
+              </div>
+              <div style={{ fontSize: 12, color: "var(--warning)", fontWeight: 600, marginTop: 4 }}>
+                Saldo do sistema oculto (modo cego). Bipe cada unidade ou informe o total físico contado abaixo.
+              </div>
+            </div>
+            <button type="button" className="btn-small" onClick={() => setActiveCyclicTask(null)}>Pausar tarefa</button>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+              <span>Qtd. física contada:</span>
+              <input
+                type="number"
+                min="0"
+                className="field"
+                style={{ width: 100, fontFamily: "var(--font-mono)", fontWeight: 700 }}
+                value={blindCountQty}
+                onChange={(e) => setBlindCountQty(Math.max(0, Number(e.target.value) || 0))}
+              />
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, color: "var(--text-muted)" }}>
+              <input type="checkbox" checked={blindUpdateMap} onChange={(e) => setBlindUpdateMap(e.target.checked)} />
+              Atualizar saldo no mapa ao concluir
+            </label>
+            <button type="button" className="btn-small btn-excel" onClick={finishBlindCount}>
+              ✓ Finalizar contagem cega
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Fila de tarefas de inventário cíclico geradas automaticamente */}
+      {cyclicTasks.length > 0 && !activeCyclicTask && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+            <div className="card-title" style={{ marginBottom: 0 }}>
+              Inventário cíclico pendente ({cyclicTasks.length})
+            </div>
+            <button type="button" className="btn-small" onClick={buildRouteFromCyclicTasks}>
+              🧭 Ordenar em rota serpentina
+            </button>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 220, overflowY: "auto" }}>
+            {cyclicTasks.slice(0, 12).map((task) => (
+              <div
+                key={task.id}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 10,
+                  padding: "10px 12px",
+                  background: "var(--surface-raised)",
+                  border: "1px solid var(--border)",
+                  borderRadius: 10,
+                  flexWrap: "wrap",
+                }}
+              >
+                <div style={{ minWidth: 200, flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    <span style={{ fontFamily: "var(--font-mono)", fontWeight: 700 }}>{task.area_code}</span>
+                    {task.product_code && <span className="badge">{task.product_code}</span>}
+                    <span style={{ fontSize: 11, color: "var(--warning)", fontWeight: 700 }}>
+                      {TRIGGER_LABELS[task.trigger_source] || task.trigger_source}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 2 }}>{task.reason}</div>
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <button type="button" className="btn-small btn-excel" onClick={() => startBlindTask(task)}>
+                    Iniciar contagem cega
+                  </button>
+                  <button type="button" className="btn-small" onClick={() => dismissCyclicTask(task.id)} title="Dispensar tarefa">
+                    ×
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -396,4 +806,3 @@ export default function StockScan({ operators, currentOperator, onOpenMap }) {
     </div>
   );
 }
-

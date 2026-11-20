@@ -15,7 +15,7 @@ const todayISO = () => {
   return brt.toISOString().slice(0, 10);
 };
 
-export default function DailyRoutine({ currentOperator }) {
+export default function DailyRoutine({ currentOperator, onOpenScanTask }) {
   const [subTab, setSubTab] = useState("today");   // today | checklist | incons | history
   const [steps, setSteps] = useState([]);
   const [progress, setProgress] = useState({});
@@ -116,7 +116,7 @@ export default function DailyRoutine({ currentOperator }) {
       )}
 
       {subTab === "checklist" && <PhysicalChecklist currentOperator={currentOperator} />}
-      {subTab === "incons" && <InconsistencyList currentOperator={currentOperator} />}
+      {subTab === "incons" && <InconsistencyList currentOperator={currentOperator} onOpenScanTask={onOpenScanTask} />}
       {subTab === "history" && <RoutineHistory />}
 
       {toast && <div className={`dr-toast ${toast.type}`}>{toast.msg}</div>}

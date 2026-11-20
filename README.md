@@ -1,237 +1,223 @@
 # 📦 Aponta CD — Hidráulica Tropeiro
 
-Sistema web de **rastreamento de atividades operacionais** para o Centro de Distribuição da Hidráulica Tropeiro. Registra tempo de execução de tarefas, faltas de produto, erros de separação, gerencia agendamentos de recebimento, controla a fila de conferência e dá ao admin **controle total** sobre qualquer dado do sistema.
+Sistema web (PWA) de **rastreamento operacional e inteligência de estoque** para o Centro de Distribuição da Hidráulica Tropeiro. Eleva a operação do CD do simples apontamento para **inteligência operacional em tempo real**: cronometragem de atividades offline-first, fila de conferência, mapa interativo 2D/3D com curva ABC e slotting, inventário cíclico automático por gatilho, alertas proativos de SLA, roteirização serpentina de coleta e importação inteligente de planilhas ERP.
 
 ---
 
 ## 📋 Índice
 
-- [Visão Geral](#-visão-geral)
 - [Funcionalidades](#-funcionalidades)
+- [Inteligência Operacional](#-inteligência-operacional)
 - [Stack Técnica](#-stack-técnica)
 - [Estrutura do Projeto](#-estrutura-do-projeto)
-- [Instalação](#-instalação)
-- [Configuração](#-configuração)
-- [Banco de Dados](#-banco-de-dados)
-- [Autenticação](#-autenticação)
-- [Rotas e Navegação](#-rotas-e-navegação)
-- [Atalhos de Teclado](#-atalhos-de-teclado)
-- [Poderes do Admin](#-poderes-do-admin)
-- [Deploy](#-deploy)
-- [Desenvolvimento](#-desenvolvimento)
-
----
-
-## 🎯 Visão Geral
-
-O **Aponta CD** resolve o problema de **medição de produtividade e rastreabilidade** no CD. Cada operador registra suas atividades em quiosques (tablets/computadores no chão de fábrica) usando um código pessoal de 3 dígitos. O sistema mede automaticamente:
-
-- **Tempo de execução** de cada atividade
-- **Encaixes** (pedidos urgentes do comercial)
-- **Transferências** entre lojas (AP/ZN)
-- **Recebimentos** de fornecedores
-- **Faltas de produto** identificadas durante a separação
-- **Erros de separação** (quem errou, quem apontou, qual tipo)
-- **Fila de conferência** — todo pedido separado entra numa mesa de conferência
-
-Os gestores acessam painéis com métricas, rankings, exportações (CSV/Excel/PDF) e uma **visão executiva** com alertas automáticos. Uma TV no CD exibe em tempo real as atividades em andamento + gamificação semanal + status da mesa. E o **Admin Master** dá poder total sobre qualquer dado — editar, apagar, mexer na mesa, forçar finalização de sessões, etc.
+- [Configuração Local](#-configuração-local)
+- [Docker e Deploy](#-docker-e-deploy)
+- [Banco de Dados e Migrações](#-banco-de-dados-e-migrações)
+- [Segurança](#-segurança)
+- [Scripts e Testes](#-scripts-e-testes)
+- [Documentação Adicional](#-documentação-adicional)
 
 ---
 
 ## ⚡ Funcionalidades
 
-### 🖥️ Operação (livre pra qualquer logado)
+### 🖥️ Operação (Chão de Fábrica)
+- **Kiosk de Atividades (`Kiosk`)**: apontamento por código de 3 dígitos ou leitura de crachá QR/USB, suporte a pausas com motivo, modo dupla, encaixes, transferências, recebimentos e registro de faltas — com **fila offline automática** e botão **Desfazer**.
+- **Apontar Erros (`ErrorKiosk`)**: fluxo guiado de erros de separação (também funciona offline).
+- **Mesa de Conferência (`ConferenceTable`)**: fila em tempo real com tempo de espera, conferentes cadastrados e reporte de problemas.
+- **Agenda de Recebimento (`ScheduleManager`)**: agendamento de fornecedores integrado ao Google Calendar (`/api/schedule-event`).
+- **Checklist do CD & Rotina do Líder (`CdChecklist`, `DailyRoutine`, `InconsistencyList`)**: acompanhamento diário, checklist físico e registro de inconsistências.
+- **Rotação de Tarefas (`RotationManager`)**: escala de organização e limpeza do CD.
+- **Coleta de Endereços (`StockScan`)**: leitura de etiquetas de endereço e produtos por leitor USB/Bluetooth ou câmera (ZXing), com catálogo local e fila offline.
 
-| Tela | Descrição |
-|------|-----------|
-| **Registrar atividade** | Operador loga com código, escolhe a atividade, informa pedido/cliente/veículo/fornecedor, cronometra e finaliza. Se for separação, o pedido cai automaticamente na **Mesa de conferência** |
-| **Registrar erro** | Fluxo guiado: pedido ou transferência → quem errou → tipo de erro → observação |
-| **Agendamentos** | Agenda recebimento de fornecedores com sincronização no Google Calendar |
-| **Mesa de conferência** | Fila de pedidos aguardando conferência. Conferentes cadastrados assumem, finalizam ou reportam problemas |
-| **Consulta de faltas** | Lista todas as faltas reportadas com filtros e gráficos |
-| **Consulta líder da equipe** | Busca por nome/código/equipe mostrando vínculo líder↔vendedor |
+### 📊 Gestão & Análise (Admin via PIN)
+- **Visão Executiva & Indicadores (`ExecutiveView`, `Panel`)**: KPIs, gráficos, comparação de turnos, cobertura de rodízio e exportações seguras em CSV, Excel (`.xlsx`) e PDF.
+- **Mapa do Estoque 2D e 3D (`StockMap`, `StockMap3D`)**: edição drag-and-drop de ruas/corredores, busca com destaque e visualização 3D (Three.js + suporte opcional a modelo Blender `.glb`).
+- **Carga de Trabalho & Pausas (`Workload`, `PauseReasons`)**: mapa de calor dia × hora, previsão de 7 dias, ranking justo por mediana da atividade, ocupação e motivos de pausa.
+- **Faltas & Fornecedores (`ShortagePanel`, `SupplierShortages`)**: análise de ruptura por produto, cliente e fornecedor.
+- **Central de Controle (`AdminMaster`)**, **Detecção de Fraude (`FraudPanel`)**, **Metas (`GoalsManager`, `TeamGoals`, `GoalsDashboard`)**, **Conquistas (`Achievements`)**, **Crachás & Etiquetas QR (`BadgePrinter`, `AddressLabels`)**, **Equipamentos (`EquipmentManager`)**, **Export Agendado (`ReportsScheduler`)**, **Alertas Telegram (`AlertSettings`)**, **Saúde do Sistema (`SystemHealth`)** e **Auditoria (`AuditLog`)**.
 
-### 📊 Gestão (admin via PIN)
+### 📺 Painel TV (`/tv`)
+Painel público em tempo real para monitores no CD: atividades ativas, alertas de atraso/sessão aberta, status da mesa de conferência, ranking diário, gamificação semanal, modo claro/escuro e privacidade de nomes.
 
-| Tela | Descrição |
-|------|-----------|
-| **Visão executiva** | KPIs comparativos, alertas automáticos, rankings, metas |
-| **Painel de métricas** | Dashboard completo com filtros, gráficos, exportações (CSV/Excel/PDF), métricas da mesa de conferência e botões rápidos de admin |
-| **Lançamento retroativo** | Digitar registros antigos direto no histórico |
-| **Admin Master** | ⭐ **Central de controle total** — editar, apagar, mexer em qualquer dado (veja seção dedicada) |
-| **Gestão e cadastros** | CRUD de operadores, atividades, veículos, tipos de erro, PIN, threshold |
-| **Equipe de vendas** | CRUD de líderes e vendedores, promover/rebaixar |
-| **Histórico de alterações** | Auditoria granular de tudo que foi criado/editado/removido |
+---
 
-### 📺 Modo TV (`/tv`)
+## 🧠 Inteligência Operacional
 
-Painel público para TV/monitor no CD:
-
-- Atividades em andamento em tempo real
-- Alerta de operador "sumido" (sessões abertas > 2h)
-- Mesa de conferência com tempo de espera
-- Ranking do dia + conferentes do dia
-- Destaques da semana (rápido, volume, consistente)
-- Alerta sonoro quando atividade passa do tempo
-- **Modo claro/escuro** com botão no canto
-- **Esconder nomes** para privacidade
-- **Só atrasadas** — esconde atividades dentro do tempo
-- **Tela cheia** com botão de sair
-- **Auto-refresh** a cada 1h
-
-### 🧩 Extras
-
-- **Command Palette** (`Ctrl+K`) — Busca global
-- **Perfil do operador** — Métricas individuais, rankings, comparação com o time
-- **Realtime** — Todas as telas se atualizam automaticamente
-- **Navegação por teclado** — Setas como TAB, Esc fecha modais, Enter confirma
+| Funcionalidade | Módulos Integrados | Benefício na Operação |
+|---|---|---|
+| **Mapa de Calor e Sugestão de Slotting** | `slotting.js` + `StockMap` + `StockMap3D` | Classifica itens/prateleiras em **Curva A/B/C**, mede a distância até a expedição/conferência e sugere realocações de itens Curva A distantes, reduzindo deslocamento a pé. |
+| **Inventário Cíclico Automático por Gatilho** | `cyclicInventory.js` + `ShortagePanel` + `ConferenceTable` + `InconsistencyList` + `StockScan` | Ao registrar falta, divergência na conferência ou inconsistência, gera automaticamente tarefa deduplicada de **contagem cega** para o endereço (oculta o saldo do sistema até finalizar). |
+| **Alertas Proativos de Gargalo (SLA)** | `slaMonitor.js` + `Workload` + `PauseReasons` + `PushSetup` | Monitora pausas acima do limite por motivo, fila de conferência travada/acumulada e queda de produtividade do turno abaixo da meta, notificando o líder com push e central de alertas. |
+| **Roteirização de Escaneamento / Picking** | `mapScanPlan.js` + `StockScan` | Ordena paradas em **serpentina (S-shape)** por andar → corredor → posição (ida crescente / volta decrescente) → lado → nível, eliminando vai-e-volta no mesmo corredor. |
+| **Perfis de Importação CSV / Excel** | `importProfiles.js` + `excel.js` + `CsvImport` | Lê `.csv`, `.xlsx` e `.xls` (com detecção de cabeçalho ERP e múltiplas abas), salva modelos de colunas para importação em **1 clique** e gera **resumo automático de divergências** antes de gravar. |
 
 ---
 
 ## 🛠️ Stack Técnica
 
 | Camada | Tecnologia |
-|--------|-----------|
-| **Frontend** | React 18 + Vite |
-| **Estilo** | CSS puro com design system (light/dark mode) |
-| **Backend** | Supabase (Postgres + Auth + Realtime) |
-| **Gráficos** | Recharts |
-| **Exportações** | CSV nativo + Excel (XLSX) + PDF (window.print) |
-| **Ícones** | SVG inline |
-| **Deploy sugerido** | Cloudflare Pages / Netlify / Vercel |
-
-**Sem biblioteca de roteamento** — navegação por estado (`tab`) no `App.jsx`, com rota especial `/tv` via `window.location.pathname`.
+|---|---|
+| **Frontend** | React 18 + Vite 5 (PWA com Service Worker) |
+| **Visualização 2D / 3D / Gráficos** | Konva (`react-konva`), Three.js, Recharts |
+| **Leitura / Exportação de Dados** | SheetJS (`xlsx`), PapaParse, `qrcode`, `@zxing/browser` |
+| **Backend & Realtime** | Supabase (PostgreSQL + RLS + Auth + Realtime + Edge Functions) |
+| **Serverless Auxiliar** | Cloudflare Pages Functions (`/api/schedule-event` → Google Calendar) |
+| **Qualidade** | Vitest + JSDOM, ESLint 9, Prettier, Playwright (E2E) |
+| **Containerização** | Docker multi-stage (`node:20-alpine` → `nginxinc/nginx-unprivileged:1.27-alpine`) |
 
 ---
 
 ## 📂 Estrutura do Projeto
 
----
-
-## Atualização de outubro/2026: o que mudou e como ativar
-
-### 1. Banco de dados (Supabase): rodar uma vez
-Abra o **SQL Editor** e rode `supabase/migrations/2026-10-10_hardening.sql`.
-Ele é seguro de repetir. Enquanto não for rodado, o app continua funcionando no modo antigo.
-
-O que ele faz:
-- **PIN de admin com hash**: o PIN sai de `admin_config` (texto puro) e passa a ficar numa tabela
-  fechada (`admin_secrets`), conferido pelas funções `verify_admin_pin` / `set_admin_pin`.
-  Depois de rodar, **o PIN atual continua o mesmo**, mas ninguém mais consegue lê-lo pela API.
-- **`client_errors`**: o app grava erros do navegador (tablets, TV) nessa tabela. Consulte em
-  *Table Editor > client_errors*.
-- **Índices** em `entries` (consultas por período ficam rápidas).
-- **Agregações**: view `v_operator_daily_stats` e função `get_operator_ranking(de, ate)`
-  (já existe `fetchOperatorRanking` em `src/lib/api.js`; ainda não está ligada a nenhuma tela).
-
-### 2. Cloudflare Pages: variáveis do servidor
-O endpoint `/api/schedule-event` agora exige usuário logado e só aceita o próprio site.
-Em *Settings > Variables and Secrets* confira/crie:
-
-| Variável | Para quê |
-|---|---|
-| `GOOGLE_SA_EMAIL`, `GOOGLE_SA_KEY`, `GOOGLE_CALENDAR_ID` | Google Calendar (já existiam) |
-| `SUPABASE_URL`, `SUPABASE_ANON_KEY` | **novas**: mesmas do `.env`, para validar o login |
-| `ALLOWED_ORIGIN` | opcional: outros domínios autorizados (separados por vírgula) |
-
-> Sem `SUPABASE_URL`/`SUPABASE_ANON_KEY` o agendamento responde erro 500 (de propósito: não abre mão da segurança).
-
-### 3. Instalar dependências novas
-```bash
-npm install     # atualiza o package-lock.json (xlsx vem do CDN oficial da SheetJS)
-npm run check   # lint + testes + build
+```text
+aponta-cd/
+├── Dockerfile                    # Build multi-stage com Nginx não-root (porta 8080)
+├── docker-compose.yml            # Execução local/produção com hardening de container
+├── nginx.conf                    # SPA fallback, gzip, cache imutável e headers CSP
+├── public/
+│   ├── _headers                  # Cabeçalhos de segurança e cache (Cloudflare Pages)
+│   ├── _redirects                # Fallback SPA para Cloudflare Pages
+│   ├── manifest.webmanifest      # Manifesto PWA
+│   └── sw.js                     # Service Worker (cache controlado + notificações)
+├── functions/api/
+│   └── schedule-event.js         # Integração autenticada com Google Calendar
+├── src/
+│   ├── App.jsx                   # Roteamento por abas e estado global
+│   ├── components/               # Telas (Kiosk, Panel, StockMap, StockMap3D, StockScan, CsvImport, etc.)
+│   ├── hooks/                    # useAppData, useRealtimeSync, useKeyboardNav, useMediaQuery
+│   ├── lib/                      # Regras puras (slotting, cyclicInventory, slaMonitor, mapScanPlan, importProfiles, api, offlineSync...)
+│   ├── styles/                   # CSS modular numerado (01-base.css a 11-status-a11y.css)
+│   └── utils/                    # Exportação/leitura CSV e Excel com proteção contra Formula Injection
+├── supabase/
+│   ├── schema.sql                # Schema inicial
+│   ├── migrations/               # Migrações incrementais idempotentes
+│   └── functions/                # Edge Functions (Telegram, WhatsApp, alertas, relatórios, escala)
+└── docs/                         # Manuais operacionais, segurança, migrações e guias 3D/coleta
 ```
-Depois de commitar o `package-lock.json`, troque `npm install` por `npm ci` em `.github/workflows/ci.yml`.
 
-### 4. Como o app se comporta agora
-- **Sem internet no Kiosk**: iniciar e finalizar atividade ficam guardados no aparelho
-  (inclusive faltas e fila de conferência) e são enviados sozinhos quando a conexão volta.
-  A faixa no topo mostra o que está pendente.
-- **Desfazer**: depois de finalizar, há ~6 s para tocar em *Desfazer*.
-- **Atualização do app**: quando sai versão nova aparece "Atualizar agora"; ela não troca sozinha no meio de um apontamento.
-- **Histórico**: o app carrega os últimos 120 dias (`ENTRIES_WINDOW_DAYS` em `src/lib/api.js`);
-  relatórios e telas que buscam por conta própria continuam vendo tudo.
-- **Instalável (PWA)**: no tablet, *Adicionar à tela inicial*.
+---
 
-### 5. Desenvolvimento
-| Comando | O que faz |
+## 🚀 Configuração Local
+
+### Pré-requisitos
+- Node.js **20+**
+- Projeto configurado no [Supabase](https://supabase.com)
+
+### Passos
+1. **Instale as dependências:**
+   ```bash
+   npm install
+   ```
+2. **Crie o arquivo `.env` a partir do modelo:**
+   ```bash
+   cp .env.example .env
+   ```
+   Preencha com as credenciais públicas do projeto Supabase:
+   ```env
+   VITE_SUPABASE_URL=https://SEU-PROJETO.supabase.co
+   VITE_SUPABASE_ANON_KEY=sua-chave-anon
+   VITE_APP_ENV=
+   ```
+3. **Inicie o servidor de desenvolvimento:**
+   ```bash
+   npm run dev
+   ```
+   Acesse `http://localhost:5173` (e `http://localhost:5173/tv` para o Painel TV).
+
+---
+
+## 🐳 Docker e Deploy
+
+### Rodar com Docker Compose (recomendado)
+Garanta que o arquivo `.env` contém `VITE_SUPABASE_URL` e `VITE_SUPABASE_ANON_KEY`:
+```bash
+docker compose up --build -d
+```
+A aplicação ficará disponível em `http://localhost:8080` (com endpoint de saúde em `/healthz`).
+
+### Build manual da imagem Docker
+```bash
+docker build \
+  --build-arg VITE_SUPABASE_URL="https://SEU-PROJETO.supabase.co" \
+  --build-arg VITE_SUPABASE_ANON_KEY="SUA_CHAVE_ANON" \
+  --build-arg VITE_APP_ENV="production" \
+  -t aponta-cd:latest .
+
+docker run -d --name aponta-cd -p 8080:8080 --read-only \
+  --tmpfs /tmp --tmpfs /var/cache/nginx --tmpfs /var/run \
+  --security-opt no-new-privileges:true \
+  aponta-cd:latest
+```
+
+### Deploy no Cloudflare Pages
+- **Build command:** `npm run build`
+- **Build output directory:** `dist`
+- **Variáveis de ambiente (Settings → Variables and Secrets):**
+  - Frontend (build): `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_APP_ENV`
+  - Function `/api/schedule-event`: `GOOGLE_SA_EMAIL`, `GOOGLE_SA_KEY`, `GOOGLE_CALENDAR_ID`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `ALLOWED_ORIGIN` (opcional)
+
+---
+
+## 🗄️ Banco de Dados e Migrações
+
+Rode os scripts SQL no **SQL Editor do Supabase** (ou via CLI / MCP) na seguinte ordem:
+
+1. `supabase/schema.sql` — tabelas base (apenas em banco novo)
+2. `supabase/migrations/2026-10-10_hardening.sql` — hash bcrypt do PIN (`admin_secrets`), `client_errors`, índices e views com `security_invoker`
+3. `supabase/migrations/2026-10-11_features.sql` — `session_pauses` e `system_status`
+4. `supabase/migrations/2026-10-12_map_scan.sql` — `product_barcodes`, `stock_map_scans` e colunas de coleta
+5. `supabase/migrations/2026-10-13_operational_intelligence.sql` — `cyclic_count_tasks` (inventário cíclico) e colunas de SLA
+6. `supabase/migrations/2026-10-14_security_hardening.sql` — ativa RLS em todas as tabelas expostas, revoga `SECURITY DEFINER` legadas de `anon` e fixa `search_path`
+7. *(Opcional)* `supabase/migrations/2026-10-11_roles_rls.sql` — elevação real de permissões no banco por sessão de PIN
+8. *(Opcional)* `supabase/migrations/2026-10-11_retention.sql` — política de retenção de histórico
+
+---
+
+## 🔒 Segurança
+
+O projeto implementa defesa em profundidade em todas as camadas:
+
+- **Banco de Dados (RLS + RPCs)**:
+  - PIN do administrador armazenado em `admin_secrets` com hash `bcrypt`, bloqueio após 5 tentativas falhas e atraso anti força-bruta.
+  - RLS habilitado em todas as tabelas do schema `public` (incluindo `stock_map_areas`, `stock_map_items`, `conference_queue`, `fraud_alerts`, `operator_goals`, `scheduled_reports`, `kiosk_preferences`).
+  - Revogação de `EXECUTE` para `anon` em funções `SECURITY DEFINER` e `SET search_path = public` em todas as funções.
+  - Recomendado ativar **Leaked Password Protection** no painel do Supabase (*Authentication → Password Security*).
+- **Edge Functions & API (`/api/schedule-event`)**:
+  - `send-telegram`, `send-whatsapp` e `weekly-scale-suggestion` exigem JWT válido do Supabase Auth e bloqueiam abuso como *open relay* validando destinatários autorizados.
+  - Funções agendadas (`check-alerts`, `notify-late-routine`, `run-scheduled-reports`) exigem `Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY>` ou header `x-cron-secret: <CRON_SECRET>` com comparação em tempo constante.
+  - `/api/schedule-event` valida sessão Supabase, origem CORS e formato estrito de `google_event_id` (prevenindo path traversal na API do Google).
+- **Frontend, Exports e Cabeçalhos HTTP**:
+  - Proteção contra **CSV Formula Injection** (`=`, `+`, `-`, `@`) em todas as exportações CSV e relatórios agendados.
+  - Escape HTML completo (`&`, `<`, `>`, `"`, `'`) em relatórios imprimíveis, e-mails e mensagens Telegram HTML.
+  - Cabeçalhos `CSP`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `HSTS`, `Referrer-Policy` e `Permissions-Policy: camera=(self)` configurados em `public/_headers` e `nginx.conf`.
+  - Sanitização de URL (sem query string/hash) no registro de erros (`errorReporter.js`) e validação same-origin em cliques de notificação no Service Worker (`sw.js`).
+
+> Consulte também [docs/SEGURANCA.md](docs/SEGURANCA.md) para o checklist de rotação de chaves e permissões por PIN.
+
+---
+
+## 🧪 Scripts e Testes
+
+| Comando | Descrição |
 |---|---|
-| `npm run dev` | servidor local |
-| `npm test` | testes (Vitest) das regras em `src/lib` e da fila offline |
-| `npm run lint` | ESLint (erros reais quebram, avisos não) |
-| `npm run format` | Prettier |
-| `npm run check` | lint + testes + build (o mesmo que roda no GitHub) |
-
-
----
-
-## Estilos (CSS): onde editar
-Os estilos ficam em **`src/styles/`**, em arquivos numerados que o `src/main.jsx` carrega em ordem
-(`01-base`, `02-layout`, `03-components`, `04-kiosk`, `05-schedules`, `06-screens`, `07-utilities`,
-`08-stock-map`, `09-routine-checklist`, `10-responsive`, `11-status-a11y`).
-**Não existe mais `src/styles.css`.** Se um ajuste de CSS "não aparece", confira se foi feito
-nesses arquivos e se o arquivo está importado no `main.jsx`.
-Regras de celular (menu gaveta, ≤720px) estão em `10-responsive.css`; ajustes de acessibilidade e
-da gaveta (visibilidade, foco) em `11-status-a11y.css`.
-
-## Cache
-`public/_headers` deve manter `/assets/*` como `immutable` (os arquivos têm hash no nome) e
-`no-cache` só em `/index.html`, `/sw.js` e `/manifest.webmanifest`. Deixar `/assets/*` como
-`no-cache` faz o tablet rebaixar o app inteiro a cada abertura.
+| `npm run dev` | Inicia o servidor de desenvolvimento Vite |
+| `npm run build` | Compila a versão de produção em `dist/` |
+| `npm run preview` | Pré-visualiza o build localmente |
+| `npm test` | Executa a suíte de testes unitários (Vitest) |
+| `npm run lint` | Executa análise estática com ESLint |
+| `npm run format` | Formata `src/**/*.{js,jsx}` com Prettier |
+| `npm run check` | Executa `lint` + `test` + `build` |
+| `npm run test:e2e` | Executa testes end-to-end com Playwright |
 
 ---
 
-## Terceira rodada: novos recursos e guias
+## 📚 Documentação Adicional
 
-### Telas novas (menu lateral, só admin)
-| Tela | Onde | Para quê |
-|---|---|---|
-| **Carga de trabalho** | Análise | Mapa de calor por dia/hora, previsão dos próximos 7 dias, ranking justo (índice por atividade) e ocupação (trabalho x espera) |
-| **Pausas** | Análise | Tempo pausado por motivo, por operador e últimas pausas |
-| **Crachás** | Pessoas | Gera e imprime crachás com QR code |
-| **Saúde do sistema** | Sistema | Conexão, fila offline, versão do app, sinal da TV e erros dos tablets |
-
-### No Kiosk
-- **Pausar** pergunta o **motivo** (almoço, falta de material, aguardando empilhadeira...).
-- Pausar/retomar e **Apontar erro** também funcionam **sem internet** (ficam na fila e sobem sozinhos).
-- **Escanear crachá** (Chrome/Edge com câmera) ou leitor USB de código de barras.
-
-### Servidor
-- `run-scheduled-reports`: envia por e-mail os relatórios do "Export agendado" (antes só salvava a agenda).
-- `check-alerts`: não repete mais o mesmo alerta a cada execução (espera 60 min) e avisa quando os tablets
-  registram vários erros seguidos.
-
-### Guias (pasta `docs/`)
-| Guia | Assunto |
-|---|---|
-| `SEGURANCA.md` | Revogar a chave do Google, limpar o histórico do Git, permissões reais por PIN |
-| `AMBIENTES.md` | Banco e site de teste (preview do Cloudflare) |
-| `MIGRACOES.md` | Ordem das migrações SQL, foto do banco real, retenção e backup |
-| `RELATORIOS-AGENDADOS.md` | Ativar o envio de relatórios por e-mail |
-| `MANUAL-OPERACAO.md` | O que fazer quando a internet cai, a TV trava, o tablet é trocado |
-
-### Migrações novas (rodar no SQL Editor, nesta ordem)
-`2026-10-10_hardening.sql` → `2026-10-11_features.sql` → (opcional) `2026-10-11_roles_rls.sql` → (opcional) `2026-10-11_retention.sql`.
-Veja `docs/MIGRACOES.md`.
-
-### Testes
-`npm test` (Vitest) cobre regras de negócio, fila offline, análises e relatórios. `npm run test:e2e`
-(Playwright) abre o app em celular e desktop; no CI roda sem bloquear até ser validado.
-
-
----
-
-## Quarta rodada: coleta por código de barras e Mapa 3D
-
-| Tela | Onde | Para quê |
-|---|---|---|
-| **Coletar endereços** | Operação | Bipar etiqueta de endereço e produtos (leitor USB/Bluetooth ou câmera); entra no mapa na hora, funciona offline |
-| **Mapa 3D** | Operação | Galpão em 3D gerado do mapa 2D, com busca que acende o produto; aceita modelo do Blender |
-| **Etiquetas de endereço** | Pessoas (admin) | Imprime QR de rua/lado/posição/nível |
-
-Guias: `docs/COLETA-CODIGO-BARRAS.md` e `docs/MAPA-3D-BLENDER.md`.
-Migração nova: `supabase/migrations/2026-10-12_map_scan.sql` (rodar depois das anteriores). Rode `npm install` (entraram `three`, `@zxing/browser`, `@zxing/library`).
-
-> **Dependências:** o `package-lock.json` precisa acompanhar o `package.json` (o Cloudflare e o CI usam `npm ci`,
-> que recusa o build se os dois divergirem). Sempre que alterar dependências, rode `npm install` e commite os dois arquivos.
-> O Playwright (testes de tela) não está no `package.json` de propósito: o CI o instala só no job `e2e`.
+- [docs/SEGURANCA.md](docs/SEGURANCA.md) — Guia de segurança, revogação de chaves e RLS por PIN
+- [docs/MIGRACOES.md](docs/MIGRACOES.md) — Ordem de migrações SQL, retenção e backup
+- [docs/AMBIENTES.md](docs/AMBIENTES.md) — Configuração de ambiente de testes/preview
+- [docs/MANUAL-OPERACAO.md](docs/MANUAL-OPERACAO.md) — Operação offline, recuperação de TV e tablets
+- [docs/COLETA-CODIGO-BARRAS.md](docs/COLETA-CODIGO-BARRAS.md) — Uso de leitores USB/Bluetooth e câmera
+- [docs/MAPA-3D-BLENDER.md](docs/MAPA-3D-BLENDER.md) — Integração de modelo `.glb` do galpão
+- [docs/RELATORIOS-AGENDADOS.md](docs/RELATORIOS-AGENDADOS.md) — Ativação de relatórios automáticos por e-mail

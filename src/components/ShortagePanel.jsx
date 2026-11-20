@@ -1,5 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { fetchShortages, fetchEntries, fetchOperators, fetchActivities } from "../lib/api";
+import { fetchMapAreas, fetchMapItems } from "../lib/stockMap";
+import {
+  fetchCyclicCountTasks,
+  buildCyclicTaskFromShortage,
+  createCyclicCountTask,
+} from "../lib/cyclicInventory";
 import { fmtClock, fmtDate, localISODate } from "../lib/format";
 import { exportShortagesCsv } from "../utils/csv";
 import { supabase } from "../supabaseClient";
@@ -16,11 +22,15 @@ import {
 
 const COLORS = ["#1e3a5f", "#4a7ba7", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444"];
 
-export default function ShortagePanel() {
+export default function ShortagePanel({ onOpenScanTask }) {
   const [shortages, setShortages] = useState([]);
   const [entries, setEntries] = useState([]);
   const [operators, setOperators] = useState([]);
   const [activities, setActivities] = useState([]);
+  const [mapAreas, setMapAreas] = useState([]);
+  const [mapItems, setMapItems] = useState([]);
+  const [cyclicTasks, setCyclicTasks] = useState([]);
+  const [triggerMsg, setTriggerMsg] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -56,6 +66,17 @@ export default function ShortagePanel() {
     setActivities(a || []);
     setError("");
     setLoading(false);
+
+    // Carrega mapa + tarefas de inventário cíclico (melhor esforço)
+    Promise.all([
+      fetchMapAreas().catch(() => ({ data: [] })),
+      fetchMapItems().catch(() => ({ data: [] })),
+      fetchCyclicCountTasks({ limit: 200 }).catch(() => ({ data: [] })),
+    ]).then(([ma, mi, ct]) => {
+      setMapAreas(ma?.data || []);
+      setMapItems(mi?.data || []);
+      setCyclicTasks(ct?.data || []);
+    });
   }
 
   useEffect(() => {
@@ -81,6 +102,7 @@ export default function ShortagePanel() {
         if (!e) return null;
         return {
           id: s.id,
+          entryId: s.entry_id,
           date: e.start_time,
           time: fmtClock(e.start_time).slice(0, 5),
           productCode: s.product_code,
@@ -164,6 +186,66 @@ export default function ShortagePanel() {
     exportShortagesCsv(filteredRows);
   }
 
+  const taskByShortageRef = useMemo(() => {
+    const m = {};
+    cyclicTasks.forEach((t) => {
+      if (t.trigger_ref_id) m[t.trigger_ref_id] = t;
+    });
+    return m;
+  }, [cyclicTasks]);
+
+  const pendingCyclicCount = useMemo(
+    () => cyclicTasks.filter((t) => t.status === "pendente" && t.trigger_source === "falta").length,
+    [cyclicTasks]
+  );
+
+  async function triggerCountForRow(row, openAfter = false) {
+    const entry = entryById[row.entryId] || { id: row.entryId, order_number: row.orderNumber };
+    const payload = buildCyclicTaskFromShortage({
+      shortage: { id: row.id, product_code: row.productCode, quantity: row.quantity },
+      entry,
+      areas: mapAreas,
+      items: mapItems,
+    });
+    const res = await createCyclicCountTask(payload);
+    if (res.data) {
+      setCyclicTasks((prev) => [res.data, ...prev.filter((t) => t.id !== res.data.id)]);
+      setTriggerMsg(
+        res.duplicate
+          ? `Contagem cega para ${row.productCode} já estava na fila (${res.data.area_code}).`
+          : `Contagem cega gerada para ${row.productCode} em ${res.data.area_code}.`
+      );
+      setTimeout(() => setTriggerMsg(""), 3500);
+      if (openAfter && onOpenScanTask) onOpenScanTask(res.data);
+    }
+  }
+
+  async function triggerAllFilteredShortages() {
+    const recent = filteredRows.slice(0, 20);
+    let created = 0;
+    for (const r of recent) {
+      const ref = `shortage:${r.id}`;
+      if (taskByShortageRef[ref]) continue;
+      const entry = entryById[r.entryId] || { id: r.entryId, order_number: r.orderNumber };
+      const payload = buildCyclicTaskFromShortage({
+        shortage: { id: r.id, product_code: r.productCode, quantity: r.quantity },
+        entry,
+        areas: mapAreas,
+        items: mapItems,
+      });
+      const res = await createCyclicCountTask(payload);
+      if (res.data && !res.duplicate) created += 1;
+    }
+    const { data: updated } = await fetchCyclicCountTasks({ limit: 200 });
+    setCyclicTasks(updated || []);
+    setTriggerMsg(
+      created > 0
+        ? `${created} tarefa(s) de contagem cega gerada(s) para o inventário cíclico.`
+        : "Todas as faltas recentes já possuem tarefa de contagem cega."
+    );
+    setTimeout(() => setTriggerMsg(""), 4000);
+  }
+
   const hasFilters = dateFrom || dateTo || filterProduct || filterCustomer || filterOperator || filterEncaixe;
 
   return (
@@ -176,11 +258,25 @@ export default function ShortagePanel() {
           </p>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button className="btn-small" onClick={triggerAllFilteredShortages} disabled={filteredRows.length === 0}>
+            Gerar contagem cega ({pendingCyclicCount} pendente{pendingCyclicCount !== 1 ? "s" : ""})
+          </button>
+          {onOpenScanTask && pendingCyclicCount > 0 && (
+            <button className="btn-small btn-excel" onClick={() => onOpenScanTask(null)}>
+              Abrir inventário cíclico →
+            </button>
+          )}
           <button className="btn-small btn-excel" onClick={handleExport}>
             <IconDownload size={14} /> Exportar CSV
           </button>
         </div>
       </div>
+
+      {triggerMsg && (
+        <div className="alert-card" style={{ marginBottom: 16, background: "var(--ok-soft)", borderColor: "var(--ok)", color: "var(--ok)" }}>
+          {triggerMsg}
+        </div>
+      )}
 
       {error && (
         <div className="alert-card alert-danger" style={{ marginBottom: 20 }}>
@@ -315,10 +411,13 @@ export default function ShortagePanel() {
                   <th>Cliente</th>
                   <th>Encaixe</th>
                   <th>Estação</th>
+                  <th>Contagem cega</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredRows.slice(0, 300).map((r) => (
+                {filteredRows.slice(0, 300).map((r) => {
+                  const task = taskByShortageRef[`shortage:${r.id}`];
+                  return (
                   <tr key={r.id}>
                     <td>{fmtDate(r.date)}</td>
                     <td style={{ fontFamily: "var(--font-mono)" }}>{r.time}</td>
@@ -347,8 +446,34 @@ export default function ShortagePanel() {
                       )}
                     </td>
                     <td style={{ color: "var(--text-muted)" }}>{r.station || "—"}</td>
+                    <td style={{ whiteSpace: "nowrap" }}>
+                      {task ? (
+                        task.status === "concluida" ? (
+                          <span style={{ color: "var(--ok)", fontWeight: 700, fontSize: 11.5 }}>
+                            ✓ Contado ({task.counted_quantity ?? 0})
+                          </span>
+                        ) : (
+                          <button
+                            className="btn-small"
+                            style={{ padding: "4px 8px", fontSize: 11 }}
+                            onClick={() => onOpenScanTask?.(task)}
+                          >
+                            Contar ({task.area_code}) →
+                          </button>
+                        )
+                      ) : (
+                        <button
+                          className="btn-small"
+                          style={{ padding: "4px 8px", fontSize: 11 }}
+                          onClick={() => triggerCountForRow(r, !!onOpenScanTask)}
+                        >
+                          + Contagem cega
+                        </button>
+                      )}
+                    </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
             {filteredRows.length > 300 && (

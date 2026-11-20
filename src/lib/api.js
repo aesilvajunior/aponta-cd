@@ -519,7 +519,14 @@ export async function saveShortages(entryId, shortages) {
     quantity: s.quantity,
     supplier_name: s.supplierName || null,
   }));
-  return supabase.from("entry_shortages").insert(rows);
+  const res = await supabase.from("entry_shortages").insert(rows);
+  if (!res.error) {
+    // Gatilho automático de inventário cíclico (contagem cega) — melhor esforço
+    import("./cyclicInventory")
+      .then((m) => m.triggerCyclicCountForShortages(entryId, shortages))
+      .catch(() => {});
+  }
+  return res;
 }
 
 export async function deleteAllShortages() {

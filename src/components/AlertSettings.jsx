@@ -159,13 +159,19 @@ export default function AlertSettings() {
     try {
       const header = settings.message_header || "Aponta CD";
       const message = `📣 ${header}\n\n<b>Teste de alerta</b>\nSe você está vendo isso, os alertas estão funcionando perfeitamente!`;
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData?.session?.access_token;
+      if (!accessToken) {
+        throw new Error("Sessão expirada. Faça login novamente.");
+      }
       const res = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-telegram`,
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+            apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${accessToken}`,
           },
           body: JSON.stringify({ text: message, alertType: "test" }),
         }

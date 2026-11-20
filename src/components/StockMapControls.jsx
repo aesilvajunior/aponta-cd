@@ -182,6 +182,11 @@ export default function StockMapControls({
             <span>Ocupação</span>
           </label>
           <label className="map-layers-item">
+            <input type="checkbox" checked={!!layers.heatmap} onChange={() => onToggleLayer("heatmap")} />
+            <IconActivity size={14} />
+            <span>Mapa de calor (Curva ABC)</span>
+          </label>
+          <label className="map-layers-item">
             <input type="checkbox" checked={layers.corridorFlow} onChange={() => onToggleLayer("corridorFlow")} />
             <IconArrowLeftRight size={14} />
             <span>Fluxo dos corredores</span>

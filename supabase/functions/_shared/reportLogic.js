@@ -47,7 +47,11 @@ export function periodFor(report, now = new Date()) {
 
 function cell(value) {
   if (value === null || value === undefined) return "";
-  const text = typeof value === "object" ? JSON.stringify(value) : String(value);
+  let text = typeof value === "object" ? JSON.stringify(value) : String(value);
+  // Protege contra CSV Formula Injection no Excel (=, +, -, @, tab, CR)
+  if (/^[=+\-@\t\r]/.test(text) && !/^-\d+([.,]\d+)?$/.test(text)) {
+    text = `'${text}`;
+  }
   // ";" é o separador do Excel em português; aspas dobradas protegem texto com ; ou quebra de linha
   return /[";\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }

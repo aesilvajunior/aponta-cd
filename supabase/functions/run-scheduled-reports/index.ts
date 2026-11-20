@@ -11,6 +11,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 // @ts-ignore
 import { isDue, periodFor, toCsv, summarizeByOperator } from "../_shared/reportLogic.js";
+import { escapeHtml, requireCronAuth } from "../_shared/security.ts";
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!;
 const SB_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || Deno.env.get("SERVICE_ROLE_KEY")!;
@@ -96,7 +97,11 @@ async function sendEmail(to: string, subject: string, html: string, filename: st
 }
 
 // @ts-ignore
-Deno.serve(async () => {
+Deno.serve(async (req) => {
+  const auth = requireCronAuth(req);
+  if (!auth.ok) {
+    return Response.json({ error: auth.error }, { status: auth.status });
+  }
   if (!RESEND_KEY || !FROM) {
     return Response.json({ skipped: "RESEND_API_KEY / REPORTS_FROM_EMAIL não configurados" });
   }
@@ -113,7 +118,7 @@ Deno.serve(async () => {
       const title = TITLES[report.report_type] || report.report_type;
       const csv = toCsv(rows, columns);
       const subject = `${report.name || title} (${label})`;
-      const html = `<p>Olá!</p><p>Segue o relatório <strong>${title}</strong> referente a <strong>${label}</strong>.</p>` +
+      const html = `<p>Olá!</p><p>Segue o relatório <strong>${escapeHtml(title)}</strong> referente a <strong>${escapeHtml(label)}</strong>.</p>` +
         `<p>${rows.length} registro(s). O arquivo em anexo abre no Excel.</p><p style="color:#888">Enviado automaticamente pelo Aponta CD.</p>`;
       const sent = await sendEmail(report.email_to, subject, html, `${report.report_type}_${label.replace(/ /g, "_")}.csv`, csv);
       if (sent.ok) {

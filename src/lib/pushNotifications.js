@@ -110,6 +110,22 @@ export function notifyLateActivity(session, elapsedSeconds) {
   );
 }
 
+export function notifySlaBottleneck(alert, onOpen) {
+  if (!alert) return;
+  showLocalNotification(
+    alert.severity === "critical" ? `🚨 ${alert.title}` : `⚠️ ${alert.title}`,
+    alert.message,
+    {
+      tag: `sla-${alert.id}`,
+      requireInteraction: alert.severity === "critical",
+      onClick: () => {
+        window.focus();
+        if (onOpen) onOpen(alert);
+      },
+    }
+  );
+}
+
 function formatSeconds(s) {
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);

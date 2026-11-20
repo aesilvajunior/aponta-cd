@@ -1,6 +1,7 @@
 // Edge Function: notify-late-routine
 // Rodar via cron a cada 5 min (config abaixo).
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { escapeHtml, requireCronAuth } from "../_shared/security.ts";
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!;
 const SB_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -26,7 +27,14 @@ async function sendTelegram(chat_id: string, text: string) {
   });
 }
 
-Deno.serve(async () => {
+Deno.serve(async (req) => {
+  const auth = requireCronAuth(req);
+  if (!auth.ok) {
+    return new Response(JSON.stringify({ error: auth.error }), {
+      status: auth.status,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
   const { hhmm, date } = nowBRT();
 
   // 1. Busca config das etapas ativas
@@ -84,9 +92,9 @@ Deno.serve(async () => {
 
     const late = diff - s.alert_after_min;
     alerts.push(
-      `⏰ <b>${s.label}</b>\n` +
-      `Prazo: ${s.deadline_time} | Atrasada há ${late} min\n` +
-      `<i>${s.description ?? ""}</i>`
+      `⏰ <b>${escapeHtml(s.label)}</b>\n` +
+      `Prazo: ${escapeHtml(s.deadline_time)} | Atrasada há ${late} min\n` +
+      `<i>${escapeHtml(s.description ?? "")}</i>`
     );
   }
 

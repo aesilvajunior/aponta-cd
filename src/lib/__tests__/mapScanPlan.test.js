@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { planScan, findExistingItem, itemsWithoutName } from "../mapScanPlan";
+import { planScan, findExistingItem, itemsWithoutName, buildOptimizedScanRoute, nextRouteStop } from "../mapScanPlan";
 
 const area = { id: "A1", code: "R1D", has_sides: true };
 const operator = { code: "101", name: "Ana" };
@@ -70,5 +70,49 @@ describe("findExistingItem / itemsWithoutName", () => {
       { id: 3, source: "manual", product_name: null },
     ];
     expect(itemsWithoutName(items).map((i) => i.id)).toEqual([1]);
+  });
+});
+
+describe("buildOptimizedScanRoute — roteirização serpentina por corredor/nível", () => {
+  const areas = [
+    { id: "A1", code: "R1", floor: "terreo", x: 10, y: 10, width: 10, height: 40 },
+    { id: "A2", code: "R2", floor: "terreo", x: 30, y: 10, width: 10, height: 40 },
+    { id: "A3", code: "R3", floor: "terreo", x: 50, y: 10, width: 10, height: 40 },
+  ];
+
+  it("ordena corredores em serpentina (ida crescente, volta decrescente) e por nível", () => {
+    const stops = [
+      { id: "s1", area_id: "A2", area_code: "R2", slot: "02", level: "1" },
+      { id: "s2", area_id: "A1", area_code: "R1", slot: "10", level: "3" },
+      { id: "s3", area_id: "A1", area_code: "R1", slot: "02", level: "2" },
+      { id: "s4", area_id: "A1", area_code: "R1", slot: "02", level: "1" },
+      { id: "s5", area_id: "A2", area_code: "R2", slot: "09", level: "1" },
+      { id: "s6", area_id: "A3", area_code: "R3", slot: "01", level: "1" },
+      { id: "s7", area_id: "A3", area_code: "R3", slot: "05", level: "1" },
+    ];
+
+    const route = buildOptimizedScanRoute(stops, areas, { serpentine: true });
+    // R1 (ida): slot 02 n1 -> slot 02 n2 -> slot 10 n3
+    // R2 (volta): slot 09 -> slot 02
+    // R3 (ida): slot 01 -> slot 05
+    expect(route.orderedStops.map((s) => s.id)).toEqual(["s4", "s3", "s2", "s5", "s1", "s6", "s7"]);
+    expect(route.corridors.map((c) => `${c.corridorKey}:${c.direction}`)).toEqual(["R1:ida", "R2:volta", "R3:ida"]);
+    expect(route.totalDistance).toBeLessThanOrEqual(route.naiveDistance);
+    expect(route.backtracksAvoided).toBeGreaterThanOrEqual(1);
+  });
+
+  it("nextRouteStop devolve a próxima parada não concluída", () => {
+    const route = buildOptimizedScanRoute(
+      [
+        { id: "a", area_id: "A1", area_code: "R1", slot: "05", level: "1" },
+        { id: "b", area_id: "A1", area_code: "R1", slot: "01", level: "1" },
+      ],
+      areas
+    );
+    const first = nextRouteStop(route, new Set());
+    expect(first.id).toBe("b");
+    const second = nextRouteStop(route, new Set([first.routeKey]));
+    expect(second.id).toBe("a");
+    expect(nextRouteStop(route, new Set([first.routeKey, second.routeKey]))).toBeNull();
   });
 });

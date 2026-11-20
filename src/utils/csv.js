@@ -1,5 +1,17 @@
 // Exportação de CSV — usado no Painel e na Consulta de faltas.
 
+// Neutraliza CSV Formula Injection (DDE / Excel): valores iniciados por =, +, -, @, tab ou CR
+// (exceto números negativos puros como -12.5) recebem prefixo apóstrofo antes de escapar.
+export function sanitizeCsvCell(v) {
+  if (v == null) return "";
+  let s = String(v);
+  if (/^[=+\-@\t\r]/.test(s) && !/^-\d+([.,]\d+)?$/.test(s)) {
+    s = `'${s}`;
+  }
+  if (/[";\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  return s;
+}
+
 export function exportEntriesCsv(entries) {
   if (!entries || !entries.length) {
     alert("Nada para exportar.");
@@ -11,13 +23,6 @@ export function exportEntriesCsv(entries) {
     "Pedido", "Cliente", "Tipo Transferência", "Transferência",
     "Veículo", "Placa", "Estação", "Observação", "Manual",
   ];
-
-  const escape = (v) => {
-    if (v == null) return "";
-    const s = String(v);
-    if (/[";\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
-    return s;
-  };
 
   const rows = entries.map((e) => [
     e.operator_name,
@@ -35,7 +40,7 @@ export function exportEntriesCsv(entries) {
     e.station,
     e.note,
     e.manual_entry ? "Sim" : "Não",
-  ].map(escape).join(";"));
+  ].map(sanitizeCsvCell).join(";"));
 
   const csv = [headers.join(";"), ...rows].join("\r\n");
   const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" });
@@ -79,13 +84,6 @@ export function exportShortagesCsv(rows) {
     "Observação",
   ];
 
-  const escape = (v) => {
-    if (v == null) return "";
-    const s = String(v);
-    if (/[";\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
-    return s;
-  };
-
   const csvRows = rows.map((r) => [
     r.date,
     r.time,
@@ -100,7 +98,7 @@ export function exportShortagesCsv(rows) {
     r.isEncaixe ? "Sim" : "Não",
     r.station,
     r.note,
-  ].map(escape).join(";"));
+  ].map(sanitizeCsvCell).join(";"));
 
   const csv = [headers.join(";"), ...csvRows].join("\r\n");
   const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" });

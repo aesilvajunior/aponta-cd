@@ -1,0 +1,30 @@
+# Dependências e builds locais
+node_modules
+dist
+.vite
+coverage
+
+# Git e automações
+.git
+.gitignore
+.github
+.agents
+
+# Segredos e variáveis locais (nunca copiar para o contexto Docker)
+.env
+.env.*
+!.env.example
+
+# Documentação, testes E2E e funções externas
+docs
+e2e
+playwright-report
+test-results
+supabase
+functions
+
+# Logs e temporários
+*.log
+*.crdownload
+.DS_Store
+Thumbs.db

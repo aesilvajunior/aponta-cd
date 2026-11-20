@@ -22,10 +22,16 @@ export async function reportError(error, context = {}) {
     seen.add(key);
     sent += 1;
 
+    // Remove query string e hash da URL para nunca gravar tokens OAuth/recovery no banco
+    const safeUrl =
+      typeof location !== "undefined"
+        ? `${location.origin}${location.pathname}`.slice(0, 500)
+        : null;
+
     await supabase.from("client_errors").insert({
       message,
       stack,
-      url: typeof location !== "undefined" ? location.href.slice(0, 500) : null,
+      url: safeUrl,
       user_agent: typeof navigator !== "undefined" ? navigator.userAgent.slice(0, 300) : null,
       station: getStationName() || null,
       context,

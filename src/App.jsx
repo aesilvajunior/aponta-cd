@@ -205,9 +205,17 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  // Atalhos entre o mapa 2D, o mapa 3D e a coleta por código de barras
+  // Atalhos entre o mapa 2D, o mapa 3D, inventário cíclico e a coleta por código de barras
   function goScanArea(area) {
     try { sessionStorage.setItem("aponta_scan_prefill", JSON.stringify({ areaId: area.id })); } catch { /* ignora */ }
+    setTab("stock-scan");
+  }
+  function goScanTask(task) {
+    try {
+      if (task?.id) {
+        sessionStorage.setItem("aponta_scan_prefill", JSON.stringify({ cyclicTaskId: task.id, areaId: task.area_id }));
+      }
+    } catch { /* ignora */ }
     setTab("stock-scan");
   }
   function goMapArea(area) {
@@ -351,7 +359,7 @@ export default function App() {
             <ConferenceTable operators={operators} isAdmin={isAdmin} />
           )}
           {tab === "shortages" && (
-            <ShortagePanel />
+            <ShortagePanel onOpenScanTask={goScanTask} />
           )}
           {tab === "checklist" && (
             <CdChecklist operators={operators} isAdmin={isAdmin} />
@@ -373,12 +381,12 @@ export default function App() {
             <GoalsDashboard />
           )}
           {tab === "stock-map" && (
-            <StockMap isAdmin={isAdmin} onScanArea={goScanArea} focusAreaId={mapFocusAreaId} />
+            <StockMap isAdmin={isAdmin} onScanArea={goScanArea} focusAreaId={mapFocusAreaId} entries={entries} shortages={shortages} />
           )}
 
           {/* ↓↓↓ NOVO: Rotina do Líder (líder ou admin) ↓↓↓ */}
           {tab === "daily-routine" && (isLeader || isAdmin) && (
-            <DailyRoutine currentOperator={currentOperator} />
+            <DailyRoutine currentOperator={currentOperator} onOpenScanTask={goScanTask} />
           )}
 
           {adminTabs.includes(tab) && !isAdmin && (
@@ -445,11 +453,11 @@ export default function App() {
           {tab === "sound-settings" && isAdmin && (
             <SoundSettings />
           )}
-          {tab === "stock-map-3d" && <StockMap3D isAdmin={isAdmin} onScanArea={goScanArea} onOpenMap={goMapArea} />}
+          {tab === "stock-map-3d" && <StockMap3D isAdmin={isAdmin} onScanArea={goScanArea} onOpenMap={goMapArea} entries={entries} shortages={shortages} />}
           {tab === "stock-scan" && <StockScan operators={operators} currentOperator={currentOperator} onOpenMap={goMapArea} />}
           {tab === "address-labels" && isAdmin && <AddressLabels />}
-          {tab === "workload" && isAdmin && <Workload entries={entries} />}
-          {tab === "pauses" && isAdmin && <PauseReasons />}
+          {tab === "workload" && isAdmin && <Workload entries={entries} activeSessions={activeSessions} onNavigate={setTab} />}
+          {tab === "pauses" && isAdmin && <PauseReasons activeSessions={activeSessions} />}
           {tab === "health" && isAdmin && (
             <SystemHealth realtimeStatus={realtimeStatus} entriesCount={entries.length} updateReady={updateReady} />
           )}
@@ -484,7 +492,12 @@ export default function App() {
         </div>
       </main>
 
-      <PushSetup />
+      <PushSetup
+        activeSessions={activeSessions}
+        entries={entries}
+        isLeader={isLeader}
+        onNavigate={setTab}
+      />
 
       <CommandPalette
         open={cmdOpen}

@@ -7,6 +7,7 @@ import {
   updateMapArea,
   deleteMapArea,
   fetchMapItems,
+  updateMapItem,
   deleteMapItem,
   AREA_TYPES,
   colorForType,
@@ -15,7 +16,9 @@ import {
   groupItemsByCategory,
   summarizeArea,
 } from "../lib/stockMap";
-import { logStockMapAction } from "../lib/api";
+import { logStockMapAction, fetchStockMapHistory, fetchConferenceHistory } from "../lib/api";
+import { fetchRecentScans } from "../lib/mapScan";
+import { computeSlottingAnalysis, heatmapColor, abcColor } from "../lib/slotting";
 import {
   createInitialView,
   zoomIn,
@@ -65,9 +68,14 @@ const MIN_WORLD_H = 0.02 * WORLD_H;
 const GRID_COLS = 20;
 const GRID_ROWS = 15;
 
-export default function StockMap({ isAdmin, onScanArea, focusAreaId }) {
+export default function StockMap({ isAdmin, onScanArea, focusAreaId, entries = [], shortages = [] }) {
   const [areas, setAreas] = useState([]);
   const [items, setItems] = useState([]);
+  const [scans, setScans] = useState([]);
+  const [mapHistory, setMapHistory] = useState([]);
+  const [conferenceHistory, setConferenceHistory] = useState([]);
+  const [slottingOpen, setSlottingOpen] = useState(false);
+  const [relocatingId, setRelocatingId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -94,6 +102,7 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId }) {
     grid: true,
     labels: true,
     occupancy: true,
+    heatmap: false,
     corridorFlow: true,
   });
 
@@ -148,6 +157,17 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId }) {
     setItems(i || []);
     setError("");
     setLoading(false);
+
+    // Dados de giro/movimentação para Mapa de Calor e Slotting (melhor esforço)
+    Promise.all([
+      fetchRecentScans({ limit: 500 }).catch(() => ({ data: [] })),
+      fetchStockMapHistory({ limit: 500 }).catch(() => ({ data: [] })),
+      fetchConferenceHistory({ limit: 200 }).catch(() => ({ data: [] })),
+    ]).then(([sc, hi, ch]) => {
+      setScans(sc?.data || []);
+      setMapHistory(hi?.data || []);
+      setConferenceHistory(ch?.data || []);
+    });
   }
 
   useEffect(() => {
@@ -221,6 +241,43 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId }) {
     }
   }, [focusAreaId, areas]);
 
+  const slotting = useMemo(
+    () =>
+      computeSlottingAnalysis({
+        areas,
+        items,
+        scans,
+        shortages,
+        history: mapHistory,
+        entries,
+        conferenceHistory,
+      }),
+    [areas, items, scans, shortages, mapHistory, entries, conferenceHistory]
+  );
+
+  async function handleApplySlotting(sug) {
+    if (!isAdmin || !sug?.item || !sug?.toArea) return;
+    if (!window.confirm(`Realocar ${sug.productCode} de ${sug.fromArea.code} para ${sug.toArea.code} (economia estimada de ${sug.savedPct}%)?`)) {
+      return;
+    }
+    setRelocatingId(sug.id);
+    const { error: err } = await updateMapItem(sug.item.id, { area_id: sug.toArea.id });
+    setRelocatingId(null);
+    if (err) {
+      setError(err.message);
+      return;
+    }
+    await auditMap({
+      action: "slotting_move",
+      areaId: sug.toArea.id,
+      areaCode: sug.toArea.code,
+      beforeData: { areaId: sug.fromArea.id, areaCode: sug.fromArea.code, productCode: sug.productCode },
+      afterData: { areaId: sug.toArea.id, areaCode: sug.toArea.code, productCode: sug.productCode, savedPct: sug.savedPct },
+    });
+    await loadAll();
+    flashSuccess(`${sug.productCode} movido para ${sug.toArea.code}`);
+  }
+
   const decoratedAreas = useMemo(() => {
     const q = search.trim().toLowerCase();
     return areas
@@ -229,6 +286,7 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId }) {
         const list = itemsByArea[a.id] || [];
         const stats = summarizeArea(a, items);
         const occupancy = list.length / maxSkus;
+        const heatMetric = slotting.areaMetrics[String(a.id)] || null;
         const matches =
           !q ||
           a.code.toLowerCase().includes(q) ||
@@ -240,9 +298,9 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId }) {
               (it.category || "").toLowerCase().includes(q) ||
               (it.barcode || "").toLowerCase().includes(q)
           );
-        return { ...a, stats, occupancy, matches, itemList: list };
+        return { ...a, stats, occupancy, heatMetric, matches, itemList: list };
       });
-  }, [areas, itemsByArea, items, search, filterType, maxSkus]);
+  }, [areas, itemsByArea, items, search, filterType, maxSkus, slotting.areaMetrics]);
 
   const baseScale = useMemo(() => {
     if (!size.width || !size.height) return 0;
@@ -564,6 +622,32 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId }) {
           </p>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button
+            className="btn-small"
+            onClick={() => setLayers((l) => ({ ...l, heatmap: !l.heatmap }))}
+            style={
+              layers.heatmap
+                ? { background: "#ef4444", color: "#fff", borderColor: "#ef4444", fontWeight: 700 }
+                : undefined
+            }
+          >
+            {layers.heatmap ? "🔥 Mapa de Calor: ATIVO" : "🔥 Mapa de Calor (ABC)"}
+          </button>
+          <button
+            className="btn-small"
+            onClick={() => setSlottingOpen((v) => !v)}
+            style={
+              slottingOpen || slotting.suggestions.length > 0
+                ? {
+                    borderColor: slotting.suggestions.length > 0 ? "var(--warning)" : "var(--border-strong)",
+                    color: slottingOpen ? "#fff" : slotting.suggestions.length > 0 ? "var(--warning)" : "var(--text)",
+                    background: slottingOpen ? "var(--accent)" : undefined,
+                  }
+                : undefined
+            }
+          >
+            Sugestões de Slotting ({slotting.suggestions.length})
+          </button>
           <button className="btn-small" onClick={loadAll}>
             <IconRefresh size={14} /> Atualizar
           </button>
@@ -603,6 +687,93 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId }) {
           <div style={{ flex: 1 }}>
             <strong>Modo edição ativo.</strong> Arraste uma área (inclusive corredores) pra mover · Selecione uma área pra ver as alças de redimensionar em volta dela · Clique em qualquer área pra ver o painel e adicionar itens.
           </div>
+        </div>
+      )}
+
+      {slottingOpen && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 12 }}>
+            <div>
+              <div className="card-title" style={{ marginBottom: 2 }}>
+                Inteligência de Slotting · Curva ABC × Distância da Expedição
+              </div>
+              <div style={{ fontSize: 12.5, color: "var(--text-muted)" }}>
+                Referência de expedição: <strong>{slotting.origin.label}</strong> · {slotting.summary.curvaATotal} itens Curva A ({slotting.summary.curvaAFarCount} longe da expedição)
+                {slotting.summary.avgSavedPct > 0 && ` · economia média estimada: -${slotting.summary.avgSavedPct}% de deslocamento`}
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              {!layers.heatmap && (
+                <button className="btn-small btn-excel" onClick={() => setLayers((l) => ({ ...l, heatmap: true }))}>
+                  Ver Mapa de Calor
+                </button>
+              )}
+              <button className="btn-small" onClick={() => setSlottingOpen(false)}>Fechar</button>
+            </div>
+          </div>
+
+          {slotting.suggestions.length === 0 ? (
+            <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+              Nenhuma realocação urgente identificada. Os itens de maior giro já estão bem posicionados em relação à expedição (ou ainda há poucos registros de movimentação/faltas).
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 280, overflowY: "auto" }}>
+              {slotting.suggestions.map((sug) => (
+                <div
+                  key={sug.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    padding: "10px 12px",
+                    background: "var(--surface-raised)",
+                    border: "1px solid var(--border)",
+                    borderLeft: "4px solid #ef4444",
+                    borderRadius: 10,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 220 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <span style={{ background: "#ef4444", color: "#fff", fontSize: 10.5, fontWeight: 800, padding: "2px 6px", borderRadius: 4 }}>
+                        CURVA A
+                      </span>
+                      <strong style={{ fontFamily: "var(--font-mono)", fontSize: 13 }}>{sug.productCode}</strong>
+                      {sug.productName && sug.productName !== sug.productCode && (
+                        <span style={{ fontSize: 12.5, color: "var(--text-muted)" }}>{sug.productName}</span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>
+                      De <strong>{sug.fromArea.code}</strong> ({sug.fromDistanceM}m) → <strong>{sug.toArea.code}</strong> ({sug.toDistanceM}m) ·{" "}
+                      <span style={{ color: "var(--ok)", fontWeight: 700 }}>-{sug.savedPct}% deslocamento (-{sug.savedDistanceM}m/ciclo)</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 2 }}>{sug.reason}</div>
+                  </div>
+                  <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                    <button
+                      className="btn-small"
+                      onClick={() => {
+                        setSelectedArea(sug.fromArea);
+                        setLayers((l) => ({ ...l, heatmap: true }));
+                      }}
+                    >
+                      Destacar {sug.fromArea.code}
+                    </button>
+                    {isAdmin && (
+                      <button
+                        className="btn-small btn-excel"
+                        disabled={relocatingId === sug.id}
+                        onClick={() => handleApplySlotting(sug)}
+                      >
+                        {relocatingId === sug.id ? "Movendo..." : `Mover p/ ${sug.toArea.code}`}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -689,10 +860,14 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId }) {
                       const isSelected = selectedArea?.id === a.id;
                       const world = areaToWorld(a);
                       const occupancy = layers.occupancy ? a.occupancy : 0.5;
+                      const isHeatmapShelf = layers.heatmap && a.area_type === "prateleira";
+                      const needsAttention = isHeatmapShelf && a.heatMetric?.needsSlottingAttention;
                       const fill = a.area_type === "conferencia"
                         ? "#10b981"
                         : isCorridor
                         ? "rgba(0, 212, 255, 0.07)"
+                        : isHeatmapShelf
+                        ? heatmapColor(a.heatMetric?.heat ?? 0)
                         : layers.occupancy
                         ? occupancyColor(occupancy)
                         : (a.color || colorForType(a.area_type));
@@ -700,6 +875,8 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId }) {
                         ? `rgba(0, 212, 255, ${isSelected ? 0.9 : 0.45})`
                         : isSelected
                         ? "#00d4ff"
+                        : needsAttention
+                        ? "#fbbf24"
                         : "rgba(255,255,255,0.15)";
                       const canInteract = editMode || a.matches;
 
@@ -752,16 +929,20 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId }) {
                             />
                           )}
 
-                          {!isCorridor && layers.labels && world.height > 55 && a.stats.skus > 0 && (
+                          {!isCorridor && layers.labels && world.height > 55 && (a.stats.skus > 0 || isHeatmapShelf) && (
                             <Text
                               x={world.x}
                               y={world.y + world.height / 2 + 9}
                               width={world.width}
                               align="center"
-                              text={`${a.stats.skus} · ${a.stats.totalQty}`}
+                              text={
+                                isHeatmapShelf && a.heatMetric
+                                  ? `Curva ${a.heatMetric.abc} · ${a.heatMetric.distanceM}m${needsAttention ? " ⚠" : ""}`
+                                  : `${a.stats.skus} · ${a.stats.totalQty}`
+                              }
                               fontSize={10}
                               fontFamily="var(--font-mono)"
-                              fill="rgba(255,255,255,0.85)"
+                              fill={needsAttention ? "#fde047" : "rgba(255,255,255,0.85)"}
                               listening={false}
                             />
                           )}
@@ -828,6 +1009,40 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId }) {
             <div className="map-north-letter">N</div>
           </div>
 
+          {layers.heatmap && (
+            <div
+              style={{
+                position: "absolute",
+                bottom: 58,
+                left: 20,
+                background: "rgba(22, 27, 34, 0.9)",
+                backdropFilter: "blur(16px)",
+                border: "1px solid rgba(255,255,255,0.1)",
+                borderRadius: 10,
+                padding: "8px 12px",
+                zIndex: 20,
+                color: "#e9edf3",
+                fontSize: 11,
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                flexWrap: "wrap",
+              }}
+            >
+              <span style={{ fontWeight: 700 }}>Giro (Curva ABC):</span>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <span style={{ width: 10, height: 10, borderRadius: 3, background: "#2563eb" }} /> C (baixo)
+              </span>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <span style={{ width: 10, height: 10, borderRadius: 3, background: "#f59e0b" }} /> B (médio)
+              </span>
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                <span style={{ width: 10, height: 10, borderRadius: 3, background: "#ef4444" }} /> A (alto)
+              </span>
+              <span style={{ color: "#fde047", fontWeight: 600 }}>⚠ Borda amarela = Curva A longe da expedição</span>
+            </div>
+          )}
+
           <StockMapControls
             view={view}
             onZoomIn={() => setView((v) => zoomIn(v))}
@@ -856,6 +1071,12 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId }) {
               {hoveredArea.stats.skus > 0 && (
                 <div className="map-tooltip-stats">
                   {hoveredArea.stats.skus} SKUs · {hoveredArea.stats.totalQty} un
+                </div>
+              )}
+              {hoveredArea.heatMetric && (
+                <div className="map-tooltip-stats" style={{ color: abcColor(hoveredArea.heatMetric.abc), fontWeight: 700 }}>
+                  Curva {hoveredArea.heatMetric.abc} · {hoveredArea.heatMetric.distanceM}m da expedição
+                  {hoveredArea.heatMetric.needsSlottingAttention ? " · ⚠ Realocar" : ""}
                 </div>
               )}
             </div>

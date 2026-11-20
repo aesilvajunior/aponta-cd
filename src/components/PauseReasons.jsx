@@ -2,6 +2,12 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchPauseLogs } from "../lib/api";
 import { summarizePauses, pausesByOperator } from "../lib/analytics";
 import { reasonLabel } from "../lib/pauseReasons";
+import {
+  readLocalSlaConfig,
+  loadSlaConfig,
+  pauseLimitSecondsFor,
+  evaluatePauseSlas,
+} from "../lib/slaMonitor";
 import { fmtDuration, fmtDate, fmtClock } from "../lib/format";
 import { IconRefresh } from "./Icons";
 
@@ -11,15 +17,20 @@ const PERIODS = [
   { key: 90, label: "90 dias" },
 ];
 
-export default function PauseReasons() {
+export default function PauseReasons({ activeSessions = [] }) {
   const [days, setDays] = useState(30);
   const [logs, setLogs] = useState([]);
+  const [slaConfig, setSlaConfig] = useState(() => readLocalSlaConfig());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    const { data, error: err } = await fetchPauseLogs({ days });
+    const [{ data, error: err }, cfg] = await Promise.all([
+      fetchPauseLogs({ days }),
+      loadSlaConfig().catch(() => readLocalSlaConfig()),
+    ]);
+    setSlaConfig(cfg);
     setLoading(false);
     if (err) {
       setError(err);
@@ -33,6 +44,15 @@ export default function PauseReasons() {
   useEffect(() => { load(); }, [load]);
 
   const closed = useMemo(() => logs.filter((l) => l.duration_seconds != null), [logs]);
+  const openLogs = useMemo(() => logs.filter((l) => l.duration_seconds == null && !l.resumed_at), [logs]);
+  const livePauseAlerts = useMemo(
+    () => evaluatePauseSlas(activeSessions, openLogs, slaConfig),
+    [activeSessions, openLogs, slaConfig]
+  );
+  const overdueClosedCount = useMemo(
+    () => closed.filter((l) => (l.duration_seconds || 0) > pauseLimitSecondsFor(l.reason, slaConfig)).length,
+    [closed, slaConfig]
+  );
   const byReason = useMemo(() => summarizePauses(closed), [closed]);
   const byOperator = useMemo(() => pausesByOperator(closed), [closed]);
   const totalSeconds = byReason.reduce((s, r) => s + r.seconds, 0);
@@ -72,12 +92,27 @@ export default function PauseReasons() {
 
       {!error && (
         <>
+          {livePauseAlerts.length > 0 && (
+            <div className="alert-card alert-danger" style={{ marginBottom: 20, flexDirection: "column", gap: 6 }}>
+              <strong>⚠ {livePauseAlerts.length} pausa(s) em andamento acima do tempo limite (SLA)</strong>
+              {livePauseAlerts.map((a) => (
+                <div key={a.id} style={{ fontSize: 13 }}>{a.message}</div>
+              ))}
+            </div>
+          )}
+
           <div className="stat-strip" style={{ marginBottom: 20 }}>
             <div className="stat-cell"><div className="stat-num">{closed.length}</div><div className="stat-label">Pausas concluídas</div></div>
             <div className="stat-cell"><div className="stat-num">{fmtDuration(totalSeconds)}</div><div className="stat-label">Tempo total pausado</div></div>
             <div className="stat-cell">
               <div className="stat-num">{closed.length ? fmtDuration(Math.round(totalSeconds / closed.length)) : "-"}</div>
               <div className="stat-label">Duração média</div>
+            </div>
+            <div className="stat-cell">
+              <div className="stat-num danger">{overdueClosedCount}</div>
+              <div className="stat-label">
+                Acima do SLA ({closed.length ? `${Math.round((overdueClosedCount / closed.length) * 100)}%` : "0%"})
+              </div>
             </div>
           </div>
 
@@ -120,15 +155,26 @@ export default function PauseReasons() {
             <table className="data-table">
               <thead><tr><th>Quando</th><th>Operador</th><th>Atividade</th><th>Motivo</th><th>Duração</th></tr></thead>
               <tbody>
-                {logs.slice(0, 40).map((l) => (
+                {logs.slice(0, 40).map((l) => {
+                  const limitSec = pauseLimitSecondsFor(l.reason, slaConfig);
+                  const exceeded = l.duration_seconds != null && l.duration_seconds > limitSec;
+                  return (
                   <tr key={l.id}>
                     <td>{fmtDate(l.paused_at)} {fmtClock(l.paused_at)}</td>
                     <td>{l.operator_name || l.operator_code}</td>
                     <td>{l.activity || "-"}</td>
                     <td>{reasonLabel(l.reason)}</td>
-                    <td>{l.duration_seconds != null ? fmtDuration(l.duration_seconds) : "em andamento"}</td>
+                    <td>
+                      {l.duration_seconds != null ? fmtDuration(l.duration_seconds) : "em andamento"}
+                      {exceeded && (
+                        <span style={{ marginLeft: 8, background: "var(--danger-soft)", color: "var(--danger)", padding: "2px 6px", borderRadius: 4, fontSize: 10.5, fontWeight: 700 }}>
+                          SLA &gt; {Math.round(limitSec / 60)}m
+                        </span>
+                      )}
+                    </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

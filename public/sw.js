@@ -110,19 +110,27 @@ self.addEventListener("fetch", (event) => {
   }
 });
 
-// Clique na notificação
+// Clique na notificação (restringe destino à mesma origem para evitar Open Redirect)
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = event.notification.data?.url || "/";
+  let targetUrl = "/";
+  try {
+    const parsed = new URL(event.notification.data?.url || "/", self.location.origin);
+    if (parsed.origin === self.location.origin) {
+      targetUrl = parsed.pathname + parsed.search + parsed.hash;
+    }
+  } catch {
+    targetUrl = "/";
+  }
   event.waitUntil(
     self.clients.matchAll({ type: "window" }).then((clients) => {
       for (const client of clients) {
-        if (client.url.includes(self.location.origin) && "focus" in client) {
-          client.navigate(url);
+        if (client.url.startsWith(self.location.origin) && "focus" in client) {
+          client.navigate(targetUrl);
           return client.focus();
         }
       }
-      if (self.clients.openWindow) return self.clients.openWindow(url);
+      if (self.clients.openWindow) return self.clients.openWindow(targetUrl);
     })
   );
 });
