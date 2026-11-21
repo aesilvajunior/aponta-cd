@@ -251,7 +251,7 @@ export default function LandingPage({
     }
   }, [isOperatorGate]);
 
-  // Efeito fade fluido no hero ao rolar a página (referência Berriel Brands)
+  // Efeito fade sutil apenas no palco do logo ao rolar (nunca desfoca o título ou login)
   useEffect(() => {
     const scroller = pageRef.current;
     if (!scroller || isAuthenticated) return undefined;
@@ -260,7 +260,7 @@ export default function LandingPage({
       if (raf) return;
       raf = window.requestAnimationFrame(() => {
         raf = 0;
-        const progress = Math.max(0, Math.min(1, scroller.scrollTop / 460));
+        const progress = Math.max(0, Math.min(1, (scroller.scrollTop - 120) / 360));
         setHeroScrollFade(progress);
       });
     };
@@ -375,26 +375,26 @@ export default function LandingPage({
       )}
 
       {/* ============ EDITORIAL MONUMENTAL HERO ============ */}
-      <section
-        id="topo"
-        className="br-container br-hero br-hero-scroll-wrap"
-        style={
-          !isAuthenticated && heroScrollFade > 0.01
-            ? {
-                opacity: Math.max(0.18, 1 - heroScrollFade * 0.85),
-                transform: `translateY(${Math.round(-heroScrollFade * 24)}px)`,
-                filter: `blur(${(heroScrollFade * 3).toFixed(2)}px)`,
-              }
-            : undefined
-        }
-      >
+      <section id="topo" className="br-container br-hero">
         <div className="br-hero-eyebrow">
           <span className="br-status-dot" />
           <span>APONTA CD / OPERAÇÃO LOGÍSTICA EM TEMPO REAL</span>
         </div>
 
         {/* Animação grande do logo: caminhão entrando e saindo do galpão + construção "aponta cd" */}
-        <AnimatedLogoHero />
+        <div
+          className="br-hero-scroll-wrap"
+          style={
+            !isAuthenticated && heroScrollFade > 0.01
+              ? {
+                  opacity: Math.max(0.35, 1 - heroScrollFade * 0.65),
+                  transform: `translateY(${Math.round(-heroScrollFade * 16)}px) scale(${(1 - heroScrollFade * 0.04).toFixed(3)})`,
+                }
+              : undefined
+          }
+        >
+          <AnimatedLogoHero />
+        </div>
 
         <div className="br-hero-grid">
           <div className="br-hero-copy">

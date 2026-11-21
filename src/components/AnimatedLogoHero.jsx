@@ -1,6 +1,14 @@
 import React from "react";
 
-const WORD_LETTERS = ["a", "p", "o", "n", "t", "a"];
+// Posições com kerning óptico para "aponta" (evita buraco entre "t" e "a")
+const WORD_LETTERS = [
+  { ch: "a", x: 76 },
+  { ch: "p", x: 126 },
+  { ch: "o", x: 178 },
+  { ch: "n", x: 230 },
+  { ch: "t", x: 280 },
+  { ch: "a", x: 314 },
+];
 
 /**
  * AnimatedLogoHero — Animação grande e fluida do novo logo Aponta CD:
@@ -43,9 +51,10 @@ export default function AnimatedLogoHero({ className = "" }) {
             <stop offset="100%" stopColor="#1fb6d8" />
           </linearGradient>
 
-          <linearGradient id="pipe-cyan" x1="0" y1="0" x2="0" y2="1">
+          {/* userSpaceOnUse garante que a haste vertical do "d" nunca suma no SVG */}
+          <linearGradient id="pipe-cyan" gradientUnits="userSpaceOnUse" x1="370" y1="-12" x2="495" y2="68">
             <stop offset="0%" stopColor="#3ad8f2" />
-            <stop offset="50%" stopColor="#0ea5c6" />
+            <stop offset="52%" stopColor="#0ea5c6" />
             <stop offset="100%" stopColor="#067291" />
           </linearGradient>
 
@@ -60,17 +69,13 @@ export default function AnimatedLogoHero({ className = "" }) {
 
         {/* ============ GALPÃO ISOMÉTRICO (FUNDO + TETO) ============ */}
         <g className="logo-warehouse">
-          {/* Telhado lateral direito */}
           <polygon points="212,72 316,42 384,82 310,122" fill="url(#roof-grad)" />
-          {/* Frisos do telhado */}
           <line x1="274" y1="62" x2="328" y2="94" stroke="rgba(255,255,255,0.22)" strokeWidth="4" strokeLinecap="round" />
           <line x1="298" y1="54" x2="352" y2="86" stroke="rgba(255,255,255,0.22)" strokeWidth="4" strokeLinecap="round" />
           <line x1="320" y1="47" x2="372" y2="78" stroke="rgba(255,255,255,0.22)" strokeWidth="4" strokeLinecap="round" />
 
-          {/* Parede lateral direita do galpão */}
           <polygon points="310,122 384,82 384,186 310,226" fill="url(#wall-grad)" />
 
-          {/* Fachada frontal branca com moldura marinho */}
           <polygon
             points="212,72 310,122 310,226 212,176"
             fill="#ffffff"
@@ -79,17 +84,13 @@ export default function AnimatedLogoHero({ className = "" }) {
             strokeLinejoin="round"
           />
 
-          {/* Detalhe de placa acima da porta */}
           <polygon points="247,98 275,112 275,120 247,106" fill="#1d356b" />
-
-          {/* Interior escuro da garagem/doca */}
           <polygon points="224,112 296,148 296,218 224,182" fill="#0d1833" />
         </g>
 
         {/* ============ CAMINHÃO ENTRANDO E SAINDO DO GALPÃO ============ */}
         <g clipPath="url(#bay-exit-clip)">
           <g className="logo-truck-motion">
-            {/* Carroceria lateral */}
             <polygon points="184,182 288,128 288,162 184,216" fill="#cbd5e1" stroke="#1d356b" strokeWidth="4" strokeLinejoin="round" />
             <polygon points="184,196 288,142 288,162 184,216" fill="#94a3b8" />
 
@@ -116,15 +117,12 @@ export default function AnimatedLogoHero({ className = "" }) {
             <polygon points="116,184 154,200 154,238 116,220" fill="#0b96b8" stroke="#1d356b" strokeWidth="4" strokeLinejoin="round" />
             <polygon points="154,200 190,180 190,218 154,238" fill="#087896" stroke="#1d356b" strokeWidth="4" strokeLinejoin="round" />
 
-            {/* Para-brisa e janela lateral */}
             <polygon points="122,190 148,202 148,218 122,206" fill="#1d356b" />
             <polygon points="160,202 183,190 183,206 160,218" fill="#162d59" />
 
-            {/* Faróis com brilho suave */}
             <ellipse cx="123" cy="216" rx="4.5" ry="3" fill="#fef08a" className="logo-headlight" />
             <ellipse cx="145" cy="226" rx="4.5" ry="3" fill="#fef08a" className="logo-headlight" />
 
-            {/* Rodas */}
             <g className="logo-wheel">
               <circle cx="176" cy="226" r="14" fill="#1d356b" />
               <circle cx="176" cy="226" r="6" fill="#cbd5e1" />
@@ -136,19 +134,16 @@ export default function AnimatedLogoHero({ className = "" }) {
           </g>
         </g>
 
-        {/* Pórtico frontal direito sobreposto para dar profundidade real de entrada */}
         <polygon points="296,148 310,155 310,226 296,218" fill="#1d356b" />
 
         {/* ============ CAIXAS CIANO EMPILHADAS AO LADO ============ */}
         <g className="logo-boxes">
-          {/* Caixa traseira superior */}
           <g className="logo-box-top">
             <polygon points="366,146 396,130 426,146 396,162" fill="url(#box-top)" />
             <polygon points="366,146 396,162 396,196 366,180" fill="#119ec0" />
             <polygon points="396,162 426,146 426,180 396,196" fill="#097a99" />
             <line x1="381" y1="138" x2="411" y2="154" stroke="#16336e" strokeWidth="4" />
           </g>
-          {/* Caixa frontal esquerda */}
           <g className="logo-box-front">
             <polygon points="334,186 364,170 394,186 364,202" fill="url(#box-top)" />
             <polygon points="334,186 364,202 364,236 334,220" fill="#13a6c9" />
@@ -159,14 +154,13 @@ export default function AnimatedLogoHero({ className = "" }) {
 
         {/* ============ CONSTRUÇÃO DO NOME "aponta cd" EMBAIXO ============ */}
         <g transform="translate(0, 290)">
-          {/* Letras de "aponta" sendo construídas sequencialmente */}
-          {WORD_LETTERS.map((ch, idx) => (
+          {WORD_LETTERS.map(({ ch, x }, idx) => (
             <text
               key={idx}
-              x={68 + idx * 50}
+              x={x}
               y="56"
               className="logo-word-letter"
-              style={{ animationDelay: `${0.18 + idx * 0.1}s` }}
+              style={{ animationDelay: `${0.16 + idx * 0.09}s` }}
             >
               {ch}
             </text>
@@ -175,10 +169,10 @@ export default function AnimatedLogoHero({ className = "" }) {
           {/* "c" construído em tubulação ciano */}
           <g className="logo-pipe-c">
             <path
-              d="M 412,18 C 384,18 378,56 412,56"
+              d="M 412,18 C 380,18 380,56 412,56"
               fill="none"
               stroke="url(#pipe-cyan)"
-              strokeWidth="16"
+              strokeWidth="15"
               strokeLinecap="butt"
               className="logo-pipe-draw"
             />
@@ -186,27 +180,26 @@ export default function AnimatedLogoHero({ className = "" }) {
             <rect x="408" y="46" width="9" height="20" rx="3" fill="#0884a6" className="logo-pipe-cap" />
           </g>
 
-          {/* "d" construído em tubulação ciano com haste vertical */}
+          {/* "d" construído em tubulação ciano (curva + haste vertical completa) */}
           <g className="logo-pipe-d">
             <path
-              d="M 476,18 C 446,18 442,56 476,56"
+              d="M 472,18 C 440,18 440,56 472,56"
               fill="none"
               stroke="url(#pipe-cyan)"
-              strokeWidth="16"
+              strokeWidth="15"
               strokeLinecap="butt"
               className="logo-pipe-draw logo-pipe-draw-d"
             />
-            <line
-              x1="480"
-              y1="-8"
-              x2="480"
-              y2="64"
+            <path
+              d="M 474,-8 L 474,64"
+              fill="none"
               stroke="url(#pipe-cyan)"
-              strokeWidth="16"
+              strokeWidth="15"
+              strokeLinecap="butt"
               className="logo-pipe-stem"
             />
-            <rect x="469" y="-12" width="22" height="8" rx="3" fill="#0884a6" className="logo-pipe-cap-d" />
-            <rect x="469" y="60" width="22" height="8" rx="3" fill="#0884a6" className="logo-pipe-cap-d" />
+            <rect x="463" y="-12" width="22" height="8" rx="3" fill="#0884a6" className="logo-pipe-cap-d" />
+            <rect x="463" y="60" width="22" height="8" rx="3" fill="#0884a6" className="logo-pipe-cap-d" />
           </g>
         </g>
       </svg>
