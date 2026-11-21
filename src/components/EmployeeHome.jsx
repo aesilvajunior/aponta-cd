@@ -13,6 +13,7 @@ import {
   IconLayoutDashboard,
   IconChevronRight,
   IconUsers,
+  IconUser,
   IconTruck,
 } from "./Icons";
 
@@ -116,9 +117,15 @@ export default function EmployeeHome({
       Icon: IconUsers,
     },
     {
+      key: "my-profile",
+      label: "Meu perfil",
+      desc: "Sua produtividade, ranking, foto e personalização",
+      Icon: IconUser,
+    },
+    {
       key: "badges",
-      label: "Meu crachá",
-      desc: "Visualizar, imprimir ou exportar seu crachá em PDF",
+      label: isAdmin ? "Crachás da equipe" : "Meu crachá",
+      desc: isAdmin ? "Visualizar, editar, imprimir ou exportar crachás" : "Visualizar, imprimir ou exportar seu crachá em PDF",
       Icon: IconStar,
     },
     {

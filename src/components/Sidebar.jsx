@@ -4,6 +4,7 @@ import ThemeToggle from "./ThemeToggle";
 import { useAuth } from "../context/AuthContext";
 import { AccordionSection } from "./ui/Accordion";
 import BrandMark from "./BrandMark";
+import { getOperatorProfileCustom, getProfileTheme } from "../lib/operatorProfileCustom";
 import {
   IconActivity,
   IconAlertTriangle,
@@ -16,6 +17,7 @@ import {
   IconEdit3,
   IconSettings,
   IconUsers,
+  IconUser,
   IconClock,
   IconTv,
   IconStar,
@@ -93,6 +95,7 @@ const SECTIONS = [
     title: "Equipe & Recursos",
     accent: "#8b5cf6",
     items: [
+      { key: "my-profile", label: "Meu perfil", Icon: IconUser },
       { key: "sales-query", label: "Líder da equipe", Icon: IconSearch },
       { key: "sales-team", label: "Equipe comercial", Icon: IconUsers, requiresAdmin: true },
       { key: "badges", label: "Crachás", Icon: IconStar },
@@ -157,6 +160,20 @@ export default function Sidebar({ id, tab, setTab, isAdmin, onLock, onOperatorLo
 
   const [navSearch, setNavSearch] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
+  const [profileCustom, setProfileCustom] = useState(() =>
+    getOperatorProfileCustom(currentOperator?.code)
+  );
+
+  useEffect(() => {
+    setProfileCustom(getOperatorProfileCustom(currentOperator?.code));
+    function onProfileUpdated(e) {
+      if (String(e.detail?.code) === String(currentOperator?.code)) {
+        setProfileCustom(e.detail.profile);
+      }
+    }
+    window.addEventListener("aponta:profile-updated", onProfileUpdated);
+    return () => window.removeEventListener("aponta:profile-updated", onProfileUpdated);
+  }, [currentOperator?.code]);
 
   const [sectionOpen, setSectionOpen] = useState(() => {
     try {
@@ -257,12 +274,11 @@ export default function Sidebar({ id, tab, setTab, isAdmin, onLock, onOperatorLo
     return SECTIONS.map((section) => {
       const visibleItems = section.items
         .filter((item) => {
+          if (item.requiresAdmin && !isAdmin) return false;
           if (item.requiresLeader && !isLeader) return false;
-          // Lançamento manual e Equipe comercial só aparecem para Admin
-          if ((item.key === "manual" || item.key === "sales-team") && !isAdmin) return false;
           if (!normalizedSearch) return true;
           if (item.label.toLowerCase().includes(normalizedSearch)) return true;
-          if (item.children?.some((c) => c.label.toLowerCase().includes(normalizedSearch))) return true;
+          if (item.children?.some((c) => (!c.requiresAdmin || isAdmin) && c.label.toLowerCase().includes(normalizedSearch))) return true;
           return false;
         })
         .map((item) => {
@@ -472,15 +488,35 @@ export default function Sidebar({ id, tab, setTab, isAdmin, onLock, onOperatorLo
 
       <div className="sidebar-footer">
         {!collapsed && currentOperator && (
-          <div className="sidebar-user" title={`${currentOperator.name} (cód. ${currentOperator.code})`}>
-            <div className="sidebar-user-avatar" style={{ background: "var(--accent)", color: "#fff" }}>
-              {(currentOperator.name || "O").charAt(0).toUpperCase()}
+          <div
+            className="sidebar-user"
+            {...press(() => setTab("my-profile"))}
+            title={`Abrir Meu Perfil — ${currentOperator.name} (cód. ${currentOperator.code})`}
+            style={{ cursor: "pointer" }}
+          >
+            <div
+              className="sidebar-user-avatar"
+              style={{
+                background: getProfileTheme(profileCustom.themeId).accent,
+                color: "#fff",
+                overflow: "hidden",
+              }}
+            >
+              {profileCustom.avatarDataUrl ? (
+                <img
+                  src={profileCustom.avatarDataUrl}
+                  alt={currentOperator.name}
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                />
+              ) : (
+                (currentOperator.name || "O").charAt(0).toUpperCase()
+              )}
             </div>
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                {currentOperator.name}
+                {profileCustom.nickname || currentOperator.name}
               </div>
-              <div style={{ fontSize: 10.5, color: "var(--text-faint)" }}>Cód. {currentOperator.code}</div>
+              <div style={{ fontSize: 10.5, color: "var(--text-faint)" }}>Cód. {currentOperator.code} · Ver perfil</div>
             </div>
           </div>
         )}
@@ -493,6 +529,17 @@ export default function Sidebar({ id, tab, setTab, isAdmin, onLock, onOperatorLo
         )}
 
         <ThemeToggle compact={collapsed} />
+
+        {!isAdmin && (
+          <button
+            className="sidebar-logout"
+            onClick={() => setTab("panel")}
+            title={collapsed ? "Acesso Admin" : "Desbloquear painel de administrador"}
+          >
+            <IconShield size={16} />
+            {!collapsed && <span>Acesso Admin</span>}
+          </button>
+        )}
 
         {onOperatorLogout && currentOperator && (
           <button

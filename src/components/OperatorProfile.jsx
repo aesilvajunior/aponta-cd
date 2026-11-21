@@ -1,9 +1,16 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
 import { fmtDate, fmtDuration, localISODate } from "../lib/format";
 import { mean } from "../lib/metrics";
+import {
+  PROFILE_THEMES,
+  getOperatorProfileCustom,
+  saveOperatorProfileCustom,
+  getProfileTheme,
+  processAvatarFile,
+} from "../lib/operatorProfileCustom";
 import {
   IconTrendingUp,
   IconZap,
@@ -14,6 +21,11 @@ import {
   IconTarget,
   IconClock,
   IconClipboardCheck,
+  IconEdit,
+  IconTrash,
+  IconUpload,
+  IconCheck,
+  IconX,
 } from "./Icons";
 
 const COLORS = ["#1e3a5f", "#4a7ba7", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444", "#06b6d4", "#6b7280"];
@@ -32,7 +44,66 @@ export default function OperatorProfile({
   separationErrors,
   shortagesByEntry,
   onBack,
+  editable = false,
 }) {
+  const [custom, setCustom] = useState(() => getOperatorProfileCustom(operator?.code));
+  const [editingProfile, setEditingProfile] = useState(false);
+  const [draftBio, setDraftBio] = useState("");
+  const [draftNickname, setDraftNickname] = useState("");
+  const [draftThemeId, setDraftThemeId] = useState("default");
+  const [draftAvatar, setDraftAvatar] = useState("");
+  const [uploadError, setUploadError] = useState("");
+  const [savedNotice, setSavedNotice] = useState(false);
+  const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    const loaded = getOperatorProfileCustom(operator?.code);
+    setCustom(loaded);
+    setEditingProfile(false);
+    setUploadError("");
+  }, [operator?.code]);
+
+  function openCustomize() {
+    setDraftBio(custom.bio || "");
+    setDraftNickname(custom.nickname || "");
+    setDraftThemeId(custom.themeId || "default");
+    setDraftAvatar(custom.avatarDataUrl || "");
+    setUploadError("");
+    setEditingProfile(true);
+  }
+
+  async function handleAvatarChange(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadError("");
+    try {
+      const dataUrl = await processAvatarFile(file);
+      setDraftAvatar(dataUrl);
+    } catch (err) {
+      setUploadError(err?.message || "Não foi possível carregar a foto.");
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
+
+  function handleSaveCustom() {
+    const payload = {
+      avatarDataUrl: draftAvatar,
+      themeId: draftThemeId,
+      bio: draftBio.trim().slice(0, 140),
+      nickname: draftNickname.trim().slice(0, 40),
+    };
+    saveOperatorProfileCustom(operator.code, payload);
+    setCustom(payload);
+    setEditingProfile(false);
+    setSavedNotice(true);
+    setTimeout(() => setSavedNotice(false), 2600);
+  }
+
+  const activeTheme = getProfileTheme(editingProfile ? draftThemeId : custom.themeId);
+  const activeAvatar = editingProfile ? draftAvatar : custom.avatarDataUrl;
+  const displayName = (editingProfile ? draftNickname : custom.nickname) || operator.name;
+  const displayBio = editingProfile ? draftBio : custom.bio;
   const opEntries = useMemo(
     () => entries.filter((e) => e.operator_code === operator.code),
     [entries, operator.code]
@@ -162,18 +233,56 @@ export default function OperatorProfile({
   return (
     <div>
       {/* Header */}
-      <div className="profile-header">
-        <button className="profile-back" onClick={onBack}>
-          ← Voltar
-        </button>
+      <div
+        className="profile-header"
+        style={{
+          background: activeTheme.banner,
+          borderColor: `${activeTheme.accent}44`,
+        }}
+      >
+        <div style={{ position: "absolute", top: 18, right: 18, display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {editable && !editingProfile && (
+            <button type="button" className="btn-small" onClick={openCustomize}>
+              <IconEdit size={13} /> Personalizar perfil
+            </button>
+          )}
+          {onBack && (
+            <button type="button" className="btn-small" onClick={onBack}>
+              ← Voltar
+            </button>
+          )}
+        </div>
 
-        <div className="profile-avatar">{initials}</div>
+        <div
+          className="profile-avatar"
+          style={{
+            background: activeTheme.accent,
+            overflow: "hidden",
+            border: `3px solid ${activeTheme.accent}`,
+          }}
+        >
+          {activeAvatar ? (
+            <img
+              src={activeAvatar}
+              alt={displayName}
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            />
+          ) : (
+            initials
+          )}
+        </div>
 
-        <div className="profile-info">
-          <h1 className="profile-name">{operator.name}</h1>
+        <div className="profile-info" style={{ paddingRight: 180 }}>
+          <h1 className="profile-name">{displayName}</h1>
           <div className="profile-role">
+            {operator.name !== displayName && `${operator.name} · `}
             {operator.role} · #{operator.code}
           </div>
+          {displayBio && (
+            <div style={{ fontSize: 13, color: "var(--text)", marginTop: 6, maxWidth: 520 }}>
+              {displayBio}
+            </div>
+          )}
           <div className="profile-badge">
             <IconActivity size={13} />
             {opEntries.length} registros no período
@@ -181,6 +290,142 @@ export default function OperatorProfile({
           </div>
         </div>
       </div>
+
+      {savedNotice && (
+        <div
+          className="alert-card"
+          style={{
+            marginBottom: 18,
+            background: "var(--ok-soft)",
+            borderColor: "var(--ok)",
+            color: "var(--ok)",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <IconCheck size={15} /> Perfil personalizado salvo com sucesso!
+        </div>
+      )}
+
+      {editable && editingProfile && (
+        <div className="card" style={{ marginBottom: 22 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+            <div className="card-title" style={{ marginBottom: 0 }}>
+              Personalizar meu perfil
+            </div>
+            <button
+              type="button"
+              className="btn-small"
+              onClick={() => setEditingProfile(false)}
+              aria-label="Fechar edição"
+            >
+              <IconX size={13} /> Fechar
+            </button>
+          </div>
+
+          <div className="schedule-modal-grid" style={{ marginBottom: 14 }}>
+            <div>
+              <label className="schedule-modal-label">Foto de perfil (JPG/PNG/WebP · máx. 500 KB)</label>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 4 }}>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  style={{ display: "none" }}
+                  onChange={handleAvatarChange}
+                />
+                <button
+                  type="button"
+                  className="btn-small btn-excel"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <IconUpload size={13} /> {draftAvatar ? "Trocar foto" : "Enviar foto"}
+                </button>
+                {draftAvatar && (
+                  <button
+                    type="button"
+                    className="btn-small"
+                    style={{ color: "var(--danger)", borderColor: "var(--danger)" }}
+                    onClick={() => setDraftAvatar("")}
+                  >
+                    <IconTrash size={13} /> Remover foto
+                  </button>
+                )}
+              </div>
+              {uploadError && (
+                <div style={{ color: "var(--danger)", fontSize: 12, marginTop: 6 }}>{uploadError}</div>
+              )}
+            </div>
+
+            <div>
+              <label className="schedule-modal-label">Nome de exibição / apelido (opcional)</label>
+              <input
+                type="text"
+                className="schedule-modal-field"
+                placeholder={operator.name}
+                maxLength={40}
+                value={draftNickname}
+                onChange={(e) => setDraftNickname(e.target.value)}
+              />
+            </div>
+
+            <div className="schedule-modal-full">
+              <label className="schedule-modal-label">Frase ou bio curta (opcional · máx. 140 caracteres)</label>
+              <input
+                type="text"
+                className="schedule-modal-field"
+                placeholder="Ex.: Foco total na separação e conferência!"
+                maxLength={140}
+                value={draftBio}
+                onChange={(e) => setDraftBio(e.target.value)}
+              />
+            </div>
+
+            <div className="schedule-modal-full">
+              <label className="schedule-modal-label">Cor do cartão de perfil</label>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 6 }}>
+                {PROFILE_THEMES.map((t) => {
+                  const selected = draftThemeId === t.id;
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setDraftThemeId(t.id)}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 7,
+                        padding: "6px 12px",
+                        borderRadius: 999,
+                        border: `2px solid ${selected ? t.accent : "var(--border)"}`,
+                        background: selected ? `${t.accent}22` : "var(--surface-raised)",
+                        color: "var(--text)",
+                        fontSize: 12,
+                        fontWeight: selected ? 700 : 500,
+                        cursor: "pointer",
+                        fontFamily: "inherit",
+                      }}
+                    >
+                      <span style={{ width: 12, height: 12, borderRadius: "50%", background: t.accent }} />
+                      {t.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <button type="button" className="btn-small" onClick={() => setEditingProfile(false)}>
+              Cancelar
+            </button>
+            <button type="button" className="btn-small btn-excel" onClick={handleSaveCustom}>
+              <IconCheck size={14} /> Salvar personalização
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Cards de métricas */}
       <div className="profile-stats">

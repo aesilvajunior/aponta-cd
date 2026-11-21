@@ -36,7 +36,7 @@ describe("Sidebar: menu recolhido salvo no aparelho", () => {
     const html = render();
     expect(html).not.toContain("sidebar-collapsed");
     expect(html).toContain("nav-item-label");
-    expect(html).toContain("Aponta CD");
+    expect(html).toContain("brand-wordmark");
     expect(html).not.toContain("sidebar-toggle"); // sem botão de recolher no celular
   });
 });

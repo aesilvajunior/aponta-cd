@@ -60,6 +60,7 @@ const Workload = lazyWithRetry(() => import("./components/Workload"));
 const PauseReasons = lazyWithRetry(() => import("./components/PauseReasons"));
 const SystemHealth = lazyWithRetry(() => import("./components/SystemHealth"));
 const BadgePrinter = lazyWithRetry(() => import("./components/BadgePrinter"));
+const OperatorProfile = lazyWithRetry(() => import("./components/OperatorProfile"));
 const StockScan = lazyWithRetry(() => import("./components/StockScan"));
 const StockMap3D = lazyWithRetry(() => import("./components/StockMap3D"));
 const AddressLabels = lazyWithRetry(() => import("./components/AddressLabels"));
@@ -380,27 +381,47 @@ export default function App() {
       />
 
       <main className="main">
-        <div className="main-quick-theme" style={{ alignItems: "center", gap: 10 }}>
-          <span
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              padding: "6px 12px",
-              borderRadius: 999,
-              background: "var(--surface)",
-              border: "1px solid var(--border-strong)",
-              fontSize: 12,
-              fontWeight: 600,
-              color: "var(--text)",
-            }}
-          >
-            {isMorningNow ? <IconCloudSun size={14} /> : <IconSun size={14} />}
-            <span>Turno {shiftFor(new Date())}</span>
-            <span style={{ opacity: 0.55 }}>·</span>
-            <span style={{ color: "var(--text-muted)", fontWeight: 500 }}>{fmtDate(new Date())}</span>
-          </span>
-          <ThemeToggle compact />
+        <div
+          className="main-quick-theme"
+          style={{
+            justifyContent: tab !== "welcome" ? "space-between" : "flex-end",
+            alignItems: "center",
+            gap: 10,
+          }}
+        >
+          {tab !== "welcome" && (
+            <button
+              type="button"
+              className="btn-small"
+              onClick={() => setTab("welcome")}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+              title="Voltar para a tela inicial"
+            >
+              ← Voltar ao início
+            </button>
+          )}
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "6px 12px",
+                borderRadius: 999,
+                background: "var(--surface)",
+                border: "1px solid var(--border-strong)",
+                fontSize: 12,
+                fontWeight: 600,
+                color: "var(--text)",
+              }}
+            >
+              {isMorningNow ? <IconCloudSun size={14} /> : <IconSun size={14} />}
+              <span>Turno {shiftFor(new Date())}</span>
+              <span style={{ opacity: 0.55 }}>·</span>
+              <span style={{ color: "var(--text-muted)", fontWeight: 500 }}>{fmtDate(new Date())}</span>
+            </span>
+            <ThemeToggle compact />
+          </div>
         </div>
         {import.meta.env.VITE_APP_ENV && import.meta.env.VITE_APP_ENV !== "production" && (
           <div className="env-banner" role="note">AMBIENTE DE {String(import.meta.env.VITE_APP_ENV).toUpperCase()}: os dados daqui não são os reais</div>
@@ -522,12 +543,25 @@ export default function App() {
           {tab === "equipment" && (
             <EquipmentManager isAdmin={isAdmin} operators={operators} />
           )}
+          {tab === "my-profile" && currentOperator && (
+            <OperatorProfile
+              operator={currentOperator}
+              entries={entries}
+              activities={activities}
+              separationErrors={separationErrors}
+              shortagesByEntry={shortagesByEntry}
+              onBack={() => setTab("welcome")}
+              editable
+            />
+          )}
           {tab === "badges" && (
             <BadgePrinter
               operators={operators}
               currentOperator={currentOperator}
               isAdmin={isAdmin}
               onManageOperators={() => setTab("team")}
+              onRefreshOperators={loadAll}
+              onBack={() => setTab("welcome")}
             />
           )}
           {tab === "sales-query" && (

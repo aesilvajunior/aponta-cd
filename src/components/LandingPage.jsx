@@ -239,6 +239,7 @@ export default function LandingPage({
   const [codeError, setCodeError] = useState("");
   const [shake, setShake] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [empFieldsUnlocked, setEmpFieldsUnlocked] = useState(false);
   const [activeStep, setActiveStep] = useState(0);
   const [heroScrollFade, setHeroScrollFade] = useState(0);
   const inputRef = useRef(null);
@@ -248,7 +249,14 @@ export default function LandingPage({
 
   useEffect(() => {
     if (!authModalOpen) return undefined;
-    const t = setTimeout(() => inputRef.current?.focus(), 60);
+    setCode("");
+    setPassword("");
+    setCodeError("");
+    setEmpFieldsUnlocked(false);
+    const t = setTimeout(() => {
+      setEmpFieldsUnlocked(true);
+      inputRef.current?.focus();
+    }, 120);
     const onKey = (e) => {
       if (e.key === "Escape") setAuthModalOpen(false);
     };
@@ -393,12 +401,19 @@ export default function LandingPage({
 
       {/* ============ EDITORIAL MONUMENTAL HERO ============ */}
       <section id="topo" className="br-container br-hero">
-        <div className="br-hero-eyebrow">
-          <span className="br-status-dot" />
-          <span>APONTA CD / OPERAÇÃO LOGÍSTICA EM TEMPO REAL</span>
+        <div className="br-hero-top-bar">
+          <div className="br-hero-eyebrow">
+            <span className="br-status-dot" />
+            <span>APONTA CD / OPERAÇÃO LOGÍSTICA EM TEMPO REAL</span>
+          </div>
+          <span className="br-hero-edition" aria-hidden="true">
+            {operators.filter((o) => o.active !== false).length > 0
+              ? `${String(operators.filter((o) => o.active !== false).length).padStart(2, "0")} OPERADORES ATIVOS`
+              : "SISTEMA DE GESTÃO CD"}
+          </span>
         </div>
 
-        {/* Animação grande do logo: caminhão entrando e saindo do galpão + construção "aponta cd" */}
+        {/* Palco central do logo editorial */}
         <div
           className="br-hero-scroll-wrap"
           style={
@@ -413,69 +428,59 @@ export default function LandingPage({
           <AnimatedLogoHero />
         </div>
 
-        <div className="br-hero-grid">
+        <div className="br-hero-editorial">
           <div className="br-hero-copy">
             <h1 className="br-display-title">
               <span className="br-line-mask"><span className="br-line-inner" style={{ animationDelay: "60ms" }}>Operação precisa,</span></span>
               <span className="br-line-mask"><span className="br-line-inner" style={{ animationDelay: "160ms" }}>do piso ao <em className="br-accent-em">mapa 3D.</em></span></span>
             </h1>
 
-            <p className="br-hero-lead">
-              Apontamento por código, conferência, planta 2D e 3D com rotação livre em 360°,
-              slotting por Curva ABC e auditoria operacional desenhados para máxima clareza no turno.
-            </p>
+            <div className="br-hero-split-copy">
+              <p className="br-hero-lead">
+                Apontamento por código, conferência, planta 2D e 3D com rotação livre em 360°,
+                slotting por Curva ABC e auditoria operacional desenhados para máxima clareza no turno.
+              </p>
 
-            <div className="br-hero-cta">
-              {!isOperatorGate && (
-                <button
-                  type="button"
-                  className="br-cta-primary"
-                  onClick={openEmployeeArea}
-                >
-                  {isAuthenticated ? "Ir para a Operação" : "Entrar no sistema"}{" "}
-                  <IconChevronRight size={16} />
-                </button>
-              )}
+              <div className="br-hero-cta">
+                {!isOperatorGate && (
+                  <button
+                    type="button"
+                    className="br-cta-primary"
+                    onClick={openEmployeeArea}
+                  >
+                    {isAuthenticated ? "Ir para a Operação" : "Entrar no sistema"}{" "}
+                    <IconChevronRight size={16} />
+                  </button>
+                )}
 
-              {isAuthenticated && onOpenMap2D && onOpenMap3D ? (
-                <>
-                  <button type="button" className="br-cta-ghost" onClick={onOpenMap2D}>Mapa 2D</button>
-                  <button type="button" className="br-cta-ghost" onClick={onOpenMap3D}>Mapa 3D</button>
-                </>
-              ) : (
-                <a href="#modulos" className="br-cta-ghost" style={{ textDecoration: "none" }}>
-                  Explorar módulos ↓
-                </a>
-              )}
+                {isAuthenticated && onOpenMap2D && onOpenMap3D ? (
+                  <>
+                    <button type="button" className="br-cta-ghost" onClick={onOpenMap2D}>Mapa 2D</button>
+                    <button type="button" className="br-cta-ghost" onClick={onOpenMap3D}>Mapa 3D</button>
+                  </>
+                ) : (
+                  <a href="#modulos" className="br-cta-ghost" style={{ textDecoration: "none" }}>
+                    Explorar módulos ↓
+                  </a>
+                )}
+              </div>
             </div>
 
-            <div className="br-hero-meta">
-              <div>
+            <div className="br-hero-meta" role="list" aria-label="Pilares operacionais">
+              <div className="br-hero-meta-item" role="listitem">
+                <span className="br-meta-num">01</span>
                 <strong>2D + 3D</strong>
                 <span>Rotação livre 360°</span>
               </div>
-              <div>
+              <div className="br-hero-meta-item" role="listitem">
+                <span className="br-meta-num">02</span>
                 <strong>Curva ABC</strong>
-                <span>Mapa de calor</span>
+                <span>Mapa de calor & slotting</span>
               </div>
-              <div>
-                <strong>Offline</strong>
-                <span>Fila segura no CD</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Right column: Clean Editorial Showcase Card (sem botão duplicado de login) */}
-          <div className="br-hero-right">
-            <div className="br-studio-showcase">
-              <BrandMark variant="full" />
-              <div className="br-studio-caption">
-                <span>IDENTIDADE · APONTA CD</span>
-                <span>
-                  {currentOperator
-                    ? `${currentOperator.name} · #${currentOperator.code}`
-                    : `${operators.filter((o) => o.active !== false).length} OPERADORES ATIVOS`}
-                </span>
+              <div className="br-hero-meta-item" role="listitem">
+                <span className="br-meta-num">03</span>
+                <strong>Offline-first</strong>
+                <span>Fila segura no galpão</span>
               </div>
             </div>
           </div>
@@ -514,22 +519,31 @@ export default function LandingPage({
               </div>
             </div>
 
-            <form onSubmit={handleCodeSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <form onSubmit={handleCodeSubmit} autoComplete="off" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <div>
                 <label className="br-field-label" htmlFor="emp-code">Código do funcionário</label>
                 <input
                   id="emp-code"
+                  name="aponta_emp_code_guard"
                   ref={inputRef}
                   type="text"
                   inputMode="numeric"
                   className="br-code-input"
                   placeholder="Ex.: 101"
                   value={code}
+                  readOnly={!empFieldsUnlocked}
+                  onFocus={() => setEmpFieldsUnlocked(true)}
+                  onPointerDown={() => setEmpFieldsUnlocked(true)}
                   onChange={(e) => {
+                    const val = e.target.value;
+                    if (val.includes("@")) return;
                     setCodeError("");
-                    setCode(e.target.value);
+                    setCode(val);
                   }}
-                  autoComplete="username"
+                  autoComplete="off"
+                  data-lpignore="true"
+                  data-1p-ignore="true"
+                  data-form-type="other"
                 />
               </div>
 
@@ -538,17 +552,24 @@ export default function LandingPage({
                 <div style={{ position: "relative" }}>
                   <input
                     id="emp-pass"
+                    name="aponta_emp_pass_guard"
                     type={showPass ? "text" : "password"}
                     inputMode="numeric"
                     className="br-code-input"
                     style={{ paddingRight: 78 }}
                     placeholder="••••"
                     value={password}
+                    readOnly={!empFieldsUnlocked}
+                    onFocus={() => setEmpFieldsUnlocked(true)}
+                    onPointerDown={() => setEmpFieldsUnlocked(true)}
                     onChange={(e) => {
                       setCodeError("");
                       setPassword(e.target.value);
                     }}
-                    autoComplete="current-password"
+                    autoComplete="new-password"
+                    data-lpignore="true"
+                    data-1p-ignore="true"
+                    data-form-type="other"
                   />
                   <button
                     type="button"
