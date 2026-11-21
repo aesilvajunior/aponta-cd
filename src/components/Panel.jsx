@@ -29,6 +29,8 @@ import {
   IconLayoutDashboard,
   IconList,
   IconLock,
+  IconSun,
+  IconCloudSun,
 } from "./Icons";
 
 const COLORS = ["#1e3a5f", "#4a7ba7", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444", "#06b6d4", "#6b7280"];
@@ -989,6 +991,35 @@ export default function Panel({
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
   }
 
+  function exportHistoricoJSON() {
+    if (filteredEntries.length === 0) { alert("Nenhum registro no período para exportar."); return; }
+    const payload = {
+      app: "Aponta CD",
+      exportedAt: new Date().toISOString(),
+      period: periodLabel(dateFrom, dateTo, filteredEntries),
+      filters: {
+        operator: filterOperator || null,
+        activity: filterActivity || null,
+        shift: filterShift || null,
+        station: filterStation || null,
+      },
+      summary: {
+        totalRecords: filteredEntries.length,
+        avgDurationSeconds: Math.round(meanM(filteredEntries.map((e) => e.duration_seconds))),
+        encaixes: stats.encaixes,
+        entriesWithShortage: stats.entriesComFalta,
+      },
+      entries: filteredEntries,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = periodFilename("apontamentos", "json", dateFrom, dateTo, filteredEntries);
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   async function confirmReset() {
     if (resetPhrase.trim().toUpperCase() !== "ZERAR") return;
     setResetting(true);
@@ -1044,6 +1075,9 @@ export default function Panel({
           <button className="btn-small" onClick={openPrintableReport}>Gerar relatório (PDF)</button>
           <button className="btn-small" onClick={exportHistoricoCSV}>
             <IconDownload size={14} /> CSV
+          </button>
+          <button className="btn-small" onClick={exportHistoricoJSON} title="Exportar dados estruturados em JSON">
+            <IconDownload size={14} /> JSON
           </button>
           <button className="btn-small btn-excel" onClick={exportHistoricoXLSX}>
             <IconDownload size={14} /> Excel
@@ -1133,6 +1167,21 @@ export default function Panel({
         <button className={`quick-filter-btn ${activeQuickFilter === "ontem" ? "active" : ""}`} onClick={() => applyQuickFilter("ontem")}>Ontem</button>
         <button className={`quick-filter-btn ${activeQuickFilter === "7dias" ? "active" : ""}`} onClick={() => applyQuickFilter("7dias")}>Últimos 7 dias</button>
         <button className={`quick-filter-btn ${activeQuickFilter === "mes" ? "active" : ""}`} onClick={() => applyQuickFilter("mes")}>Este mês</button>
+        <span style={{ width: 1, height: 18, background: "var(--border)", margin: "0 4px" }} />
+        <button
+          className={`quick-filter-btn ${filterShift === "Manhã" ? "active" : ""}`}
+          onClick={() => setFilterShift((s) => (s === "Manhã" ? "" : "Manhã"))}
+          style={{ display: "inline-flex", alignItems: "center", gap: 5 }}
+        >
+          <IconCloudSun size={13} /> Manhã
+        </button>
+        <button
+          className={`quick-filter-btn ${filterShift === "Tarde" ? "active" : ""}`}
+          onClick={() => setFilterShift((s) => (s === "Tarde" ? "" : "Tarde"))}
+          style={{ display: "inline-flex", alignItems: "center", gap: 5 }}
+        >
+          <IconSun size={13} /> Tarde
+        </button>
         {(dateFrom || dateTo) && (
           <button className="quick-filter-clear" onClick={() => applyQuickFilter("")}>
             <IconX size={12} /> Limpar período

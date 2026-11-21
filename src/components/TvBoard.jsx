@@ -13,6 +13,7 @@ import { playEventSound } from "../lib/sounds";
 import { fmtClock, fmtDate, fmtDuration, todayLocalISODate, localISODate } from "../lib/format";
 import { useTheme } from "../context/ThemeContext";
 import TvGamification from "./TvGamification";
+import BrandMark from "./BrandMark";
 import {
   IconPackage,
   IconZap,
@@ -25,6 +26,7 @@ import {
   IconTrophy,
   IconAward,
   IconSun,
+  IconCloudSun,
   IconMoon,
   IconTv,
   IconMapPin,
@@ -488,31 +490,28 @@ export default function TvBoard() {
 
   const p = palette;
 
+  const isMorningShift = new Date(now).getHours() < 13;
+
   return (
     <div
       style={{
         minHeight: "100vh",
         background: p.gradient,
         color: p.text,
-        fontFamily: "'Inter', -apple-system, system-ui, sans-serif",
+        fontFamily: "'PP Neue Montreal', 'Inter', -apple-system, system-ui, sans-serif",
         padding: "28px 36px 100px 36px",
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
       }}
     >
-      <link
-        rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap"
-      />
-
       <style>{`
         @keyframes slideIn {
-          from { opacity: 0; transform: translateY(12px); }
-          to   { opacity: 1; transform: translateY(0); }
+          from { opacity: 0; transform: translateY(16px); filter: blur(4px); }
+          to   { opacity: 1; transform: translateY(0); filter: blur(0); }
         }
         @keyframes fadeUp {
-          from { opacity: 0; transform: translateY(4px); }
+          from { opacity: 0; transform: translateY(8px); }
           to   { opacity: 1; transform: translateY(0); }
         }
         @keyframes pulseDot {
@@ -525,18 +524,18 @@ export default function TvBoard() {
         }
         @keyframes pulseMesa {
           0%, 100% { transform: scale(1); opacity: 1; }
-          50%      { transform: scale(1.02); opacity: 0.92; }
+          50%      { transform: scale(1.015); opacity: 0.94; }
         }
         @keyframes menuIn {
-          from { opacity: 0; transform: translateY(8px) scale(0.96); }
+          from { opacity: 0; transform: translateY(10px) scale(0.96); }
           to   { opacity: 1; transform: translateY(0) scale(1); }
         }
-        .tv-row-enter { animation: slideIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) both; }
-        .tv-rank-enter { animation: fadeUp 0.4s cubic-bezier(0.22, 1, 0.36, 1) both; }
+        .tv-row-enter { animation: slideIn 0.65s cubic-bezier(0.25, 1, 0.5, 1) both; }
+        .tv-rank-enter { animation: fadeUp 0.5s cubic-bezier(0.25, 1, 0.5, 1) both; }
         .tv-pulse { animation: pulseDot 1.6s ease-in-out infinite; }
         .tv-alert { animation: pulseAlert 1.8s ease-in-out infinite; }
         .tv-mesa-alert { animation: pulseMesa 2s ease-in-out infinite; }
-        .tv-menu-enter { animation: menuIn 200ms cubic-bezier(0.22, 1, 0.36, 1); }
+        .tv-menu-enter { animation: menuIn 240ms cubic-bezier(0.25, 1, 0.5, 1); }
       `}</style>
 
       <div
@@ -545,17 +544,36 @@ export default function TvBoard() {
           justifyContent: "space-between",
           alignItems: "center",
           marginBottom: 22,
-          borderBottom: `2px solid ${p.accent}`,
+          borderBottom: `1px solid ${p.border}`,
           paddingBottom: 16,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+          <BrandMark variant="lockup" />
+          <div style={{ width: 1, height: 34, background: p.border }} />
           <div>
-            <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: "-0.02em" }}>
-              Atividades em andamento
+            <div style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-0.03em", display: "flex", alignItems: "center", gap: 12 }}>
+              <span>Atividades em andamento</span>
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  padding: "4px 10px",
+                  borderRadius: 999,
+                  background: isMorningShift ? "rgba(14, 165, 198, 0.16)" : "rgba(245, 158, 11, 0.16)",
+                  color: isMorningShift ? "#38bdf8" : "#fbbf24",
+                  border: `1px solid ${isMorningShift ? "rgba(56, 189, 248, 0.35)" : "rgba(251, 191, 36, 0.35)"}`,
+                }}
+              >
+                {isMorningShift ? <IconCloudSun size={14} /> : <IconSun size={14} />}
+                {isMorningShift ? "Turno Manhã" : "Turno Tarde"}
+              </span>
             </div>
-            <div style={{ color: p.textMuted, fontSize: 13, marginTop: 2, fontWeight: 500 }}>
-              Aponta CD
+            <div style={{ color: p.textMuted, fontSize: 13, marginTop: 3, fontWeight: 500 }}>
+              Operação ao vivo
               {stationFilter && (
                 <span
                   style={{
@@ -593,7 +611,8 @@ export default function TvBoard() {
               fontFamily: "'JetBrains Mono', monospace",
               fontSize: 34,
               fontWeight: 600,
-              letterSpacing: "-0.02em",
+              letterSpacing: "-0.03em",
+              fontVariantNumeric: "tabular-nums",
               color: p.text,
             }}
           >

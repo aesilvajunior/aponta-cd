@@ -23,6 +23,11 @@ import {
   IconShield,
   IconVolume2,
   IconAlertTriangle,
+  IconLayers,
+  IconCheckSquare,
+  IconBarChart,
+  IconPause,
+  IconDownload,
 } from "./Icons";
 
 function ItemIcon({ type, actionKey }) {
@@ -37,17 +42,25 @@ function ItemIcon({ type, actionKey }) {
     case "nav-errors": return <IconAlertTriangle size={15} />;
     case "nav-schedules": return <IconCalendar size={15} />;
     case "nav-conference": return <IconClipboardCheck size={15} />;
+    case "nav-checklist": return <IconCheckSquare size={15} />;
     case "nav-shortages": return <IconBox size={15} />;
     case "nav-rotation": return <IconRotateCcw size={15} />;
     case "nav-goals-dashboard": return <IconTrendingUp size={15} />;
     case "nav-stock-map": return <IconMapPin size={15} />;
+    case "nav-stock-map-3d": return <IconLayers size={15} />;
+    case "nav-stock-scan": return <IconPackage size={15} />;
+    case "nav-address-labels": return <IconEdit3 size={15} />;
+    case "nav-turn-comparison": return <IconBarChart size={15} />;
+    case "nav-workload": return <IconTrendingUp size={15} />;
+    case "nav-pauses": return <IconPause size={15} />;
+    case "nav-monthly-report": return <IconDownload size={15} />;
     case "nav-panel": return <IconLayoutDashboard size={15} />;
     case "nav-manual": return <IconEdit3 size={15} />;
     case "nav-goals": return <IconTarget size={15} />;
     case "nav-admin-master": return <IconStar size={15} />;
     case "nav-csv-import": return <IconUpload size={15} />;
     case "nav-fraud": return <IconShield size={15} />;
-    case "nav-reports-scheduler": return <IconVolume2 size={15} />;
+    case "nav-reports-scheduler": return <IconDownload size={15} />;
     case "nav-team": return <IconSettings size={15} />;
     case "nav-sales-team": return <IconUsers size={15} />;
     case "nav-audit": return <IconClock size={15} />;
@@ -87,10 +100,19 @@ export default function CommandPalette({
       { id: "nav-errors", type: "action", actionKey: "nav-errors", title: "Ir para Apontar erro", subtitle: "Registro de erro de separação", onSelect: () => onNavigate?.("errors-kiosk") },
       { id: "nav-schedules", type: "action", actionKey: "nav-schedules", title: "Ir para Agenda", subtitle: "Agendamentos de recebimento", onSelect: () => onNavigate?.("schedules") },
       { id: "nav-conference", type: "action", actionKey: "nav-conference", title: "Ir para Conferência", subtitle: "Mesa de conferência de pedidos", onSelect: () => onNavigate?.("conference") },
+      { id: "nav-checklist", type: "action", actionKey: "nav-checklist", title: "Ir para Checklist do CD", subtitle: "Abertura e fechamento do turno", onSelect: () => onNavigate?.("checklist") },
       { id: "nav-shortages", type: "action", actionKey: "nav-shortages", title: "Ir para Faltas", subtitle: "Consulta de faltas de material", onSelect: () => onNavigate?.("shortages") },
       { id: "nav-rotation", type: "action", actionKey: "nav-rotation", title: "Ir para Rotação de tarefas", subtitle: "Limpezas e organizações", onSelect: () => onNavigate?.("rotation") },
       { id: "nav-goals-dashboard", type: "action", actionKey: "nav-goals-dashboard", title: "Ir para Dashboard de metas", subtitle: "Progresso consolidado", onSelect: () => onNavigate?.("goals-dashboard") },
-      { id: "nav-stock-map", type: "action", actionKey: "nav-stock-map", title: "Ir para Mapa do estoque", subtitle: "Layout interativo do galpão", onSelect: () => onNavigate?.("stock-map") },
+      { id: "nav-stock-map", type: "action", actionKey: "nav-stock-map", title: "Ir para Mapa do estoque (2D)", subtitle: "Layout interativo e edição 360°", onSelect: () => onNavigate?.("stock-map") },
+      { id: "nav-stock-map-3d", type: "action", actionKey: "nav-stock-map-3d", title: "Ir para Mapa 3D", subtitle: "Galpão em 3D com edição e andares", onSelect: () => onNavigate?.("stock-map-3d") },
+      { id: "nav-stock-scan", type: "action", actionKey: "nav-stock-scan", title: "Ir para Coletar endereços", subtitle: "Bipar códigos de barras e endereços", onSelect: () => onNavigate?.("stock-scan") },
+      { id: "nav-address-labels", type: "action", actionKey: "nav-address-labels", title: "Ir para Etiquetas de endereço", subtitle: "Gerar QR padrão CD (ex.: 1C1105EA)", onSelect: () => onNavigate?.("address-labels") },
+      { id: "nav-turn-comparison", type: "action", actionKey: "nav-turn-comparison", title: "Ir para Comparação de turnos", subtitle: "Manhã vs. Tarde", onSelect: () => onNavigate?.("turn-comparison") },
+      { id: "nav-workload", type: "action", actionKey: "nav-workload", title: "Ir para Carga de trabalho", subtitle: "Mapa de calor, previsão e filtros", onSelect: () => onNavigate?.("workload") },
+      { id: "nav-pauses", type: "action", actionKey: "nav-pauses", title: "Ir para Pausas", subtitle: "Histórico e motivos de pausa", onSelect: () => onNavigate?.("pauses") },
+      { id: "nav-monthly-report", type: "action", actionKey: "nav-monthly-report", title: "Ir para Relatório mensal", subtitle: "Consolidado gerencial do mês", onSelect: () => onNavigate?.("monthly-report") },
+      { id: "nav-landing", type: "action", actionKey: "nav-kiosk", title: "Ir para Página Inicial", subtitle: "Apresentação do Aponta CD", onSelect: () => onNavigate?.("landing") },
       { id: "nav-panel", type: "action", actionKey: "nav-panel", title: "Ir para Indicadores", subtitle: "Painel de métricas do admin", onSelect: () => onNavigate?.("panel") },
       { id: "nav-manual", type: "action", actionKey: "nav-manual", title: "Ir para Lançamento manual", subtitle: "Digitar dados antigos", onSelect: () => onNavigate?.("manual") },
       { id: "nav-goals", type: "action", actionKey: "nav-goals", title: "Ir para Metas individuais", subtitle: "Configurar metas por operador", onSelect: () => onNavigate?.("goals") },
