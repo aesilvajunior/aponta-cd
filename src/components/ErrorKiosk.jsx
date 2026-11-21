@@ -53,13 +53,6 @@ export default function ErrorKiosk({ operators, errorTypes, currentOperator = nu
   const [confirmation, setConfirmation] = useState(null);
   const [now, setNow] = useState(Date.now());
   const [stationName, setStationNameState] = useState(getStationName());
-  const [localTheme, setLocalTheme] = useState(() => {
-    try {
-      return localStorage.getItem(KIOSK_THEME_KEY) || "auto";
-    } catch {
-      return "auto";
-    }
-  });
 
   const [orderType, setOrderType] = useState(null);
   const [orderNumber, setOrderNumber] = useState("");
@@ -75,26 +68,6 @@ export default function ErrorKiosk({ operators, errorTypes, currentOperator = nu
   const autoReturnTimeoutRef = useRef(null);
   const mainContainerRef = useRef(null);
   const modalRef = useRef(null);
-
-  // Aplica tema local do kiosk
-  useEffect(() => {
-    try {
-      localStorage.setItem(KIOSK_THEME_KEY, localTheme);
-    } catch {}
-    if (localTheme === "auto") return;
-    const html = document.documentElement;
-    const previous = html.getAttribute("data-theme");
-    html.setAttribute("data-theme", localTheme === "dark" ? "dark" : "light");
-    return () => {
-      if (previous) html.setAttribute("data-theme", previous);
-      else html.removeAttribute("data-theme");
-    };
-  }, [localTheme]);
-
-  function cycleTheme() {
-    const next = localTheme === "auto" ? "dark" : localTheme === "dark" ? "light" : "auto";
-    setLocalTheme(next);
-  }
 
   function bump() {
     lastInteractionRef.current = Date.now();
@@ -291,7 +264,6 @@ export default function ErrorKiosk({ operators, errorTypes, currentOperator = nu
   }
 
   const dots = Array.from({ length: CODE_LENGTH }, (_, i) => i < codeInput.length);
-  const themeIcon = localTheme === "dark" ? <IconMoon size={14} /> : localTheme === "light" ? <IconSun size={14} /> : <IconActivity size={14} />;
 
   return (
     <div className="kiosk-page" ref={mainContainerRef}>

@@ -90,13 +90,6 @@ export default function Kiosk({ operators, activities, vehicles = [], entries = 
   const [shake, setShake] = useState(false);
   const [confirmation, setConfirmation] = useState(null);
   const [noteInput, setNoteInput] = useState("");
-  const [localTheme, setLocalTheme] = useState(() => {
-    try {
-      return localStorage.getItem(KIOSK_THEME_KEY) || "auto";
-    } catch {
-      return "auto";
-    }
-  });
 
   const [paused, setPaused] = useState(false);
   const [pausedAt, setPausedAt] = useState(null);
@@ -136,26 +129,7 @@ export default function Kiosk({ operators, activities, vehicles = [], entries = 
   const modalRef = useRef(null);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(KIOSK_THEME_KEY, localTheme);
-    } catch {}
-
-    if (localTheme === "auto") return;
-    const html = document.documentElement;
-    const previous = html.getAttribute("data-theme");
-    html.setAttribute("data-theme", localTheme === "dark" ? "dark" : "light");
-    return () => {
-      if (previous) html.setAttribute("data-theme", previous);
-      else html.removeAttribute("data-theme");
-    };
-  }, [localTheme]);
-
-  useEffect(() => {
     if (!loggedOperator) return;
-    if (prefs.theme && prefs.theme !== "auto") {
-      const html = document.documentElement;
-      html.setAttribute("data-theme", prefs.theme);
-    }
     if (prefs.font_scale && prefs.font_scale !== 1.0) {
       document.documentElement.style.fontSize = `${16 * prefs.font_scale}px`;
     } else {
@@ -165,11 +139,6 @@ export default function Kiosk({ operators, activities, vehicles = [], entries = 
       document.documentElement.style.fontSize = "";
     };
   }, [loggedOperator, prefs]);
-
-  function cycleTheme() {
-    const next = localTheme === "auto" ? "dark" : localTheme === "dark" ? "light" : "auto";
-    setLocalTheme(next);
-  }
 
   function bump() {
     lastInteractionRef.current = Date.now();
@@ -926,7 +895,6 @@ export default function Kiosk({ operators, activities, vehicles = [], entries = 
   const myTodayAvgSec = myTodayEntries.length > 0 ? Math.round(myTodayTotalSec / myTodayEntries.length) : 0;
 
   const dots = Array.from({ length: CODE_LENGTH }, (_, i) => i < codeInput.length);
-  const themeIcon = localTheme === "dark" ? <IconMoon size={14} /> : localTheme === "light" ? <IconSun size={14} /> : <IconActivity size={14} />;
 
   return (
     <div className="kiosk-page" ref={mainContainerRef}>

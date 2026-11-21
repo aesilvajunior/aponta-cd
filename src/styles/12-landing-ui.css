@@ -1959,13 +1959,24 @@
   display: block;
 }
 
+.aponta-logo-motion-wrap {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 540px;
+  margin: 0 auto;
+  border-radius: 22px;
+  overflow: hidden;
+  background: #ffffff;
+  box-shadow: 0 22px 48px rgba(10, 14, 20, 0.22);
+}
+
 .aponta-logo-original-img {
   width: 100%;
-  max-width: 520px;
+  max-width: 540px;
   height: auto;
   display: block;
   margin: 0 auto;
-  border-radius: 22px;
   object-fit: contain;
 }
 
