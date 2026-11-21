@@ -398,7 +398,14 @@ export default function App() {
             />
           )}
           {tab === "kiosk" && (
-            <Kiosk operators={operators} activities={activities} vehicles={vehicles} refreshEntries={loadEntries} />
+            <Kiosk
+              operators={operators}
+              activities={activities}
+              vehicles={vehicles}
+              entries={entries}
+              currentOperator={currentOperator}
+              refreshEntries={loadEntries}
+            />
           )}
           {tab === "errors-kiosk" && (
             <ErrorKiosk operators={operators} errorTypes={errorTypes} />

@@ -11,7 +11,7 @@ import {
   queueConference,
   removeByEntryId,
 } from "../lib/offlineSync";
-import { fmtDuration, fmtClock, fmtDate, shiftFor } from "../lib/format";
+import { fmtDuration, fmtClock, fmtDate, shiftFor, todayLocalISODate, localISODate } from "../lib/format";
 import { getStationName, promptForStationName } from "../lib/station";
 import PauseReasonModal from "./kiosk/PauseReasonModal";
 import { shouldAskShortage, isSeparationEntry } from "../lib/kioskRules";
@@ -67,11 +67,12 @@ function activityIcon(name) {
   return <IconActivity size={26} />;
 }
 
-export default function Kiosk({ operators, activities, vehicles = [], refreshEntries }) {
+export default function Kiosk({ operators, activities, vehicles = [], entries = [], currentOperator = null, refreshEntries }) {
   const { resolvedTheme, setTheme } = useTheme();
 
   const [codeInput, setCodeInput] = useState("");
-  const [loggedOperator, setLoggedOperator] = useState(null);
+  const [loggedOperator, setLoggedOperator] = useState(currentOperator || null);
+  const [manualSwitch, setManualSwitch] = useState(false);
   const [session, setSession] = useState(null);
   const [msg, setMsg] = useState("");
   const [msgType, setMsgType] = useState("info");
@@ -250,11 +251,53 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loggedOperator, operators]);
 
-  function reset() {
+  // Auto-autentica no Kiosk com o funcionário já logado na tela inicial (sem pedir código de novo!)
+  useEffect(() => {
+    if (!currentOperator || manualSwitch) return undefined;
+    let cancelled = false;
+    setLoggedOperator(currentOperator);
+    setCheckingLogin(true);
+    Promise.all([
+      fetchActiveSessionFor(currentOperator.code),
+      fetchOperatorPrefs(currentOperator.code),
+    ])
+      .then(([{ data, error }, { data: prefsData }]) => {
+        if (cancelled) return;
+        const offlineLogin = !!error && isNetworkError(error);
+        const sessionData = (offlineLogin ? null : data) || pendingSessionFor(currentOperator.code);
+        setSession(sessionData || null);
+        if (sessionData) {
+          setPaused(!!sessionData.paused_at);
+          setPausedAt(sessionData.paused_at ? new Date(sessionData.paused_at).getTime() : null);
+          setTotalPausedSeconds(sessionData.total_paused_seconds || 0);
+        } else {
+          setPaused(false);
+          setPausedAt(null);
+          setTotalPausedSeconds(0);
+        }
+        setPrefs({
+          theme: prefsData?.theme || "auto",
+          font_scale: prefsData?.font_scale || 1.0,
+          favorite_activities: prefsData?.favorite_activities || [],
+        });
+        setCheckingLogin(false);
+      })
+      .catch(() => {
+        if (!cancelled) setCheckingLogin(false);
+      });
+    return () => { cancelled = true; };
+  }, [currentOperator, manualSwitch]);
+
+  function reset(forceLogout = false) {
     if (autoReturnTimeoutRef.current) clearTimeout(autoReturnTimeoutRef.current);
     setCodeInput("");
-    setLoggedOperator(null);
-    setSession(null);
+    if (forceLogout || !currentOperator) {
+      setManualSwitch(true);
+      setLoggedOperator(null);
+      setSession(null);
+    } else {
+      setLoggedOperator(currentOperator);
+    }
     setMsg("");
     setConfirmation(null);
     setNoteInput("");
@@ -269,8 +312,9 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
     setShowPrefsModal(false);
     setConfettiActive(false);
     cancelOrderForm();
-    // NOVO: limpa o operador salvo para a Rotina do Líder
-    try { sessionStorage.removeItem("aponta_schedule_operator"); } catch {}
+    if (forceLogout) {
+      try { sessionStorage.removeItem("aponta_schedule_operator"); } catch {}
+    }
   }
 
   function handleDigit(d) {
@@ -855,6 +899,17 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
     return [...favList, ...rest];
   })();
 
+  const myTodayEntries = (() => {
+    if (!loggedOperator || !Array.isArray(entries)) return [];
+    const today = todayLocalISODate();
+    return entries
+      .filter((e) => String(e.operator_code) === String(loggedOperator.code) && localISODate(e.start_time) === today)
+      .sort((a, b) => new Date(b.start_time) - new Date(a.start_time));
+  })();
+
+  const myTodayTotalSec = myTodayEntries.reduce((s, e) => s + (e.duration_seconds || 0), 0);
+  const myTodayAvgSec = myTodayEntries.length > 0 ? Math.round(myTodayTotalSec / myTodayEntries.length) : 0;
+
   const dots = Array.from({ length: CODE_LENGTH }, (_, i) => i < codeInput.length);
   const themeIcon = localTheme === "dark" ? <IconMoon size={14} /> : localTheme === "light" ? <IconSun size={14} /> : <IconActivity size={14} />;
 
@@ -1014,14 +1069,36 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
                   </div>
                 </div>
               </div>
-              <button className="kiosk-operator-change" onClick={reset}>
+              <button className="kiosk-operator-change" onClick={() => reset(true)}>
                 Trocar operador
               </button>
             </div>
 
+            {/* Painel Pessoal do Turno (ocupa o centro de forma útil no lugar do teclado numérico) */}
+            <div className="kiosk-personal-strip">
+              <div className="kiosk-personal-card">
+                <span className="kiosk-personal-lbl">Minhas atividades hoje</span>
+                <strong className="kiosk-personal-val">{myTodayEntries.length}</strong>
+              </div>
+              <div className="kiosk-personal-card">
+                <span className="kiosk-personal-lbl">Tempo produtivo hoje</span>
+                <strong className="kiosk-personal-val">{fmtDuration(myTodayTotalSec)}</strong>
+              </div>
+              <div className="kiosk-personal-card">
+                <span className="kiosk-personal-lbl">Média por atividade</span>
+                <strong className="kiosk-personal-val">{myTodayAvgSec > 0 ? fmtDuration(myTodayAvgSec) : "—"}</strong>
+              </div>
+              <div className="kiosk-personal-card">
+                <span className="kiosk-personal-lbl">Status atual</span>
+                <strong className="kiosk-personal-val" style={{ color: session ? (paused ? "var(--warning)" : "var(--ok)") : "var(--accent)" }}>
+                  {session ? (paused ? "Em pausa" : "Em atividade") : "Disponível"}
+                </strong>
+              </div>
+            </div>
+
             {!session && activities.length > 0 && !orderFormActivity && (
               <div className="kiosk-activities">
-                <div className="kiosk-section-title">Escolha uma atividade</div>
+                <div className="kiosk-section-title">Iniciar atividade em 1 clique</div>
                 <div className="kiosk-activities-grid">
                   {orderedActivities.map((a) => {
                     const isFav = prefs.favorite_activities?.includes(a.name);
@@ -1044,6 +1121,24 @@ export default function Kiosk({ operators, activities, vehicles = [], refreshEnt
                     );
                   })}
                 </div>
+
+                {myTodayEntries.length > 0 && (
+                  <div className="kiosk-recent-box">
+                    <div className="kiosk-section-title" style={{ marginBottom: 10 }}>
+                      Meus lançamentos de hoje ({myTodayEntries.length})
+                    </div>
+                    <div className="kiosk-recent-list">
+                      {myTodayEntries.slice(0, 6).map((item) => (
+                        <div key={item.id} className="kiosk-recent-row">
+                          <span className="kiosk-recent-time">{fmtClock(item.start_time).slice(0, 5)}</span>
+                          <span className="kiosk-recent-act">{item.activity}</span>
+                          {item.order_number && <span className="kiosk-recent-tag">#{item.order_number}</span>}
+                          <span className="kiosk-recent-dur">{fmtDuration(item.duration_seconds || 0)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

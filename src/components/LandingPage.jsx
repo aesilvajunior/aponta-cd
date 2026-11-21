@@ -7,7 +7,6 @@ import {
   IconTv,
   IconChevronRight,
   IconLock,
-  IconDelete,
   IconCheck,
 } from "./Icons";
 
@@ -235,9 +234,11 @@ export default function LandingPage({
   onOpenMap3D,
 }) {
   const [code, setCode] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPass, setShowPass] = useState(false);
   const [codeError, setCodeError] = useState("");
   const [shake, setShake] = useState(false);
-  const [showKeypad, setShowKeypad] = useState(false);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
   const [activeStep, setActiveStep] = useState(0);
   const [heroScrollFade, setHeroScrollFade] = useState(0);
   const inputRef = useRef(null);
@@ -246,10 +247,26 @@ export default function LandingPage({
   const isOperatorGate = mode === "operator";
 
   useEffect(() => {
+    if (!authModalOpen) return undefined;
+    const t = setTimeout(() => inputRef.current?.focus(), 60);
+    const onKey = (e) => {
+      if (e.key === "Escape") setAuthModalOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [authModalOpen]);
+
+  function openEmployeeArea() {
     if (isOperatorGate) {
-      inputRef.current?.focus();
+      setCodeError("");
+      setAuthModalOpen(true);
+    } else {
+      onEnterLogin?.();
     }
-  }, [isOperatorGate]);
+  }
 
   // Efeito fade sutil apenas no palco do logo ao rolar (nunca desfoca o título ou login)
   useEffect(() => {
@@ -309,32 +326,32 @@ export default function LandingPage({
 
   function handleCodeSubmit(e) {
     if (e) e.preventDefault();
-    const clean = code.trim().toUpperCase();
-    if (!clean) {
+    const cleanCode = code.trim().toUpperCase();
+    const cleanPass = password.trim().toUpperCase();
+    if (!cleanCode) {
       triggerError("Digite seu código de funcionário.");
       return;
     }
+    if (!cleanPass) {
+      triggerError("Digite sua senha.");
+      return;
+    }
     const found = (operators || []).find(
-      (op) => String(op.code || "").trim().toUpperCase() === clean && op.active !== false
+      (op) => String(op.code || "").trim().toUpperCase() === cleanCode && op.active !== false
     );
     if (!found) {
-      triggerError(`Código "${clean}" não encontrado ou inativo.`);
+      triggerError(`Código "${cleanCode}" não encontrado ou inativo.`);
+      return;
+    }
+    // Neste primeiro momento, a senha de cada funcionário é o próprio número do seu código
+    const expectedPass = String(found.password || found.code || "").trim().toUpperCase();
+    if (cleanPass !== expectedPass) {
+      triggerError("Senha incorreta. (Dica: use os números do seu código.)");
       return;
     }
     setCodeError("");
+    setAuthModalOpen(false);
     onOperatorLogin?.(found);
-  }
-
-  function appendDigit(d) {
-    setCodeError("");
-    setCode((prev) => (prev.length < 12 ? prev + d : prev));
-    inputRef.current?.focus();
-  }
-
-  function backspaceDigit() {
-    setCodeError("");
-    setCode((prev) => prev.slice(0, -1));
-    inputRef.current?.focus();
   }
 
   const step = PROCESS_STEPS[activeStep] || PROCESS_STEPS[0];
@@ -364,9 +381,9 @@ export default function LandingPage({
               <button
                 type="button"
                 className="br-pill-btn"
-                onClick={isOperatorGate ? () => inputRef.current?.focus() : onEnterLogin}
+                onClick={openEmployeeArea}
               >
-                <span>{isOperatorGate ? "Acessar CD" : "Entrar"}</span>
+                <span>{isOperatorGate ? "Área do Funcionário" : "Entrar"}</span>
                 <span className="br-pill-arrow">↗</span>
               </button>
             </div>
@@ -409,19 +426,18 @@ export default function LandingPage({
             </p>
 
             <div className="br-hero-cta">
-              {isOperatorGate ? (
-                <button
-                  type="button"
-                  className="br-cta-primary"
-                  onClick={() => inputRef.current?.focus()}
-                >
-                  Digitar meu código <IconChevronRight size={16} />
-                </button>
-              ) : (
-                <button type="button" className="br-cta-primary" onClick={onEnterLogin}>
-                  {isAuthenticated ? "Ir para a Operação" : "Entrar no sistema"} <IconChevronRight size={16} />
-                </button>
-              )}
+              <button
+                type="button"
+                className="br-cta-primary"
+                onClick={openEmployeeArea}
+              >
+                {isOperatorGate
+                  ? "Área do Funcionário"
+                  : isAuthenticated
+                  ? "Ir para a Operação"
+                  : "Entrar no sistema"}{" "}
+                <IconChevronRight size={16} />
+              </button>
 
               {isAuthenticated && onOpenMap2D && onOpenMap3D ? (
                 <>
@@ -451,116 +467,149 @@ export default function LandingPage({
             </div>
           </div>
 
-          {/* Right column: Operator Code Gate OR Editorial Adapted Brand Frame */}
+          {/* Right column: Clean Editorial Showcase Card with 1-click "Área do Funcionário" */}
           <div className="br-hero-right">
-            {isOperatorGate ? (
-              <div className={`br-operator-card ${shake ? "shake" : ""}`}>
-                <div className="br-operator-brand">
-                  <BrandMark variant="full" />
-                </div>
-
-                <div className="br-operator-head">
-                  <div className="br-operator-icon">
-                    <IconLock size={17} />
-                  </div>
-                  <div>
-                    <h2>Acesso do Funcionário</h2>
-                    <p>Digite seu código para liberar o painel</p>
-                  </div>
-                </div>
-
-                <form onSubmit={handleCodeSubmit} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  <input
-                    ref={inputRef}
-                    type="text"
-                    inputMode="numeric"
-                    className="br-code-input"
-                    placeholder="CÓDIGO (EX.: 101)"
-                    value={code}
-                    onChange={(e) => {
-                      setCodeError("");
-                      setCode(e.target.value);
-                    }}
-                    autoComplete="off"
-                    aria-label="Código do funcionário"
-                  />
-
-                  {codeError && (
-                    <div className="login-error" role="alert" style={{ margin: 0 }}>
-                      {codeError}
-                    </div>
-                  )}
-
-                  <button type="submit" className="br-submit-btn">
-                    <span>Entrar no Aponta CD</span>
-                    <IconChevronRight size={16} />
-                  </button>
-                </form>
-
-                <div className="br-keypad-bar">
-                  <button
-                    type="button"
-                    className="br-text-btn"
-                    onClick={() => setShowKeypad((v) => !v)}
-                  >
-                    {showKeypad ? "Ocultar teclado" : "Usar teclado na tela"}
-                  </button>
-                  <span className="br-muted-mono">
-                    {operators.filter((o) => o.active !== false).length} ATIVOS
-                  </span>
-                </div>
-
-                {showKeypad && (
-                  <div className="landing-keypad anim-fade-up">
-                    {["1", "2", "3", "4", "5", "6", "7", "8", "9", "C", "0"].map((k) => (
-                      <button
-                        key={k}
-                        type="button"
-                        className="br-keypad-btn"
-                        onClick={() => (k === "C" ? setCode("") : appendDigit(k))}
-                      >
-                        {k}
-                      </button>
-                    ))}
-                    <button
-                      type="button"
-                      className="br-keypad-btn"
-                      onClick={backspaceDigit}
-                      aria-label="Apagar"
-                    >
-                      <IconDelete size={16} />
-                    </button>
-                  </div>
-                )}
-
-                <div className="br-operator-foot">
-                  <span><IconCheck size={13} /> Teclado numérico</span>
-                  <span><IconCheck size={13} /> Acesso imediato</span>
-                </div>
-
-                {operators.filter((o) => o.active !== false).length === 0 && onOperatorLogin && (
-                  <button
-                    type="button"
-                    className="btn-small"
-                    style={{ width: "100%", marginTop: 12, justifyContent: "center" }}
-                    onClick={() => onOperatorLogin({ code: "ADMIN", name: "Administrador", role: "lider" })}
-                  >
-                    Primeiro acesso (cadastrar equipe)
-                  </button>
-                )}
+            <div className="br-studio-showcase">
+              <BrandMark variant="full" />
+              <div className="br-studio-caption">
+                <span>IDENTIDADE · APONTA CD</span>
+                <span>
+                  {currentOperator
+                    ? `${currentOperator.name} · #${currentOperator.code}`
+                    : `${operators.filter((o) => o.active !== false).length} OPERADORES ATIVOS`}
+                </span>
               </div>
-            ) : (
-              <div className="br-studio-showcase">
-                <BrandMark variant="full" />
-                <div className="br-studio-caption">
-                  <span>IDENTIDADE · APONTA CD</span>
-                  <span>{currentOperator ? `${currentOperator.name} · #${currentOperator.code}` : "V2.0 · TEMPO REAL"}</span>
-                </div>
-              </div>
-            )}
+              {isOperatorGate && (
+                <button
+                  type="button"
+                  className="br-submit-btn"
+                  style={{ marginTop: 6 }}
+                  onClick={openEmployeeArea}
+                >
+                  <IconLock size={15} />
+                  <span>Acessar Área do Funcionário</span>
+                  <IconChevronRight size={16} />
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </section>
+
+      {/* ============ MODAL ÁREA DO FUNCIONÁRIO (CÓDIGO + SENHA) ============ */}
+      {isOperatorGate && authModalOpen && (
+        <div className="br-modal-backdrop" onClick={() => setAuthModalOpen(false)}>
+          <div
+            className={`br-modal-card ${shake ? "shake" : ""}`}
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="employee-modal-title"
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <BrandMark variant="lockup" />
+              <button
+                type="button"
+                className="br-modal-close"
+                onClick={() => setAuthModalOpen(false)}
+                aria-label="Fechar"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="br-operator-head" style={{ marginBottom: 18 }}>
+              <div className="br-operator-icon">
+                <IconLock size={18} />
+              </div>
+              <div>
+                <h2 id="employee-modal-title">Área do Funcionário</h2>
+                <p>Informe seu código e sua senha para acessar</p>
+              </div>
+            </div>
+
+            <form onSubmit={handleCodeSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div>
+                <label className="br-field-label" htmlFor="emp-code">Código do funcionário</label>
+                <input
+                  id="emp-code"
+                  ref={inputRef}
+                  type="text"
+                  inputMode="numeric"
+                  className="br-code-input"
+                  placeholder="Ex.: 101"
+                  value={code}
+                  onChange={(e) => {
+                    setCodeError("");
+                    setCode(e.target.value);
+                  }}
+                  autoComplete="username"
+                />
+              </div>
+
+              <div>
+                <label className="br-field-label" htmlFor="emp-pass">Senha</label>
+                <div style={{ position: "relative" }}>
+                  <input
+                    id="emp-pass"
+                    type={showPass ? "text" : "password"}
+                    inputMode="numeric"
+                    className="br-code-input"
+                    style={{ paddingRight: 78 }}
+                    placeholder="••••"
+                    value={password}
+                    onChange={(e) => {
+                      setCodeError("");
+                      setPassword(e.target.value);
+                    }}
+                    autoComplete="current-password"
+                  />
+                  <button
+                    type="button"
+                    className="br-pass-toggle"
+                    onClick={() => setShowPass((v) => !v)}
+                  >
+                    {showPass ? "OCULTAR" : "VER"}
+                  </button>
+                </div>
+                <div style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: 5 }}>
+                  Primeiro acesso: use os números do seu próprio código como senha.
+                </div>
+              </div>
+
+              {codeError && (
+                <div className="login-error" role="alert" style={{ margin: 0 }}>
+                  {codeError}
+                </div>
+              )}
+
+              <button type="submit" className="br-submit-btn" style={{ marginTop: 4 }}>
+                <span>Entrar no sistema</span>
+                <IconChevronRight size={16} />
+              </button>
+            </form>
+
+            {operators.filter((o) => o.active !== false).length === 0 && onOperatorLogin && (
+              <button
+                type="button"
+                className="btn-small"
+                style={{ width: "100%", marginTop: 12, justifyContent: "center" }}
+                onClick={() => {
+                  setAuthModalOpen(false);
+                  onOperatorLogin({ code: "ADMIN", name: "Administrador", role: "lider" });
+                }}
+              >
+                Primeiro acesso (cadastrar equipe)
+              </button>
+            )}
+
+            <div className="br-operator-foot">
+              <span><IconCheck size={13} /> Teclado numérico</span>
+              <span><IconCheck size={13} /> Acesso protegido</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ============ CONTINUOUS EDITORIAL MARQUEE ============ */}
       <div className="br-marquee-strip" aria-hidden="true">
