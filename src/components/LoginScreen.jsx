@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { supabase } from "../supabaseClient";
-import { IconLock, IconUser } from "./Icons";
+import BrandMark from "./BrandMark";
 
 export default function LoginScreen({ onBackToLanding }) {
   const [email, setEmail] = useState("");
@@ -40,19 +40,7 @@ export default function LoginScreen({ onBackToLanding }) {
     <div className="login-page">
       <div className="login-card">
         <div className="login-brand" style={{ justifyContent: "center" }}>
-          <img
-            src="/logo-aponta-cd.jpg"
-            alt="Aponta CD"
-            style={{
-              height: 56,
-              width: "auto",
-              objectFit: "contain",
-              borderRadius: 12,
-              background: "#ffffff",
-              padding: "6px 14px",
-              boxShadow: "0 4px 14px rgba(22, 51, 110, 0.14)",
-            }}
-          />
+          <BrandMark variant="lockup" />
         </div>
 
         <h1 className="login-title">Entrar</h1>

@@ -3,6 +3,7 @@ import { useMediaQuery, MOBILE_QUERY } from "../hooks/useMediaQuery";
 import ThemeToggle from "./ThemeToggle";
 import { useAuth } from "../context/AuthContext";
 import { AccordionSection } from "./ui/Accordion";
+import BrandMark from "./BrandMark";
 import {
   IconActivity,
   IconAlertTriangle,
@@ -329,11 +330,7 @@ export default function Sidebar({ id, tab, setTab, isAdmin, onLock, onOperatorLo
           title="Ver página inicial do Aponta CD"
           style={{ cursor: "pointer" }}
         >
-          <img
-            src="/logo-aponta-cd.jpg"
-            alt="Aponta CD"
-            className="sidebar-logo-img"
-          />
+          <BrandMark variant={collapsed ? "icon" : "lockup"} />
         </div>
         {!isMobile && (
           <button
