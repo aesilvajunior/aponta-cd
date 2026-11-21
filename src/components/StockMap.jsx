@@ -10,6 +10,7 @@ import {
   updateMapItem,
   deleteMapItem,
   AREA_TYPES,
+  MAP_OBJECT_PRESETS,
   colorForType,
   labelForType,
   resolveSpecialAreaKind,
@@ -17,6 +18,7 @@ import {
   groupItemsByCategory,
   summarizeArea,
 } from "../lib/stockMap";
+import { floorIndex } from "../lib/map3dLayout";
 import { logStockMapAction, fetchStockMapHistory, fetchConferenceHistory } from "../lib/api";
 import { fetchRecentScans } from "../lib/mapScan";
 import { computeSlottingAnalysis, heatmapColor, abcColor } from "../lib/slotting";
@@ -289,6 +291,8 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId, entries = [
 
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState("");
+  const [activeFloor, setActiveFloor] = useState("all");
+  const [extraFloors, setExtraFloors] = useState([]);
   const [editMode, setEditMode] = useState(false);
   const [panelView, setPanelView] = useState("lista");
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -310,7 +314,7 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId, entries = [
 
   const [newAreaModal, setNewAreaModal] = useState(false);
   const [newAreaForm, setNewAreaForm] = useState({
-    code: "", label: "", areaType: "prateleira",
+    code: "", label: "", areaType: "prateleira", floor: "terreo",
     x: 40, y: 40, width: 10, height: 15,
     hasSides: false,
   });
@@ -480,10 +484,26 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId, entries = [
     flashSuccess(`${sug.productCode} movido para ${sug.toArea.code}`);
   }
 
+  const floorOptions = useMemo(() => {
+    const map = new Map([[0, "terreo"]]);
+    areas.forEach((a) => {
+      const idx = floorIndex(a.floor);
+      if (!map.has(idx)) map.set(idx, a.floor || (idx === 0 ? "terreo" : `${idx}o_andar`));
+    });
+    extraFloors.forEach((fl) => {
+      const idx = floorIndex(fl);
+      if (!map.has(idx)) map.set(idx, fl);
+    });
+    return [...map.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([idx, value]) => ({ idx, value, label: idx === 0 ? "Térreo" : `${idx}º andar` }));
+  }, [areas, extraFloors]);
+
   const decoratedAreas = useMemo(() => {
     const q = search.trim().toLowerCase();
     return areas
       .filter((a) => !filterType || a.area_type === filterType)
+      .filter((a) => activeFloor === "all" || floorIndex(a.floor) === Number(activeFloor))
       .map((a) => {
         const list = itemsByArea[a.id] || [];
         const stats = summarizeArea(a, items);
@@ -502,7 +522,7 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId, entries = [
           );
         return { ...a, stats, occupancy, heatMetric, matches, itemList: list };
       });
-  }, [areas, itemsByArea, items, search, filterType, maxSkus, slotting.areaMetrics]);
+  }, [areas, itemsByArea, items, search, filterType, activeFloor, maxSkus, slotting.areaMetrics]);
 
   const baseScale = useMemo(() => {
     if (!size.width || !size.height) return 0;
@@ -681,14 +701,55 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId, entries = [
   }
 
   async function handleDeleteArea(a) {
-    if (!isAdmin) return;
     if (!window.confirm(`Remover a área "${a.label}"?`)) return;
     const beforeData = { code: a.code, label: a.label, areaType: a.area_type };
-    await deleteMapArea(a.id);
+    const { error: err } = await deleteMapArea(a.id);
+    if (err) { setError(err.message); return; }
     await auditMap({ action: "remover", areaId: a.id, areaCode: a.code, beforeData });
     if (selectedArea?.id === a.id) setSelectedArea(null);
     await loadAll();
     flashSuccess("Área removida");
+  }
+
+  function handleAddFloor() {
+    const nextIdx = floorOptions.length > 0 ? Math.max(...floorOptions.map((f) => f.idx)) + 1 : 1;
+    const floorValue = `${nextIdx}o_andar`;
+    setExtraFloors((prev) => (prev.includes(floorValue) ? prev : [...prev, floorValue]));
+    setActiveFloor(String(nextIdx));
+    flashSuccess(`${nextIdx}º andar criado — adicione objetos nele!`);
+  }
+
+  function openNewObjectModal(preset = null) {
+    const targetFloorOpt =
+      activeFloor === "all"
+        ? floorOptions[0]
+        : floorOptions.find((f) => String(f.idx) === String(activeFloor)) || floorOptions[0];
+    const floorVal = targetFloorOpt?.value || "terreo";
+    if (preset) {
+      const count = areas.filter((a) => a.area_type === preset.areaType).length + 1;
+      setNewAreaForm({
+        code: `${preset.prefix}-${count}`,
+        label: `${preset.label} ${count}`,
+        areaType: preset.areaType,
+        floor: floorVal,
+        x: 42,
+        y: 42,
+        width: preset.width,
+        height: preset.height,
+        hasSides: preset.hasSides,
+      });
+    } else {
+      setNewAreaForm((f) => ({ ...f, floor: floorVal }));
+    }
+    setNewAreaModal(true);
+  }
+
+  async function handleChangeAreaFloor(a, newFloor) {
+    const { error: err } = await updateMapArea(a.id, { floor: newFloor });
+    if (err) { setError(err.message); return; }
+    setAreas((prev) => prev.map((x) => (x.id === a.id ? { ...x, floor: newFloor } : x)));
+    setSelectedArea((prev) => (prev?.id === a.id ? { ...prev, floor: newFloor } : prev));
+    flashSuccess(`Movido para ${floorIndex(newFloor) === 0 ? "Térreo" : `${floorIndex(newFloor)}º andar`}`);
   }
 
   async function handleDeleteItem(it) {
@@ -746,7 +807,6 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId, entries = [
   }
 
   async function handleCreateArea() {
-    if (!isAdmin) return;
     const code = newAreaForm.code.trim().toUpperCase();
     const label = newAreaForm.label.trim();
     if (!code) return setError("Digite o código da área.");
@@ -757,7 +817,7 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId, entries = [
       code,
       label,
       areaType: newAreaForm.areaType,
-      floor: "terreo",
+      floor: newAreaForm.floor || "terreo",
       hasSides: newAreaForm.hasSides,
       x: Number(newAreaForm.x),
       y: Number(newAreaForm.y),
@@ -775,6 +835,7 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId, entries = [
         code,
         label,
         areaType: newAreaForm.areaType,
+        floor: newAreaForm.floor || "terreo",
         x: newAreaForm.x,
         y: newAreaForm.y,
         width: newAreaForm.width,
@@ -783,9 +844,9 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId, entries = [
       },
     });
     setNewAreaModal(false);
-    setNewAreaForm({ code: "", label: "", areaType: "prateleira", x: 40, y: 40, width: 10, height: 15, hasSides: false });
+    setNewAreaForm({ code: "", label: "", areaType: "prateleira", floor: newAreaForm.floor || "terreo", x: 40, y: 40, width: 10, height: 15, hasSides: false });
     await loadAll();
-    flashSuccess("Área criada");
+    flashSuccess(`"${label}" criado no mapa`);
   }
 
   const selectedAreaItems = selectedArea ? (itemsByArea[selectedArea.id] || []) : [];
@@ -853,18 +914,16 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId, entries = [
           <button className="btn-small" onClick={loadAll}>
             <IconRefresh size={14} /> Atualizar
           </button>
-          {isAdmin && (
-            <button
-              className={`btn-small ${editMode ? "btn-excel" : ""}`}
-              onClick={() => setEditMode((v) => !v)}
-              style={editMode ? { background: "var(--ok)", color: "#fff", borderColor: "var(--ok)" } : undefined}
-            >
-              <IconEdit size={14} /> {editMode ? "Sair do modo edição" : "Modo edição"}
-            </button>
-          )}
-          {isAdmin && editMode && (
-            <button className="btn-small btn-excel" onClick={() => setNewAreaModal(true)}>
-              <IconPlus size={14} /> Nova área
+          <button
+            className={`btn-small ${editMode ? "btn-excel" : ""}`}
+            onClick={() => setEditMode((v) => !v)}
+            style={editMode ? { background: "var(--ok)", color: "#fff", borderColor: "var(--ok)" } : undefined}
+          >
+            <IconEdit size={14} /> {editMode ? "Sair do modo edição" : "Modo edição"}
+          </button>
+          {editMode && (
+            <button className="btn-small btn-excel" onClick={() => openNewObjectModal()}>
+              <IconPlus size={14} /> Novo objeto
             </button>
           )}
         </div>
@@ -884,12 +943,38 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId, entries = [
       )}
 
       {editMode && (
-        <div className="alert-card alert-warning" style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
-          <IconAlertTriangle size={16} />
-          <div style={{ flex: 1 }}>
-            <strong>Modo edição ativo.</strong> Arraste uma área (inclusive corredores) pra mover · Selecione uma área pra ver as alças de redimensionar em volta dela · Clique em qualquer área pra ver o painel e adicionar itens.
+        <>
+          <div className="alert-card alert-warning" style={{ marginBottom: 10, display: "flex", alignItems: "center", gap: 8 }}>
+            <IconAlertTriangle size={16} />
+            <div style={{ flex: 1 }}>
+              <strong>Modo edição ativo.</strong> Arraste qualquer objeto pra mover · Clique pra redimensionar pelas alças · Escolha um atalho abaixo para criar novos objetos ou andares.
+            </div>
           </div>
-        </div>
+          <div className="map-object-palette">
+            <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-muted)", marginRight: 4 }}>
+              Criar rápido:
+            </span>
+            {MAP_OBJECT_PRESETS.map((preset) => (
+              <button
+                key={preset.areaType}
+                type="button"
+                className="map-palette-chip"
+                onClick={() => openNewObjectModal(preset)}
+              >
+                <span className="map-palette-dot" style={{ background: colorForType(preset.areaType) }} />
+                + {preset.label}
+              </button>
+            ))}
+            <button
+              type="button"
+              className="map-palette-chip"
+              style={{ borderStyle: "dashed", borderColor: "var(--accent)", color: "var(--accent)" }}
+              onClick={handleAddFloor}
+            >
+              + Novo andar
+            </button>
+          </div>
+        </>
       )}
 
       {slottingOpen && (
@@ -997,6 +1082,27 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId, entries = [
             <option value="">Todos os tipos</option>
             {AREA_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
+          <div className="scan-chips" style={{ margin: 0 }} role="group" aria-label="Filtrar andar">
+            <button
+              type="button"
+              className={`scan-chip ${activeFloor === "all" ? "active" : ""}`}
+              style={{ minHeight: 36, padding: "4px 12px", fontSize: 12.5 }}
+              onClick={() => setActiveFloor("all")}
+            >
+              Todos os andares
+            </button>
+            {floorOptions.map((f) => (
+              <button
+                key={f.idx}
+                type="button"
+                className={`scan-chip ${String(activeFloor) === String(f.idx) ? "active" : ""}`}
+                style={{ minHeight: 36, padding: "4px 12px", fontSize: 12.5 }}
+                onClick={() => setActiveFloor(String(f.idx))}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -1332,10 +1438,25 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId, entries = [
               </div>
             </div>
 
-            {isAdmin && (
-              <button className="btn-small" style={{ width: "100%", marginBottom: 14, color: "var(--danger)", borderColor: "var(--danger)" }} onClick={() => handleDeleteArea(selectedArea)}>
-                <IconTrash size={13} /> Remover área
-              </button>
+            {(isAdmin || editMode) && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
+                <label style={{ fontSize: 11.5, color: "var(--text-muted)", fontWeight: 600 }}>
+                  Andar do objeto:
+                  <select
+                    className="field"
+                    style={{ marginTop: 4 }}
+                    value={selectedArea.floor || "terreo"}
+                    onChange={(e) => handleChangeAreaFloor(selectedArea, e.target.value)}
+                  >
+                    {floorOptions.map((f) => (
+                      <option key={f.idx} value={f.value}>{f.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <button className="btn-small" style={{ width: "100%", color: "var(--danger)", borderColor: "var(--danger)" }} onClick={() => handleDeleteArea(selectedArea)}>
+                  <IconTrash size={13} /> Remover área
+                </button>
+              </div>
             )}
 
             <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
@@ -1439,7 +1560,15 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId, entries = [
                 </div>
                 <div className="schedule-modal-full">
                   <label className="schedule-modal-label">Rótulo *</label>
-                  <input className="schedule-modal-field" placeholder="Ex: Prateleira 1V" value={newAreaForm.label} onChange={(e) => setNewAreaForm({ ...newAreaForm, label: e.target.value })} />
+                  <input className="schedule-modal-field" placeholder="Ex: Prateleira 1V, Escada Principal, Sala Gerência" value={newAreaForm.label} onChange={(e) => setNewAreaForm({ ...newAreaForm, label: e.target.value })} />
+                </div>
+                <div className="schedule-modal-full">
+                  <label className="schedule-modal-label">Andar *</label>
+                  <select className="schedule-modal-field" value={newAreaForm.floor || "terreo"} onChange={(e) => setNewAreaForm({ ...newAreaForm, floor: e.target.value })}>
+                    {floorOptions.map((f) => (
+                      <option key={f.idx} value={f.value}>{f.label}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="schedule-modal-label">X (%)</label>

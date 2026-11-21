@@ -16,6 +16,7 @@ import AdminGate from "./components/AdminGate";
 import CommandPalette from "./components/CommandPalette";
 import PushSetup from "./components/PushSetup";
 import LoginScreen from "./components/LoginScreen";
+import LandingPage from "./components/LandingPage";
 import StatusBar from "./components/StatusBar";
 
 // Todas as outras telas só são baixadas quando alguém abre a aba.
@@ -77,6 +78,7 @@ export default function App() {
   const [cmdOpen, setCmdOpen] = useState(false);
   const [mapFocusAreaId, setMapFocusAreaId] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [showLogin, setShowLogin] = useState(false);
   const menuButtonRef = useRef(null);
   const isMobile = useMediaQuery(MOBILE_QUERY);
   const [globalFilter, setGlobalFilter] = useState(null);
@@ -246,7 +248,10 @@ export default function App() {
   }
 
   if (!session) {
-    return <LoginScreen />;
+    if (!showLogin) {
+      return <LandingPage onEnterLogin={() => setShowLogin(true)} />;
+    }
+    return <LoginScreen onBackToLanding={() => setShowLogin(false)} />;
   }
 
   if (!loaded) {
@@ -346,6 +351,9 @@ export default function App() {
 
         <Suspense fallback={<ScreenFallback />}>
         <div key={tab} className="tab-stage">
+          {tab === "landing" && (
+            <LandingPage isAuthenticated onEnterLogin={() => setTab("kiosk")} onOpenMap2D={() => setTab("stock-map")} onOpenMap3D={() => setTab("stock-map-3d")} />
+          )}
           {tab === "kiosk" && (
             <Kiosk operators={operators} activities={activities} vehicles={vehicles} refreshEntries={loadEntries} />
           )}

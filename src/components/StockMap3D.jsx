@@ -5,11 +5,18 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import {
   fetchMapAreas,
   fetchMapItems,
+  addMapArea,
+  updateMapArea,
+  deleteMapArea,
+  AREA_TYPES,
+  MAP_OBJECT_PRESETS,
   colorForType,
   labelForType,
   labelForSide,
   resolveSpecialAreaKind,
 } from "../lib/stockMap";
+import { Accordion } from "./ui/Accordion";
+import { IconEdit, IconPlus, IconTrash, IconX, IconCheck } from "./Icons";
 import { fetchSystemStatus, upsertSystemStatus, fetchStockMapHistory, fetchConferenceHistory } from "../lib/api";
 import { fetchRecentScans } from "../lib/mapScan";
 import { computeSlottingAnalysis, heatmapColor, abcColor } from "../lib/slotting";
@@ -257,6 +264,35 @@ export default function StockMap3D({ isAdmin, onScanArea, onOpenMap, entries = [
   const [shellStatus, setShellStatus] = useState("");
   const [webgl] = useState(() => webglAvailable());
   const [saveMsg, setSaveMsg] = useState("");
+  const [editMode, setEditMode] = useState(false);
+  const [extraFloors, setExtraFloors] = useState([]);
+  const [newObjModal, setNewObjModal] = useState(false);
+  const [newObjForm, setNewObjForm] = useState({
+    code: "", label: "", areaType: "prateleira", floor: "terreo",
+    x: 42, y: 42, width: 10, height: 15, hasSides: false,
+  });
+  const [objBusy, setObjBusy] = useState(false);
+  const [flashMsg, setFlashMsg] = useState("");
+
+  const editModeRef = useRef(editMode);
+  editModeRef.current = editMode;
+  const areasRef = useRef(areas);
+  areasRef.current = areas;
+  const cfgRef = useRef(cfg);
+  cfgRef.current = cfg;
+  const onDragCommitRef = useRef(null);
+
+  function showFlash(msg) {
+    setFlashMsg(msg);
+    setTimeout(() => setFlashMsg(""), 2600);
+  }
+
+  const reloadAreas = useCallback(async () => {
+    const [a, i] = await Promise.all([fetchMapAreas(), fetchMapItems()]);
+    if (a.error) setError(a.error.message || "Erro ao carregar o mapa.");
+    setAreas(a.data);
+    setItems(i.data);
+  }, []);
 
   // ---------- dados ----------
   useEffect(() => {
@@ -291,7 +327,110 @@ export default function StockMap3D({ isAdmin, onScanArea, onOpenMap, entries = [
     return m;
   }, [items]);
 
-  const floors = useMemo(() => [...new Set(areas.map((a) => floorIndex(a.floor)))].sort((x, y) => x - y), [areas]);
+  const floorOptions = useMemo(() => {
+    const map = new Map([[0, "terreo"]]);
+    areas.forEach((a) => {
+      const idx = floorIndex(a.floor);
+      if (!map.has(idx)) map.set(idx, a.floor || (idx === 0 ? "terreo" : `${idx}o_andar`));
+    });
+    extraFloors.forEach((fl) => {
+      const idx = floorIndex(fl);
+      if (!map.has(idx)) map.set(idx, fl);
+    });
+    return [...map.entries()]
+      .sort((a, b) => a[0] - b[0])
+      .map(([idx, value]) => ({ idx, value, label: idx === 0 ? "Térreo" : `${idx}º andar` }));
+  }, [areas, extraFloors]);
+
+  const floors = useMemo(() => floorOptions.map((f) => f.idx), [floorOptions]);
+
+  const commitMove3D = useCallback(async (area, nextX, nextY) => {
+    const x = Math.round(Math.max(0, Math.min(100 - (Number(area.width) || 5), nextX)) * 10) / 10;
+    const y = Math.round(Math.max(0, Math.min(100 - (Number(area.height) || 5), nextY)) * 10) / 10;
+    setAreas((prev) => prev.map((item) => (item.id === area.id ? { ...item, x, y } : item)));
+    const { error: err } = await updateMapArea(area.id, { x, y });
+    if (err) setError(err.message);
+    else showFlash(`${area.code} movido (${x}%, ${y}%)`);
+  }, []);
+
+  onDragCommitRef.current = commitMove3D;
+
+  function handleAddFloor3D() {
+    const nextIdx = floorOptions.length > 0 ? Math.max(...floorOptions.map((f) => f.idx)) + 1 : 1;
+    const floorVal = `${nextIdx}o_andar`;
+    setExtraFloors((prev) => (prev.includes(floorVal) ? prev : [...prev, floorVal]));
+    setFloorFilter(String(nextIdx));
+    showFlash(`${nextIdx}º andar criado — adicione objetos nele!`);
+  }
+
+  function openNewObjModal3D(preset = null) {
+    const targetFloorOpt =
+      floorFilter === "all"
+        ? floorOptions[0]
+        : floorOptions.find((f) => String(f.idx) === String(floorFilter)) || floorOptions[0];
+    const floorVal = targetFloorOpt?.value || "terreo";
+    if (preset) {
+      const count = areas.filter((a) => a.area_type === preset.areaType).length + 1;
+      setNewObjForm({
+        code: `${preset.prefix}-${count}`,
+        label: `${preset.label} ${count}`,
+        areaType: preset.areaType,
+        floor: floorVal,
+        x: 42,
+        y: 42,
+        width: preset.width,
+        height: preset.height,
+        hasSides: preset.hasSides,
+      });
+    } else {
+      setNewObjForm((f) => ({ ...f, floor: floorVal }));
+    }
+    setNewObjModal(true);
+  }
+
+  async function handleCreateObj3D() {
+    const code = newObjForm.code.trim().toUpperCase();
+    const label = newObjForm.label.trim();
+    if (!code) return setError("Digite o código do objeto.");
+    if (!label) return setError("Digite o nome/rótulo.");
+
+    setObjBusy(true);
+    const { data, error: err } = await addMapArea({
+      code,
+      label,
+      areaType: newObjForm.areaType,
+      floor: newObjForm.floor || "terreo",
+      hasSides: newObjForm.hasSides,
+      x: Number(newObjForm.x),
+      y: Number(newObjForm.y),
+      width: Number(newObjForm.width),
+      height: Number(newObjForm.height),
+      color: colorForType(newObjForm.areaType),
+    });
+    setObjBusy(false);
+    if (err) { setError(err.message); return; }
+    setNewObjModal(false);
+    setNewObjForm({ code: "", label: "", areaType: "prateleira", floor: newObjForm.floor || "terreo", x: 42, y: 42, width: 10, height: 15, hasSides: false });
+    await reloadAreas();
+    if (data?.id) setSelected({ areaId: data.id });
+    showFlash(`"${label}" adicionado ao Mapa 3D`);
+  }
+
+  async function handlePatchArea3D(area, patch, msg) {
+    setAreas((prev) => prev.map((item) => (item.id === area.id ? { ...item, ...patch } : item)));
+    const { error: err } = await updateMapArea(area.id, patch);
+    if (err) setError(err.message);
+    else if (msg) showFlash(msg);
+  }
+
+  async function handleDeleteArea3D(area) {
+    if (!window.confirm(`Remover "${area.label || area.code}" do mapa?`)) return;
+    const { error: err } = await deleteMapArea(area.id);
+    if (err) { setError(err.message); return; }
+    setSelected(null);
+    await reloadAreas();
+    showFlash("Objeto removido do mapa");
+  }
   const matches = useMemo(() => matchItems(items, query), [items, query]);
   const slotting = useMemo(
     () =>
@@ -376,15 +515,78 @@ export default function StockMap3D({ isAdmin, onScanArea, onOpenMap, entries = [
       renderer.render(scene, camera);
     });
 
-    // clique (sem arrastar) seleciona
+    // clique seleciona; no Modo Edição, arrastar um objeto move pelo piso 3D
     let down = null;
-    const onDown = (e) => { down = { x: e.clientX, y: e.clientY }; };
-    const onUp = (e) => {
-      if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5) return;
+    let drag = null;
+    const ray = new THREE.Raycaster();
+    const hitPt = new THREE.Vector3();
+
+    const getNdc = (e) => {
       const rect = renderer.domElement.getBoundingClientRect();
-      const ndc = new THREE.Vector2(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
-      const ray = new THREE.Raycaster();
-      ray.setFromCamera(ndc, camera);
+      return new THREE.Vector2(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1
+      );
+    };
+
+    const onDown = (e) => {
+      down = { x: e.clientX, y: e.clientY };
+      if (!editModeRef.current) return;
+      ray.setFromCamera(getNdc(e), camera);
+      const visible = [...t.floors.values()].filter((fl) => fl.group.visible);
+      const hitA = ray.intersectObjects(visible.flatMap((fl) => fl.picks), false)[0];
+      if (!hitA) return;
+      const areaId = hitA.object.userData.areaId;
+      const area = areasRef.current.find((a) => String(a.id) === String(areaId));
+      if (!area) return;
+      const m = areaToMeters(area, cfgRef.current);
+      const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -m.y);
+      if (ray.ray.intersectPlane(plane, hitPt)) {
+        drag = {
+          area,
+          pickMesh: hitA.object,
+          plane,
+          offsetX: m.x - hitPt.x,
+          offsetZ: m.z - hitPt.z,
+          lastX: m.x,
+          lastZ: m.z,
+          moved: false,
+        };
+        controls.enabled = false;
+        setSelected({ areaId: area.id });
+      }
+    };
+
+    const onMove = (e) => {
+      if (!drag) return;
+      if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) drag.moved = true;
+      ray.setFromCamera(getNdc(e), camera);
+      if (ray.ray.intersectPlane(drag.plane, hitPt)) {
+        const nx = hitPt.x + drag.offsetX;
+        const nz = hitPt.z + drag.offsetZ;
+        drag.lastX = nx;
+        drag.lastZ = nz;
+        outline.position.set(nx, drag.pickMesh.position.y, nz);
+        outline.visible = true;
+      }
+    };
+
+    const onUp = (e) => {
+      if (drag) {
+        const finished = drag;
+        drag = null;
+        controls.enabled = true;
+        if (finished.moved) {
+          const c = cfgRef.current;
+          const m = areaToMeters(finished.area, c);
+          const pctX = ((finished.lastX + c.widthM / 2 - m.w / 2) / c.widthM) * 100;
+          const pctY = ((finished.lastZ + c.depthM / 2 - m.d / 2) / c.depthM) * 100;
+          onDragCommitRef.current?.(finished.area, pctX, pctY);
+        }
+        return;
+      }
+      if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5) return;
+      ray.setFromCamera(getNdc(e), camera);
       const visible = [...t.floors.values()].filter((fl) => fl.group.visible);
       const products = visible.map((fl) => fl.products).filter(Boolean);
       const hitP = ray.intersectObjects(products, false)[0];
@@ -400,13 +602,15 @@ export default function StockMap3D({ isAdmin, onScanArea, onOpenMap, entries = [
       }
     };
     renderer.domElement.addEventListener("pointerdown", onDown);
-    renderer.domElement.addEventListener("pointerup", onUp);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
 
     return () => {
       renderer.setAnimationLoop(null);
       ro.disconnect();
       renderer.domElement.removeEventListener("pointerdown", onDown);
-      renderer.domElement.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
       controls.dispose();
       disposeObject(scene);
       renderer.dispose();
@@ -425,7 +629,7 @@ export default function StockMap3D({ isAdmin, onScanArea, onOpenMap, entries = [
     t.floors = new Map();
 
     const dummy = new THREE.Object3D();
-    const floorsPresent = [...new Set(areas.map((a) => floorIndex(a.floor)))];
+    const floorsPresent = [...new Set([...areas.map((a) => floorIndex(a.floor)), ...extraFloors.map((f) => floorIndex(f))])];
     if (floorsPresent.length === 0) floorsPresent.push(0);
 
     const levelH = Math.min(1.2, (cfg.floorHeightM - 0.6) / cfg.levels);
@@ -571,9 +775,12 @@ export default function StockMap3D({ isAdmin, onScanArea, onOpenMap, entries = [
       t.floors.set(fl, { group, picks, products: productsMesh });
     });
 
-    // enquadra a câmera uma vez
-    t.camera.position.set(0, cfg.widthM * 0.55, cfg.depthM * 0.85);
-    t.controls.target.set(0, 0, 0);
+    // enquadra a câmera apenas na primeira montagem (não reseta ao mover/criar objetos)
+    if (!t.cameraFramed) {
+      t.camera.position.set(0, cfg.widthM * 0.55, cfg.depthM * 0.85);
+      t.controls.target.set(0, 0, 0);
+      t.cameraFramed = true;
+    }
 
     // casca feita no Blender (opcional)
     let cancelled = false;
@@ -598,7 +805,7 @@ export default function StockMap3D({ isAdmin, onScanArea, onOpenMap, entries = [
       }
     })();
     return () => { cancelled = true; };
-  }, [areas, itemsByArea, cfg, loading, webgl]);
+  }, [areas, extraFloors, itemsByArea, cfg, loading, webgl]);
 
   // ---------- andar visível ----------
   useEffect(() => {
@@ -692,15 +899,69 @@ export default function StockMap3D({ isAdmin, onScanArea, onOpenMap, entries = [
         <div>
           <h1 className="page-title">Mapa 3D</h1>
           <p className="page-sub" style={{ marginBottom: 0 }}>
-            Arraste para girar · role/pinça para aproximar · toque numa estante ou produto para ver os detalhes.
+            {editMode
+              ? "Modo edição 3D ativo · Arraste qualquer objeto pelo piso para mover · Use a paleta para criar objetos e andares."
+              : "Arraste para girar · role/pinça para aproximar · toque numa estante ou produto para ver os detalhes."}
           </p>
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button
+            type="button"
+            className={`btn-small ${editMode ? "btn-excel" : ""}`}
+            onClick={() => setEditMode((v) => !v)}
+            style={editMode ? { background: "var(--ok)", color: "#fff", borderColor: "var(--ok)" } : undefined}
+          >
+            <IconEdit size={14} /> {editMode ? "Sair da edição 3D" : "Modo edição 3D"}
+          </button>
+          {editMode && (
+            <button type="button" className="btn-small btn-excel" onClick={() => openNewObjModal3D()}>
+              <IconPlus size={14} /> Novo objeto
+            </button>
+          )}
         </div>
       </div>
 
       {!webgl && (
         <div className="alert-card alert-danger"><strong>Este aparelho/navegador não suporta gráficos 3D (WebGL).</strong> Use o Mapa 2D.</div>
       )}
-      {error && <div className="alert-card alert-danger"><strong>Erro:</strong> {error}</div>}
+      {error && (
+        <div className="alert-card alert-danger" style={{ marginBottom: 12 }}>
+          <strong>Erro:</strong> {error}
+          <button type="button" className="btn-small" style={{ marginLeft: 10 }} onClick={() => setError("")}>Fechar</button>
+        </div>
+      )}
+      {flashMsg && (
+        <div className="alert-card" style={{ marginBottom: 12, background: "var(--ok-soft)", borderColor: "var(--ok)", color: "var(--ok)", display: "flex", alignItems: "center", gap: 8 }}>
+          <IconCheck size={15} /> {flashMsg}
+        </div>
+      )}
+
+      {editMode && (
+        <div className="map-object-palette">
+          <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-muted)", marginRight: 4 }}>
+            Criar no 3D:
+          </span>
+          {MAP_OBJECT_PRESETS.map((preset) => (
+            <button
+              key={preset.areaType}
+              type="button"
+              className="map-palette-chip"
+              onClick={() => openNewObjModal3D(preset)}
+            >
+              <span className="map-palette-dot" style={{ background: colorForType(preset.areaType) }} />
+              + {preset.label}
+            </button>
+          ))}
+          <button
+            type="button"
+            className="map-palette-chip"
+            style={{ borderStyle: "dashed", borderColor: "var(--accent)", color: "var(--accent)" }}
+            onClick={handleAddFloor3D}
+          >
+            + Novo andar
+          </button>
+        </div>
+      )}
 
       <div className="map3d-toolbar">
         <input className="field" style={{ maxWidth: 300 }} placeholder="Buscar produto (código, nome ou código de barras)" value={query} onChange={(e) => setQuery(e.target.value)} aria-label="Buscar produto" />
@@ -809,35 +1070,172 @@ export default function StockMap3D({ isAdmin, onScanArea, onOpenMap, entries = [
               {selArea.area_type === "prateleira" && <button type="button" className="btn-small" onClick={() => onScanArea?.(selArea)}>Coletar aqui</button>}
               <button type="button" className="btn-small" onClick={() => onOpenMap?.(selArea)}>Ver no 2D</button>
             </div>
+
+            {editMode && (
+              <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid rgba(148,163,184,0.25)", display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#38bdf8" }}>
+                  Editar objeto no 3D
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 4 }}>
+                  <button type="button" className="btn-small" onClick={() => commitMove3D(selArea, Number(selArea.x) - 2, Number(selArea.y))} title="Mover esquerda">←</button>
+                  <button type="button" className="btn-small" onClick={() => commitMove3D(selArea, Number(selArea.x), Number(selArea.y) - 2)} title="Mover fundo">↑</button>
+                  <button type="button" className="btn-small" onClick={() => commitMove3D(selArea, Number(selArea.x), Number(selArea.y) + 2)} title="Mover frente">↓</button>
+                  <button type="button" className="btn-small" onClick={() => commitMove3D(selArea, Number(selArea.x) + 2, Number(selArea.y))} title="Mover direita">→</button>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+                  <label style={{ fontSize: 11, opacity: 0.85 }}>
+                    Largura (%)
+                    <input
+                      type="number"
+                      min="2"
+                      max="100"
+                      className="field"
+                      style={{ marginTop: 2, padding: "5px 8px", fontSize: 12 }}
+                      value={selArea.width}
+                      onChange={(e) => handlePatchArea3D(selArea, { width: Math.max(2, Number(e.target.value) || 2) })}
+                    />
+                  </label>
+                  <label style={{ fontSize: 11, opacity: 0.85 }}>
+                    Profund. (%)
+                    <input
+                      type="number"
+                      min="2"
+                      max="100"
+                      className="field"
+                      style={{ marginTop: 2, padding: "5px 8px", fontSize: 12 }}
+                      value={selArea.height}
+                      onChange={(e) => handlePatchArea3D(selArea, { height: Math.max(2, Number(e.target.value) || 2) })}
+                    />
+                  </label>
+                </div>
+                <label style={{ fontSize: 11, opacity: 0.85 }}>
+                  Andar
+                  <select
+                    className="field"
+                    style={{ marginTop: 2, padding: "5px 8px", fontSize: 12 }}
+                    value={selArea.floor || "terreo"}
+                    onChange={(e) => handlePatchArea3D(selArea, { floor: e.target.value }, "Andar atualizado")}
+                  >
+                    {floorOptions.map((f) => (
+                      <option key={f.idx} value={f.value}>{f.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  className="btn-small"
+                  style={{ width: "100%", color: "#f87171", borderColor: "rgba(248,113,113,0.5)" }}
+                  onClick={() => handleDeleteArea3D(selArea)}
+                >
+                  <IconTrash size={13} /> Remover objeto
+                </button>
+              </div>
+            )}
           </aside>
         )}
       </div>
 
-      <div className="card" style={{ marginTop: 16 }}>
-        <div className="card-title">Modelo do Blender e medidas do galpão</div>
-        <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 0 }}>
-          As estantes e produtos vêm do mapa 2D automaticamente. Um modelo feito no Blender (paredes, piso, docas) pode ser
-          colocado em <code>public/models/cd-shell.glb</code>. {shellStatus || "Nenhum modelo carregado no momento."} Veja <code>docs/MAPA-3D-BLENDER.md</code>.
-        </p>
-        <div className="map3d-settings">
-          {[["widthM", "Largura do galpão (m)"], ["depthM", "Profundidade (m)"], ["floorHeightM", "Altura entre andares (m)"], ["levels", "Níveis por estante"]].map(([k, label]) => (
-            <label key={k} className="scan-label">{label}
-              <input className="field" type="number" step="0.5" min="1" disabled={!isAdmin} value={draft[k]} onChange={(e) => setDraft(k, Number(e.target.value))} />
-            </label>
-          ))}
-          {[["scale", "Modelo: escala"], ["offsetX", "Modelo: deslocar X (m)"], ["offsetZ", "Modelo: deslocar Z (m)"], ["rotationY", "Modelo: girar (graus)"]].map(([k, label]) => (
-            <label key={k} className="scan-label">{label}
-              <input className="field" type="number" step="0.1" disabled={!isAdmin} value={draft.shell[k]} onChange={(e) => setShell(k, Number(e.target.value))} />
-            </label>
-          ))}
-        </div>
-        <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
-          {isAdmin && <button type="button" className="btn-small" onClick={saveCfg} disabled={!cfgDraft}>Salvar ajustes</button>}
-          <button type="button" className="btn-small" onClick={exportJson} disabled={areas.length === 0}>Exportar áreas para o Blender (JSON)</button>
-          {!isAdmin && <span style={{ fontSize: 12, color: "var(--text-faint)" }}>Só o administrador altera as medidas.</span>}
-          {saveMsg && <span role="status" style={{ fontSize: 13 }}>{saveMsg}</span>}
-        </div>
+      <div className="card" style={{ marginTop: 16, padding: "6px 18px" }}>
+        <Accordion
+          items={[
+            {
+              id: "blender-cfg",
+              title: "Modelo do Blender e medidas do galpão",
+              badge: `${cfg.widthM}m × ${cfg.depthM}m`,
+              content: (
+                <div>
+                  <p style={{ fontSize: 13, color: "var(--text-muted)", marginTop: 0 }}>
+                    As estantes, escadas, elevadores, salas e mesas sincronizam entre o 2D e o 3D automaticamente. Um modelo feito no Blender pode ser
+                    colocado em <code>public/models/cd-shell.glb</code>. {shellStatus || "Nenhum modelo carregado no momento."}
+                  </p>
+                  <div className="map3d-settings">
+                    {[["widthM", "Largura do galpão (m)"], ["depthM", "Profundidade (m)"], ["floorHeightM", "Altura entre andares (m)"], ["levels", "Níveis por estante"]].map(([k, label]) => (
+                      <label key={k} className="scan-label">{label}
+                        <input className="field" type="number" step="0.5" min="1" disabled={!isAdmin} value={draft[k]} onChange={(e) => setDraft(k, Number(e.target.value))} />
+                      </label>
+                    ))}
+                    {[["scale", "Modelo: escala"], ["offsetX", "Modelo: deslocar X (m)"], ["offsetZ", "Modelo: deslocar Z (m)"], ["rotationY", "Modelo: girar (graus)"]].map(([k, label]) => (
+                      <label key={k} className="scan-label">{label}
+                        <input className="field" type="number" step="0.1" disabled={!isAdmin} value={draft.shell[k]} onChange={(e) => setShell(k, Number(e.target.value))} />
+                      </label>
+                    ))}
+                  </div>
+                  <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
+                    {isAdmin && <button type="button" className="btn-small" onClick={saveCfg} disabled={!cfgDraft}>Salvar ajustes</button>}
+                    <button type="button" className="btn-small" onClick={exportJson} disabled={areas.length === 0}>Exportar áreas para o Blender (JSON)</button>
+                    {!isAdmin && <span style={{ fontSize: 12, color: "var(--text-faint)" }}>Só o administrador altera as medidas.</span>}
+                    {saveMsg && <span role="status" style={{ fontSize: 13 }}>{saveMsg}</span>}
+                  </div>
+                </div>
+              ),
+            },
+          ]}
+        />
       </div>
+
+      {newObjModal && (
+        <div className="kiosk-modal-backdrop" onClick={() => !objBusy && setNewObjModal(false)}>
+          <div className="kiosk-modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 560 }}>
+            <div className="kiosk-modal-header">
+              <div>
+                <div className="kiosk-modal-title">Novo objeto no Mapa 3D</div>
+                <div className="kiosk-modal-sub">Aparece automaticamente nos mapas 2D e 3D</div>
+              </div>
+              <button type="button" className="kiosk-modal-close" onClick={() => setNewObjModal(false)}>
+                <IconX size={18} />
+              </button>
+            </div>
+            <div className="kiosk-modal-body">
+              <div className="schedule-modal-grid">
+                <div>
+                  <label className="schedule-modal-label">Código *</label>
+                  <input className="schedule-modal-field" placeholder="Ex: ESC-1, ELV-1, SALA-1" value={newObjForm.code} onChange={(e) => setNewObjForm({ ...newObjForm, code: e.target.value.toUpperCase() })} />
+                </div>
+                <div>
+                  <label className="schedule-modal-label">Tipo *</label>
+                  <select className="schedule-modal-field" value={newObjForm.areaType} onChange={(e) => setNewObjForm({ ...newObjForm, areaType: e.target.value })}>
+                    {AREA_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                </div>
+                <div className="schedule-modal-full">
+                  <label className="schedule-modal-label">Nome / Rótulo *</label>
+                  <input className="schedule-modal-field" placeholder="Ex: Escada Mezanino, Mesa Pedidos 01" value={newObjForm.label} onChange={(e) => setNewObjForm({ ...newObjForm, label: e.target.value })} />
+                </div>
+                <div className="schedule-modal-full">
+                  <label className="schedule-modal-label">Andar *</label>
+                  <select className="schedule-modal-field" value={newObjForm.floor || "terreo"} onChange={(e) => setNewObjForm({ ...newObjForm, floor: e.target.value })}>
+                    {floorOptions.map((f) => (
+                      <option key={f.idx} value={f.value}>{f.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="schedule-modal-label">X (%)</label>
+                  <input type="number" min="0" max="98" className="schedule-modal-field" value={newObjForm.x} onChange={(e) => setNewObjForm({ ...newObjForm, x: e.target.value })} />
+                </div>
+                <div>
+                  <label className="schedule-modal-label">Y (%)</label>
+                  <input type="number" min="0" max="98" className="schedule-modal-field" value={newObjForm.y} onChange={(e) => setNewObjForm({ ...newObjForm, y: e.target.value })} />
+                </div>
+                <div>
+                  <label className="schedule-modal-label">Largura (%)</label>
+                  <input type="number" min="2" max="100" className="schedule-modal-field" value={newObjForm.width} onChange={(e) => setNewObjForm({ ...newObjForm, width: e.target.value })} />
+                </div>
+                <div>
+                  <label className="schedule-modal-label">Profundidade (%)</label>
+                  <input type="number" min="2" max="100" className="schedule-modal-field" value={newObjForm.height} onChange={(e) => setNewObjForm({ ...newObjForm, height: e.target.value })} />
+                </div>
+              </div>
+            </div>
+            <div className="kiosk-modal-footer">
+              <button type="button" className="kiosk-btn kiosk-btn-secondary" onClick={() => setNewObjModal(false)} disabled={objBusy}>Cancelar</button>
+              <button type="button" className="kiosk-btn kiosk-btn-primary" onClick={handleCreateObj3D} disabled={objBusy}>
+                <IconCheck size={14} /> {objBusy ? "Criando..." : "Criar no 3D"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

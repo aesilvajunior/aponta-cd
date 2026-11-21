@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { supabase } from "../supabaseClient";
 import { IconLock, IconUser } from "./Icons";
 
-export default function LoginScreen() {
+export default function LoginScreen({ onBackToLanding }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -116,6 +116,16 @@ export default function LoginScreen() {
         <p style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 22, textAlign: "center", lineHeight: 1.5 }}>
           Não tem acesso? Fale com o administrador do sistema.
         </p>
+        {onBackToLanding && (
+          <button
+            type="button"
+            className="btn-small"
+            style={{ width: "100%", marginTop: 12, justifyContent: "center" }}
+            onClick={onBackToLanding}
+          >
+            ← Voltar para a apresentação
+          </button>
+        )}
       </div>
 
       <div className="login-footer">

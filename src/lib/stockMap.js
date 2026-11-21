@@ -12,11 +12,23 @@ export const AREA_TYPES = [
   { value: "conferencia", label: "Mesa de conferência (geral)", color: "#10b981" },
   { value: "escada", label: "Escada", color: "#7c3aed" },
   { value: "elevador", label: "Elevador / Monta-carga", color: "#4f46e5" },
-  { value: "recebimento", label: "Recebimento", color: "#f97316" },
-  { value: "escritorio", label: "Escritório", color: "#6b7280" },
-  { value: "infra", label: "Infraestrutura", color: "#8b5cf6" },
+  { value: "escritorio", label: "Sala / Escritório", color: "#6b7280" },
   { value: "corredor", label: "Corredor", color: "#00d4ff" },
+  { value: "recebimento", label: "Recebimento", color: "#f97316" },
+  { value: "infra", label: "Infraestrutura", color: "#8b5cf6" },
   { value: "outro", label: "Outro", color: "#1e3a5f" },
+];
+
+export const MAP_OBJECT_PRESETS = [
+  { areaType: "prateleira", label: "Prateleira", prefix: "PR", width: 10, height: 18, hasSides: true },
+  { areaType: "escada", label: "Escada", prefix: "ESC", width: 6, height: 12, hasSides: false },
+  { areaType: "elevador", label: "Elevador", prefix: "ELV", width: 6, height: 6, hasSides: false },
+  { areaType: "conferencia_pedidos", label: "Mesa Pedidos", prefix: "MP", width: 10, height: 6, hasSides: false },
+  { areaType: "conferencia_transferencia", label: "Mesa Transf.", prefix: "MT", width: 10, height: 6, hasSides: false },
+  { areaType: "carro_apoio", label: "Carro Apoio", prefix: "CA", width: 5, height: 4, hasSides: false },
+  { areaType: "escritorio", label: "Sala / Escritório", prefix: "SALA", width: 14, height: 12, hasSides: false },
+  { areaType: "corredor", label: "Corredor", prefix: "COR", width: 32, height: 6, hasSides: false },
+  { areaType: "recebimento", label: "Recebimento", prefix: "REC", width: 14, height: 10, hasSides: false },
 ];
 
 export function resolveSpecialAreaKind(area) {
