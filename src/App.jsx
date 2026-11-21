@@ -18,6 +18,7 @@ import PushSetup from "./components/PushSetup";
 import LoginScreen from "./components/LoginScreen";
 import LandingPage from "./components/LandingPage";
 import StatusBar from "./components/StatusBar";
+import ThemeToggle from "./components/ThemeToggle";
 
 // Todas as outras telas só são baixadas quando alguém abre a aba.
 // (O operador no kiosk não precisa baixar Painel, Mapa de Estoque, etc.)
@@ -359,6 +360,9 @@ export default function App() {
       />
 
       <main className="main">
+        <div className="main-quick-theme">
+          <ThemeToggle compact />
+        </div>
         {import.meta.env.VITE_APP_ENV && import.meta.env.VITE_APP_ENV !== "production" && (
           <div className="env-banner" role="note">AMBIENTE DE {String(import.meta.env.VITE_APP_ENV).toUpperCase()}: os dados daqui não são os reais</div>
         )}

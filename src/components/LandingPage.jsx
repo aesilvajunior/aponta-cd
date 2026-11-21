@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import ThemeToggle from "./ThemeToggle";
 import BrandMark from "./BrandMark";
+import AnimatedLogoHero from "./AnimatedLogoHero";
 import { Accordion } from "./ui/Accordion";
 import {
   IconTv,
@@ -392,6 +393,9 @@ export default function LandingPage({
           <span>APONTA CD / OPERAÇÃO LOGÍSTICA EM TEMPO REAL</span>
         </div>
 
+        {/* Animação grande do logo: caminhão entrando e saindo do galpão + construção "aponta cd" */}
+        <AnimatedLogoHero />
+
         <div className="br-hero-grid">
           <div className="br-hero-copy">
             <h1 className="br-display-title">
@@ -533,6 +537,17 @@ export default function LandingPage({
                   <span><IconCheck size={13} /> Teclado numérico</span>
                   <span><IconCheck size={13} /> Acesso imediato</span>
                 </div>
+
+                {operators.filter((o) => o.active !== false).length === 0 && onOperatorLogin && (
+                  <button
+                    type="button"
+                    className="btn-small"
+                    style={{ width: "100%", marginTop: 12, justifyContent: "center" }}
+                    onClick={() => onOperatorLogin({ code: "ADMIN", name: "Administrador", role: "lider" })}
+                  >
+                    Primeiro acesso (cadastrar equipe)
+                  </button>
+                )}
               </div>
             ) : (
               <div className="br-studio-showcase">

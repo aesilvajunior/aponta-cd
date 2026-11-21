@@ -14,6 +14,7 @@ import { fmtClock, fmtDate, fmtDuration, todayLocalISODate, localISODate } from 
 import { useTheme } from "../context/ThemeContext";
 import TvGamification from "./TvGamification";
 import BrandMark from "./BrandMark";
+import ThemeToggle from "./ThemeToggle";
 import {
   IconPackage,
   IconZap,
@@ -148,12 +149,17 @@ export default function TvBoard() {
     try { return localStorage.getItem("tv_hide_timer") === "1"; } catch { return false; }
   });
 
-  const { resolvedTheme } = useTheme();
+  const { resolvedTheme, accentPreset } = useTheme();
   const stationFilter = useMemo(() => getStationFromUrl(), []);
 
   const seenSessions = useRef(new Set());
   const alertedRef = useRef(new Set());
-  const palette = PALETTES[theme] || PALETTES.dark;
+  const activeTvTheme = resolvedTheme || theme;
+  const basePalette = PALETTES[activeTvTheme] || PALETTES.dark;
+  const palette = {
+    ...basePalette,
+    accent: accentPreset?.[activeTvTheme]?.accent || basePalette.accent,
+  };
 
   useEffect(() => {
     const iv = setInterval(() => setNow(Date.now()), 1000);
@@ -605,21 +611,24 @@ export default function TvBoard() {
             </div>
           </div>
         </div>
-        <div style={{ textAlign: "right" }}>
-          <div
-            style={{
-              fontFamily: "'JetBrains Mono', monospace",
-              fontSize: 34,
-              fontWeight: 600,
-              letterSpacing: "-0.03em",
-              fontVariantNumeric: "tabular-nums",
-              color: p.text,
-            }}
-          >
-            {fmtClock(now)}
-          </div>
-          <div style={{ color: p.textMuted, fontSize: 13, textTransform: "capitalize", marginTop: 2 }}>
-            {fmtDate(now)}
+        <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
+          <ThemeToggle compact />
+          <div style={{ textAlign: "right" }}>
+            <div
+              style={{
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: 34,
+                fontWeight: 600,
+                letterSpacing: "-0.03em",
+                fontVariantNumeric: "tabular-nums",
+                color: p.text,
+              }}
+            >
+              {fmtClock(now)}
+            </div>
+            <div style={{ color: p.textMuted, fontSize: 13, textTransform: "capitalize", marginTop: 2 }}>
+              {fmtDate(now)}
+            </div>
           </div>
         </div>
       </div>

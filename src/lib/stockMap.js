@@ -82,12 +82,20 @@ export function normalizeRotation(deg) {
   return Math.round((((n % 360) + 360) % 360) * 10) / 10;
 }
 
+function safeMeta(area) {
+  if (!area?.meta) return {};
+  if (typeof area.meta === "string") {
+    try { return JSON.parse(area.meta) || {}; } catch { return {}; }
+  }
+  return typeof area.meta === "object" ? area.meta : {};
+}
+
 export function getAreaRotation(area) {
-  return normalizeRotation(area?.meta?.rotation ?? 0);
+  return normalizeRotation(safeMeta(area).rotation ?? 0);
 }
 
 export function withAreaRotation(area, deg) {
-  return { ...(area?.meta || {}), rotation: normalizeRotation(deg) };
+  return { ...safeMeta(area), rotation: normalizeRotation(deg) };
 }
 
 export function labelForType(type) {

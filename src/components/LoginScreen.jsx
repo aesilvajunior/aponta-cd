@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { supabase } from "../supabaseClient";
 import BrandMark from "./BrandMark";
+import ThemeToggle from "./ThemeToggle";
 
 export default function LoginScreen({ onBackToLanding }) {
   const [email, setEmail] = useState("");
@@ -38,6 +39,9 @@ export default function LoginScreen({ onBackToLanding }) {
 
   return (
     <div className="login-page">
+      <div className="login-theme-corner">
+        <ThemeToggle compact />
+      </div>
       <div className="login-card">
         <div className="login-brand" style={{ justifyContent: "center" }}>
           <BrandMark variant="lockup" />

@@ -710,6 +710,7 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId, entries = [
     if (err) { setError(err.message); return; }
     await auditMap({ action: "remover", areaId: a.id, areaCode: a.code, beforeData });
     if (selectedArea?.id === a.id) setSelectedArea(null);
+    setHoveredArea(null);
     await loadAll();
     flashSuccess("Área removida");
   }
