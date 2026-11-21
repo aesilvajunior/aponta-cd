@@ -326,11 +326,14 @@ export default function Sidebar({ id, tab, setTab, isAdmin, onLock, onOperatorLo
         <div
           className="sidebar-brand"
           {...press(() => setTab("landing"))}
-          title="Ver página inicial de apresentação"
+          title="Ver página inicial do Aponta CD"
           style={{ cursor: "pointer" }}
         >
-          <div className="sidebar-brand-mark">AC</div>
-          {!collapsed && <div className="sidebar-brand-text">Aponta CD</div>}
+          <img
+            src="/logo-aponta-cd.jpg"
+            alt="Aponta CD"
+            className="sidebar-logo-img"
+          />
         </div>
         {!isMobile && (
           <button

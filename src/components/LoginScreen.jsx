@@ -39,8 +39,20 @@ export default function LoginScreen({ onBackToLanding }) {
   return (
     <div className="login-page">
       <div className="login-card">
-        <div className="login-brand">
-          <div className="login-brand-title">Aponta CD</div>
+        <div className="login-brand" style={{ justifyContent: "center" }}>
+          <img
+            src="/logo-aponta-cd.jpg"
+            alt="Aponta CD"
+            style={{
+              height: 56,
+              width: "auto",
+              objectFit: "contain",
+              borderRadius: 12,
+              background: "#ffffff",
+              padding: "6px 14px",
+              boxShadow: "0 4px 14px rgba(22, 51, 110, 0.14)",
+            }}
+          />
         </div>
 
         <h1 className="login-title">Entrar</h1>
