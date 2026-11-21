@@ -29,6 +29,7 @@ const SHOWCASE_MODULES = [
     desc: "Crie, mova, redimensione e gire livremente prateleiras, escadas, elevadores, mesas de pedidos/transferência, carros de apoio, salas e andares.",
     tone: "cobalt",
     art: "map",
+    image: "/images/showcase-map3d.jpg",
     wide: true,
   },
   {
@@ -38,6 +39,7 @@ const SHOWCASE_MODULES = [
     desc: "Registro ultrarrápido por código numérico, leitor de código de barras ou toque, com fila offline segura e controle de SLA.",
     tone: "obsidian",
     art: "kiosk",
+    image: "/images/showcase-kiosk.jpg",
   },
   {
     index: "03",
@@ -46,6 +48,7 @@ const SHOWCASE_MODULES = [
     desc: "Geração em lote no formato 1C1105EA com regra automática de corredor par (direito) e ímpar (esquerdo) e QR Codes prontos para impressão.",
     tone: "slate",
     art: "labels",
+    image: "/images/showcase-labels.jpg",
   },
   {
     index: "04",
@@ -54,6 +57,7 @@ const SHOWCASE_MODULES = [
     desc: "Mapa de calor de giro, comparação entre turno Manhã e Tarde, previsão de demanda para 7 dias e sugestões de realocação.",
     tone: "cyan",
     art: "slotting",
+    image: "/images/showcase-analytics.jpg",
   },
   {
     index: "05",
@@ -234,6 +238,7 @@ export default function LandingPage({
   const [shake, setShake] = useState(false);
   const [showKeypad, setShowKeypad] = useState(false);
   const [activeStep, setActiveStep] = useState(0);
+  const [heroScrollFade, setHeroScrollFade] = useState(0);
   const inputRef = useRef(null);
   const pageRef = useRef(null);
 
@@ -244,6 +249,26 @@ export default function LandingPage({
       inputRef.current?.focus();
     }
   }, [isOperatorGate]);
+
+  // Efeito fade fluido no hero ao rolar a página (referência Berriel Brands)
+  useEffect(() => {
+    const scroller = pageRef.current;
+    if (!scroller || isAuthenticated) return undefined;
+    let raf = 0;
+    const onScroll = () => {
+      if (raf) return;
+      raf = window.requestAnimationFrame(() => {
+        raf = 0;
+        const progress = Math.max(0, Math.min(1, scroller.scrollTop / 460));
+        setHeroScrollFade(progress);
+      });
+    };
+    scroller.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      scroller.removeEventListener("scroll", onScroll);
+      if (raf) window.cancelAnimationFrame(raf);
+    };
+  }, [isAuthenticated]);
 
   // Berriel-style smooth quartic scroll-reveal observer
   useEffect(() => {
@@ -349,7 +374,19 @@ export default function LandingPage({
       )}
 
       {/* ============ EDITORIAL MONUMENTAL HERO ============ */}
-      <section id="topo" className="br-container br-hero">
+      <section
+        id="topo"
+        className="br-container br-hero br-hero-scroll-wrap"
+        style={
+          !isAuthenticated && heroScrollFade > 0.01
+            ? {
+                opacity: Math.max(0.18, 1 - heroScrollFade * 0.85),
+                transform: `translateY(${Math.round(-heroScrollFade * 24)}px)`,
+                filter: `blur(${(heroScrollFade * 3).toFixed(2)}px)`,
+              }
+            : undefined
+        }
+      >
         <div className="br-hero-eyebrow">
           <span className="br-status-dot" />
           <span>APONTA CD / OPERAÇÃO LOGÍSTICA EM TEMPO REAL</span>
@@ -537,7 +574,11 @@ export default function LandingPage({
               onMouseMove={handleSpotlight}
             >
               <div className={`br-work-canvas br-tone-${mod.tone}`}>
-                <EditorialModuleArt kind={mod.art} />
+                {mod.image ? (
+                  <img src={mod.image} alt={mod.title} className="br-work-photo" loading="lazy" />
+                ) : (
+                  <EditorialModuleArt kind={mod.art} />
+                )}
                 <span className="br-work-hover-pill">Módulo {mod.index} ↗</span>
               </div>
 
@@ -627,6 +668,8 @@ export default function LandingPage({
           <a href="#topo" className="br-back-top">Topo ↑</a>
         </div>
       </footer>
+
+      <div className="br-scroll-fade-bottom" aria-hidden="true" />
     </div>
   );
 }
