@@ -345,7 +345,7 @@ export default function App() {
         {actionError && <div className="alert-card alert-danger">{actionError}</div>}
 
         <Suspense fallback={<ScreenFallback />}>
-        <div key={tab}>
+        <div key={tab} className="tab-stage">
           {tab === "kiosk" && (
             <Kiosk operators={operators} activities={activities} vehicles={vehicles} refreshEntries={loadEntries} />
           )}

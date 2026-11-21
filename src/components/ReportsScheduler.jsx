@@ -2,7 +2,6 @@ import React, { useEffect, useState } from "react";
 import {
   fetchScheduledReports,
   addScheduledReport,
-  updateScheduledReport,
   deleteScheduledReport,
   toggleScheduledReport,
   describeSchedule,
@@ -10,6 +9,9 @@ import {
   FREQUENCIES,
   WEEKDAYS,
 } from "../lib/reports";
+import { fetchEntries, fetchShortages, fetchSeparationErrors } from "../lib/api";
+import { fetchConferenceHistory } from "../lib/conference";
+import { sanitizeCsvCell } from "../utils/csv";
 import { supabase } from "../supabaseClient";
 import {
   IconClock,
@@ -18,7 +20,8 @@ import {
   IconRefresh,
   IconCheck,
   IconX,
-  IconAlertCircle,
+  IconDownload,
+  IconInfo,
 } from "./Icons";
 
 export default function ReportsScheduler() {
@@ -26,6 +29,8 @@ export default function ReportsScheduler() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [downloadingId, setDownloadingId] = useState(null);
+  const [guideOpen, setGuideOpen] = useState(false);
 
   // Form
   const [name, setName] = useState("");
@@ -97,28 +102,83 @@ export default function ReportsScheduler() {
     await runAction(() => deleteScheduledReport(r.id));
   }
 
+  // Gera e baixa o relatório imediatamente (funciona SEM precisar configurar Resend!)
+  async function handleDownloadNow(r) {
+    setDownloadingId(r.id);
+    setError("");
+    try {
+      const days = r.frequency === "mensal" ? 30 : r.frequency === "semanal" ? 7 : 1;
+      let headers = [];
+      let rows = [];
+
+      if (r.report_type === "faltas") {
+        const { data } = await fetchShortages({ limit: 5000 });
+        headers = ["Data", "Produto", "Quantidade", "Fornecedor"];
+        rows = (data || []).map((x) => [x.created_at, x.product_code, x.quantity, x.supplier_name || ""]);
+      } else if (r.report_type === "erros") {
+        const { data } = await fetchSeparationErrors();
+        headers = ["Data", "Operador", "Tipo de Erro", "Quem Errou", "Pedido", "Observação"];
+        rows = (data || []).map((x) => [x.created_at, x.operator_name, x.error_type, x.error_operator_name || "", x.order_number || "", x.note || ""]);
+      } else if (r.report_type === "conferencia") {
+        const { data } = await fetchConferenceHistory({ limit: 2000 });
+        headers = ["Pedido", "Cliente", "Separado por", "Conferido por", "Status", "Duração (s)", "Problema"];
+        rows = (data || []).map((x) => [x.order_number || x.transfer_number || "", x.customer_name || "", x.separated_by_name || "", x.conference_finished_by_name || "", x.status, x.duration_seconds ?? "", x.problem_reason || ""]);
+      } else {
+        const { data } = await fetchEntries({ days, limit: 5000 });
+        headers = ["Início", "Fim", "Operador", "Atividade", "Duração (s)", "Turno", "Pedido", "Cliente", "Observação"];
+        rows = (data || []).map((x) => [x.start_time, x.end_time, x.operator_name, x.activity, x.duration_seconds, x.shift, x.order_number || "", x.customer_name || "", x.note || ""]);
+      }
+
+      const csv = "\ufeff" + [headers.map(sanitizeCsvCell).join(";"), ...rows.map((row) => row.map(sanitizeCsvCell).join(";"))].join("\r\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${r.report_type}_${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(e?.message || "Erro ao gerar relatório.");
+    } finally {
+      setDownloadingId(null);
+    }
+  }
+
   return (
-    <div>
+    <div className="anim-fade-up">
       <div className="page-header-row" style={{ marginBottom: 22 }}>
         <div>
           <h1 className="page-title">Export agendado</h1>
           <p className="page-sub" style={{ marginBottom: 0 }}>
-            Configure envios automáticos de relatórios por email
+            Baixe relatórios na hora em 1 clique ou configure envios automáticos por e-mail
           </p>
         </div>
-        <button className="btn-small" onClick={loadAll}>
-          <IconRefresh size={14} /> Atualizar
-        </button>
-      </div>
-
-      <div className="alert-card alert-warning" style={{ marginBottom: 20 }}>
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-          <IconAlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
-          <div>
-            <strong>Configuração adicional necessária:</strong> o envio é feito pela função <code>run-scheduled-reports</code> do Supabase, agendada de hora em hora e usando o Resend para e-mail. Se os relatórios não estão chegando, siga o passo a passo em <code>docs/RELATORIOS-AGENDADOS.md</code>. Cada relatório sai uma vez por dia, na hora configurada (horário de Brasília).
-          </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button className="btn-small" onClick={() => setGuideOpen((v) => !v)}>
+            <IconInfo size={14} /> {guideOpen ? "Fechar guia Resend" : "Como ativar e-mail automático"}
+          </button>
+          <button className="btn-small" onClick={loadAll}>
+            <IconRefresh size={14} /> Atualizar
+          </button>
         </div>
       </div>
+
+      {guideOpen && (
+        <div className="card" style={{ marginBottom: 20, borderLeft: "4px solid var(--accent)" }}>
+          <div className="card-title">Passo a passo simples: ativar envio automático por e-mail (Resend gratuito)</div>
+          <ol style={{ margin: "0 0 10px 0", paddingLeft: 20, fontSize: 13, color: "var(--text-muted)", lineHeight: 1.7 }}>
+            <li>Crie uma conta gratuita em <strong>resend.com</strong> (plano grátis envia até 100 e-mails/dia).</li>
+            <li>No painel do Resend, vá em <strong>API Keys → Create API Key</strong> e copie a chave (<code>re_...</code>).</li>
+            <li>No <strong>Supabase Dashboard → Edge Functions → Secrets</strong>, crie 2 variáveis:
+              <br /><code>RESEND_API_KEY</code> = sua chave <code>re_...</code>
+              <br /><code>REPORTS_FROM_EMAIL</code> = <code>Aponta CD &lt;onboarding@resend.dev&gt;</code> (ou seu domínio verificado)
+            </li>
+            <li>Pronto! Enquanto não configurar o Resend, você já pode usar o botão <strong>Baixar agora (CSV)</strong> em qualquer agendamento abaixo.</li>
+          </ol>
+        </div>
+      )}
 
       {error && (
         <div className="alert-card alert-danger" style={{ marginBottom: 20 }}>
@@ -186,9 +246,10 @@ export default function ReportsScheduler() {
                   borderLeft: `4px solid ${r.active ? "var(--ok)" : "var(--text-faint)"}`,
                   borderRadius: 12,
                   opacity: r.active ? 1 : 0.6,
+                  flexWrap: "wrap",
                 }}
               >
-                <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ flex: 1, minWidth: 200 }}>
                   <div style={{ fontSize: 14, fontWeight: 700 }}>{r.name}</div>
                   <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 4 }}>
                     {REPORT_TYPES.find((x) => x.value === r.report_type)?.label || r.report_type} · {describeSchedule(r)}
@@ -202,7 +263,15 @@ export default function ReportsScheduler() {
                     </div>
                   )}
                 </div>
-                <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                <div style={{ display: "flex", gap: 6, flexShrink: 0, flexWrap: "wrap" }}>
+                  <button
+                    className="btn-small btn-excel"
+                    onClick={() => handleDownloadNow(r)}
+                    disabled={downloadingId === r.id}
+                    title="Baixar CSV agora sem depender de e-mail"
+                  >
+                    <IconDownload size={13} /> {downloadingId === r.id ? "Gerando..." : "Baixar agora"}
+                  </button>
                   <button
                     className="btn-small"
                     style={{

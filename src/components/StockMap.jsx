@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Stage, Layer, Rect, Text, Line, Transformer } from "react-konva";
+import { Stage, Layer, Rect, Text, Line, Circle, Transformer } from "react-konva";
 import Konva from "konva";
 import {
   fetchMapAreas,
@@ -12,6 +12,7 @@ import {
   AREA_TYPES,
   colorForType,
   labelForType,
+  resolveSpecialAreaKind,
   groupItemsBySide,
   groupItemsByCategory,
   summarizeArea,
@@ -61,6 +62,207 @@ function occupancyColor(ratio) {
   if (ratio < 0.7) return "#f59e0b";
   if (ratio < 0.9) return "#ef4444";
   return "#7f1d1d";
+}
+
+const SPECIAL_COLORS = {
+  escada: "#7c3aed",
+  elevador: "#4f46e5",
+  conferencia_pedidos: "#10b981",
+  conferencia_transferencia: "#0284c7",
+  carro_apoio: "#d97706",
+};
+
+function renderSpecialAreaDetails(kind, world, alpha) {
+  const { x, y, width: w, height: h } = world;
+  if (w < 10 || h < 10) return null;
+
+  if (kind === "escada") {
+    const horizontal = w >= h;
+    const steps = Math.max(4, Math.min(10, Math.floor((horizontal ? w : h) / 14)));
+    const lines = [];
+    for (let i = 1; i < steps; i++) {
+      const frac = i / steps;
+      const pts = horizontal
+        ? [x + w * frac, y + 3, x + w * frac, y + h - 3]
+        : [x + 3, y + h * frac, x + w - 3, y + h * frac];
+      lines.push(
+        <Line
+          key={`step-${i}`}
+          points={pts}
+          stroke="rgba(255,255,255,0.45)"
+          strokeWidth={1.3}
+          opacity={alpha}
+          listening={false}
+          perfectDrawEnabled={false}
+        />
+      );
+    }
+    const cx = x + w / 2;
+    const cy = y + h / 2;
+    const arrowPts = horizontal
+      ? [x + w * 0.18, cy, x + w * 0.82, cy]
+      : [cx, y + h * 0.82, cx, y + h * 0.18];
+    const headPts = horizontal
+      ? [x + w * 0.72, cy - 5, x + w * 0.82, cy, x + w * 0.72, cy + 5]
+      : [cx - 5, y + h * 0.28, cx, y + h * 0.18, cx + 5, y + h * 0.28];
+    return (
+      <>
+        {lines}
+        <Line points={arrowPts} stroke="rgba(255,255,255,0.7)" strokeWidth={1.6} opacity={alpha} listening={false} perfectDrawEnabled={false} />
+        <Line points={headPts} stroke="rgba(255,255,255,0.7)" strokeWidth={1.6} opacity={alpha} listening={false} perfectDrawEnabled={false} />
+      </>
+    );
+  }
+
+  if (kind === "elevador") {
+    const pad = Math.min(w, h) * 0.14;
+    const ix = x + pad;
+    const iy = y + pad;
+    const iw = Math.max(4, w - pad * 2);
+    const ih = Math.max(4, h - pad * 2);
+    return (
+      <>
+        <Rect
+          x={ix}
+          y={iy}
+          width={iw}
+          height={ih}
+          stroke="rgba(255,255,255,0.55)"
+          strokeWidth={1.4}
+          cornerRadius={3}
+          opacity={alpha}
+          listening={false}
+          perfectDrawEnabled={false}
+        />
+        <Line
+          points={[ix, iy, ix + iw, iy + ih]}
+          stroke="rgba(255,255,255,0.28)"
+          strokeWidth={1}
+          opacity={alpha}
+          listening={false}
+          perfectDrawEnabled={false}
+        />
+        <Line
+          points={[ix + iw, iy, ix, iy + ih]}
+          stroke="rgba(255,255,255,0.28)"
+          strokeWidth={1}
+          opacity={alpha}
+          listening={false}
+          perfectDrawEnabled={false}
+        />
+        <Line
+          points={[x + w / 2, y + 3, x + w / 2, y + pad]}
+          stroke="rgba(255,255,255,0.75)"
+          strokeWidth={2}
+          opacity={alpha}
+          listening={false}
+          perfectDrawEnabled={false}
+        />
+        {h > 34 && (
+          <Text
+            x={x}
+            y={y + 4}
+            width={w}
+            align="center"
+            text="⇅ ELEVADOR"
+            fontSize={8.5}
+            fontStyle="700"
+            fill="rgba(255,255,255,0.8)"
+            opacity={alpha}
+            listening={false}
+          />
+        )}
+      </>
+    );
+  }
+
+  if (kind === "conferencia_pedidos" || kind === "conferencia_transferencia") {
+    const isTransf = kind === "conferencia_transferencia";
+    const pad = 4;
+    return (
+      <>
+        <Rect
+          x={x + pad}
+          y={y + pad}
+          width={Math.max(4, w - pad * 2)}
+          height={Math.max(4, h - pad * 2)}
+          stroke="rgba(255,255,255,0.45)"
+          strokeWidth={1.2}
+          dash={isTransf ? [5, 3] : undefined}
+          cornerRadius={4}
+          opacity={alpha}
+          listening={false}
+          perfectDrawEnabled={false}
+        />
+        {h > 36 && (
+          <Text
+            x={x}
+            y={y + 6}
+            width={w}
+            align="center"
+            text={isTransf ? "⇄ TRANSF." : "✓ PEDIDOS"}
+            fontSize={8.5}
+            fontStyle="700"
+            fill="rgba(255,255,255,0.85)"
+            opacity={alpha}
+            listening={false}
+          />
+        )}
+      </>
+    );
+  }
+
+  if (kind === "carro_apoio") {
+    const r = Math.max(2.5, Math.min(4.5, Math.min(w, h) * 0.08));
+    const wheels = [
+      [x + r + 2, y + r + 2],
+      [x + w - r - 2, y + r + 2],
+      [x + r + 2, y + h - r - 2],
+      [x + w - r - 2, y + h - r - 2],
+    ];
+    return (
+      <>
+        {wheels.map(([wx, wy], idx) => (
+          <Circle
+            key={`wh-${idx}`}
+            x={wx}
+            y={wy}
+            radius={r}
+            fill="#0f172a"
+            stroke="rgba(255,255,255,0.75)"
+            strokeWidth={1.2}
+            opacity={alpha}
+            listening={false}
+            perfectDrawEnabled={false}
+          />
+        ))}
+        <Line
+          points={[x + 4, y + 3, x + w - 4, y + 3]}
+          stroke="rgba(255,255,255,0.85)"
+          strokeWidth={2.2}
+          opacity={alpha}
+          listening={false}
+          perfectDrawEnabled={false}
+        />
+        {h > 34 && (
+          <Text
+            x={x}
+            y={y + 7}
+            width={w}
+            align="center"
+            text="APOIO"
+            fontSize={8.5}
+            fontStyle="700"
+            fill="rgba(255,255,255,0.9)"
+            opacity={alpha}
+            listening={false}
+          />
+        )}
+      </>
+    );
+  }
+
+  return null;
 }
 
 const MIN_WORLD_W = 0.02 * WORLD_W;
@@ -857,13 +1059,14 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId, entries = [
                   {!loading &&
                     decoratedAreas.map((a) => {
                       const isCorridor = a.area_type === "corredor";
+                      const specialKind = resolveSpecialAreaKind(a);
                       const isSelected = selectedArea?.id === a.id;
                       const world = areaToWorld(a);
                       const occupancy = layers.occupancy ? a.occupancy : 0.5;
                       const isHeatmapShelf = layers.heatmap && a.area_type === "prateleira";
                       const needsAttention = isHeatmapShelf && a.heatMetric?.needsSlottingAttention;
-                      const fill = a.area_type === "conferencia"
-                        ? "#10b981"
+                      const fill = specialKind
+                        ? SPECIAL_COLORS[specialKind]
                         : isCorridor
                         ? "rgba(0, 212, 255, 0.07)"
                         : isHeatmapShelf
@@ -877,6 +1080,8 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId, entries = [
                         ? "#00d4ff"
                         : needsAttention
                         ? "#fbbf24"
+                        : specialKind
+                        ? "rgba(255,255,255,0.38)"
                         : "rgba(255,255,255,0.15)";
                       const canInteract = editMode || a.matches;
 
@@ -895,7 +1100,7 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId, entries = [
                             stroke={stroke}
                             strokeWidth={isSelected ? 2.5 : 1.5}
                             dash={isCorridor ? [8, 6] : undefined}
-                            cornerRadius={isCorridor ? 14 : 7}
+                            cornerRadius={isCorridor ? 14 : specialKind === "carro_apoio" ? 10 : 7}
                             opacity={a.matches ? 1 : 0.12}
                             listening={canInteract}
                             draggable={editMode}
@@ -914,6 +1119,8 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId, entries = [
                             shadowBlur={isSelected ? 18 : 0}
                             shadowOpacity={isSelected ? 0.5 : 0}
                           />
+
+                          {specialKind && renderSpecialAreaDetails(specialKind, world, a.matches ? 1 : 0.12)}
 
                           {layers.labels && world.width > 16 && world.height > 10 && (
                             <Text

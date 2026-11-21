@@ -1,231 +1,310 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { fetchEntries } from "../lib/api";
 import {
-  fetchScheduledReports,
-  addScheduledReport,
-  updateScheduledReport,
-  deleteScheduledReport,
-  toggleScheduledReport,
-  describeSchedule,
-  REPORT_TYPES,
-  FREQUENCIES,
-  WEEKDAYS,
-} from "../lib/reports";
+  fetchFraudAlerts,
+  scanAndPersistAlerts,
+  resolveFraudAlert,
+  deleteFraudAlert,
+  deleteAllResolvedFraudAlerts,
+  FRAUD_LABELS,
+  SEVERITY_COLORS,
+} from "../lib/fraud";
 import { supabase } from "../supabaseClient";
+import { fmtClock, fmtDate } from "../lib/format";
 import {
-  IconClock,
-  IconPlus,
-  IconTrash,
+  IconShield,
   IconRefresh,
   IconCheck,
-  IconX,
-  IconAlertCircle,
+  IconTrash,
+  IconAlertTriangle,
+  IconSearch,
 } from "./Icons";
 
-export default function ReportsScheduler() {
-  const [reports, setReports] = useState([]);
+export default function FraudPanel({ operators = [] }) {
+  const [alerts, setAlerts] = useState([]);
+  const [resolvedAlerts, setResolvedAlerts] = useState([]);
+  const [tab, setTab] = useState("abertos"); // "abertos" | "resolvidos"
+  const [filterSeverity, setFilterSeverity] = useState("");
+  const [filterType, setFilterType] = useState("");
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [scanning, setScanning] = useState(false);
+  const [scanMsg, setScanMsg] = useState("");
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
 
-  // Form
-  const [name, setName] = useState("");
-  const [reportType, setReportType] = useState("apontamentos");
-  const [frequency, setFrequency] = useState("semanal");
-  const [dayOfWeek, setDayOfWeek] = useState(1);
-  const [dayOfMonth, setDayOfMonth] = useState(1);
-  const [hour, setHour] = useState(8);
-  const [emailTo, setEmailTo] = useState("");
-
-  async function loadAll() {
+  const loadAll = useCallback(async () => {
     setLoading(true);
-    const { data, error: err } = await fetchScheduledReports();
-    if (err) {
-      setError(err.message);
+    const [openRes, closedRes] = await Promise.all([
+      fetchFraudAlerts({ resolved: false, limit: 300 }),
+      fetchFraudAlerts({ resolved: true, limit: 200 }),
+    ]);
+    if (openRes.error || closedRes.error) {
+      setError((openRes.error || closedRes.error).message);
       setLoading(false);
       return;
     }
-    setReports(data || []);
+    setAlerts(openRes.data || []);
+    setResolvedAlerts(closedRes.data || []);
     setError("");
     setLoading(false);
-  }
+  }, []);
 
   useEffect(() => {
     loadAll();
     const ch = supabase
-      .channel("reports-changes")
-      .on("postgres_changes", { event: "*", schema: "public", table: "scheduled_reports" }, loadAll)
+      .channel("fraud-alerts-changes")
+      .on("postgres_changes", { event: "*", schema: "public", table: "fraud_alerts" }, loadAll)
       .subscribe();
     return () => supabase.removeChannel(ch);
-  }, []);
+  }, [loadAll]);
 
-  async function runAction(action, onSuccess) {
+  async function runScan() {
+    setScanning(true);
+    setScanMsg("");
     setError("");
-    setBusy(true);
     try {
-      const { error: err } = await action();
-      if (err) {
-        setError(err.message);
+      const { data: recentEntries, error: eErr } = await fetchEntries({ days: 30, limit: 5000 });
+      if (eErr) {
+        setError(eErr.message);
+        return;
+      }
+      const res = await scanAndPersistAlerts(recentEntries || [], operators);
+      if (res.error) {
+        setError(res.error.message);
         return;
       }
       await loadAll();
-      onSuccess?.();
+      setScanMsg(
+        res.inserted > 0
+          ? `Varredura concluída: ${res.inserted} novo(s) padrão(ões) suspeito(s) encontrado(s).`
+          : "Varredura concluída: nenhum novo padrão suspeito nos últimos 30 dias."
+      );
     } finally {
-      setBusy(false);
+      setScanning(false);
     }
   }
 
-  async function handleAdd() {
-    const n = name.trim();
-    const email = emailTo.trim();
-    if (!n) return setError("Digite um nome.");
-    if (!email || !email.includes("@")) return setError("Email inválido.");
-    await runAction(
-      () => addScheduledReport({ name: n, reportType, frequency, dayOfWeek, dayOfMonth, hour, emailTo: email }),
-      () => {
-        setName("");
-        setEmailTo("");
+  async function handleResolve(id) {
+    const { error: err } = await resolveFraudAlert(id, "admin");
+    if (err) { setError(err.message); return; }
+    await loadAll();
+  }
+
+  async function handleDelete(id) {
+    if (!window.confirm("Excluir este alerta?")) return;
+    const { error: err } = await deleteFraudAlert(id);
+    if (err) { setError(err.message); return; }
+    await loadAll();
+  }
+
+  async function handleClearResolved() {
+    if (!window.confirm("Apagar todos os alertas já resolvidos?")) return;
+    const { error: err } = await deleteAllResolvedFraudAlerts();
+    if (err) { setError(err.message); return; }
+    await loadAll();
+  }
+
+  const activeList = tab === "abertos" ? alerts : resolvedAlerts;
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return activeList.filter((a) => {
+      if (filterSeverity && a.severity !== filterSeverity) return false;
+      if (filterType && a.alert_type !== filterType) return false;
+      if (q) {
+        const hay = `${a.operator_name || ""} ${a.operator_code || ""} ${a.details || ""}`.toLowerCase();
+        if (!hay.includes(q)) return false;
       }
-    );
-  }
+      return true;
+    });
+  }, [activeList, filterSeverity, filterType, search]);
 
-  async function handleToggle(r) {
-    await runAction(() => toggleScheduledReport(r.id, !r.active));
-  }
-
-  async function handleDelete(r) {
-    if (!window.confirm(`Remover agendamento "${r.name}"?`)) return;
-    await runAction(() => deleteScheduledReport(r.id));
-  }
+  const highCount = alerts.filter((a) => a.severity === "alta").length;
+  const medCount = alerts.filter((a) => a.severity === "media").length;
 
   return (
-    <div>
+    <div className="anim-fade-up">
       <div className="page-header-row" style={{ marginBottom: 22 }}>
         <div>
-          <h1 className="page-title">Export agendado</h1>
+          <h1 className="page-title">Detecção de fraude</h1>
           <p className="page-sub" style={{ marginBottom: 0 }}>
-            Configure envios automáticos de relatórios por email
+            Identifica automaticamente apontamentos curtos (&lt;15s), muito longos (&gt;4h), excesso de encaixes e anomalias
           </p>
         </div>
-        <button className="btn-small" onClick={loadAll}>
-          <IconRefresh size={14} /> Atualizar
-        </button>
-      </div>
-
-      <div className="alert-card alert-warning" style={{ marginBottom: 20 }}>
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-          <IconAlertCircle size={16} style={{ flexShrink: 0, marginTop: 2 }} />
-          <div>
-            <strong>Configuração adicional necessária:</strong> o envio por email depende de uma Edge Function do Supabase configurada com um serviço de email (Resend, SendGrid, etc). O agendamento fica salvo aqui e é processado automaticamente quando a função estiver ativa.
-          </div>
-        </div>
-      </div>
-
-      {error && (
-        <div className="alert-card alert-danger" style={{ marginBottom: 20 }}>
-          {error}
-          <button className="btn-small" style={{ marginLeft: 12 }} onClick={() => setError("")}>Fechar</button>
-        </div>
-      )}
-
-      <div className="card" style={{ marginBottom: 20 }}>
-        <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <IconPlus size={16} /> Novo agendamento
-        </div>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
-          <input className="field" style={{ flex: 1, minWidth: 180 }} placeholder="Nome (ex: Relatório semanal gerência)" value={name} onChange={(e) => setName(e.target.value)} disabled={busy} />
-          <select className="field" style={{ width: 220 }} value={reportType} onChange={(e) => setReportType(e.target.value)} disabled={busy}>
-            {REPORT_TYPES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
-          </select>
-        </div>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
-          <select className="field" style={{ width: 140 }} value={frequency} onChange={(e) => setFrequency(e.target.value)} disabled={busy}>
-            {FREQUENCIES.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
-          </select>
-          {frequency === "semanal" && (
-            <select className="field" style={{ width: 140 }} value={dayOfWeek} onChange={(e) => setDayOfWeek(Number(e.target.value))} disabled={busy}>
-              {WEEKDAYS.map((w) => <option key={w.value} value={w.value}>{w.label}</option>)}
-            </select>
-          )}
-          {frequency === "mensal" && (
-            <input className="field" type="number" min="1" max="31" style={{ width: 100, fontFamily: "var(--font-mono)", textAlign: "center" }} placeholder="Dia" value={dayOfMonth} onChange={(e) => setDayOfMonth(Number(e.target.value))} disabled={busy} />
-          )}
-          <input className="field" type="number" min="0" max="23" style={{ width: 100, fontFamily: "var(--font-mono)", textAlign: "center" }} placeholder="Hora" value={hour} onChange={(e) => setHour(Number(e.target.value))} disabled={busy} />
-          <input className="field" style={{ flex: 1, minWidth: 220 }} placeholder="Email destino" type="email" value={emailTo} onChange={(e) => setEmailTo(e.target.value)} disabled={busy} />
-          <button className="btn-small btn-excel" onClick={handleAdd} disabled={busy}>
-            <IconPlus size={14} /> Adicionar
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button className="btn-small btn-excel" onClick={runScan} disabled={scanning}>
+            <IconShield size={14} /> {scanning ? "Analisando..." : "Escanear últimos 30 dias"}
+          </button>
+          <button className="btn-small" onClick={loadAll} disabled={loading}>
+            <IconRefresh size={14} /> Atualizar
           </button>
         </div>
       </div>
 
-      {loading ? (
-        <div className="schedule-empty">
-          <div className="loading-spinner" style={{ margin: "0 auto 14px auto" }} />
-          <div>Carregando...</div>
-        </div>
-      ) : reports.length === 0 ? (
-        <div className="card">
-          <div className="schedule-empty">
-            <div className="schedule-empty-icon"><IconClock size={36} /></div>
-            <div>Nenhum agendamento configurado.</div>
-          </div>
-        </div>
-      ) : (
-        <div className="card">
-          <div className="card-title">Agendamentos ({reports.length})</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {reports.map((r) => (
-              <div
-                key={r.id}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 14,
-                  padding: "14px 16px",
-                  background: "var(--surface-raised)",
-                  border: "1px solid var(--border)",
-                  borderLeft: `4px solid ${r.active ? "var(--ok)" : "var(--text-faint)"}`,
-                  borderRadius: 12,
-                  opacity: r.active ? 1 : 0.6,
-                }}
-              >
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700 }}>{r.name}</div>
-                  <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginTop: 4 }}>
-                    {REPORT_TYPES.find((x) => x.value === r.report_type)?.label || r.report_type} · {describeSchedule(r)}
-                  </div>
-                  <div style={{ fontSize: 12, color: "var(--accent)", marginTop: 4 }}>
-                    → {r.email_to}
-                  </div>
-                  {r.last_sent_at && (
-                    <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 4 }}>
-                      Último envio: {new Date(r.last_sent_at).toLocaleString("pt-BR")}
-                    </div>
-                  )}
-                </div>
-                <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-                  <button
-                    className="btn-small"
-                    style={{
-                      padding: "8px 12px",
-                      background: r.active ? "var(--ok-soft)" : "transparent",
-                      borderColor: r.active ? "var(--ok)" : "var(--border-strong)",
-                      color: r.active ? "var(--ok)" : "var(--text-muted)",
-                    }}
-                    onClick={() => handleToggle(r)}
-                    disabled={busy}
-                    title={r.active ? "Desativar" : "Ativar"}
-                  >
-                    {r.active ? <IconCheck size={13} /> : <IconX size={13} />}
-                  </button>
-                  <button className="btn-small" style={{ padding: "8px 12px", color: "var(--danger)", borderColor: "var(--danger)" }} onClick={() => handleDelete(r)} disabled={busy} title="Remover">
-                    <IconTrash size={13} />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
+      {error && (
+        <div className="alert-card alert-danger" style={{ marginBottom: 16 }}>
+          <IconAlertTriangle size={16} /> {error}
+          <button className="btn-small" style={{ marginLeft: "auto" }} onClick={() => setError("")}>Fechar</button>
         </div>
       )}
+
+      {scanMsg && (
+        <div className="alert-card" style={{ marginBottom: 16, background: "var(--ok-soft)", borderColor: "var(--ok)", color: "var(--ok)" }}>
+          <IconCheck size={16} /> {scanMsg}
+        </div>
+      )}
+
+      <div className="stat-strip" style={{ marginBottom: 20 }}>
+        <div className="stat-cell">
+          <div className="stat-num accent">{alerts.length}</div>
+          <div className="stat-label">Alertas abertos</div>
+        </div>
+        <div className="stat-cell">
+          <div className="stat-num danger">{highCount}</div>
+          <div className="stat-label">Severidade alta</div>
+        </div>
+        <div className="stat-cell">
+          <div className="stat-num" style={{ color: "var(--warning)" }}>{medCount}</div>
+          <div className="stat-label">Severidade média</div>
+        </div>
+        <div className="stat-cell">
+          <div className="stat-num" style={{ color: "var(--ok)" }}>{resolvedAlerts.length}</div>
+          <div className="stat-label">Resolvidos</div>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginBottom: 20 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <button className={`quick-filter-btn ${tab === "abertos" ? "active" : ""}`} onClick={() => setTab("abertos")}>
+            Abertos ({alerts.length})
+          </button>
+          <button className={`quick-filter-btn ${tab === "resolvidos" ? "active" : ""}`} onClick={() => setTab("resolvidos")}>
+            Resolvidos ({resolvedAlerts.length})
+          </button>
+
+          <select className="field" style={{ width: "auto" }} value={filterSeverity} onChange={(e) => setFilterSeverity(e.target.value)}>
+            <option value="">Todas severidades</option>
+            <option value="alta">Alta</option>
+            <option value="media">Média</option>
+            <option value="baixa">Baixa</option>
+          </select>
+
+          <select className="field" style={{ width: "auto" }} value={filterType} onChange={(e) => setFilterType(e.target.value)}>
+            <option value="">Todos os tipos</option>
+            {Object.entries(FRAUD_LABELS).map(([k, label]) => (
+              <option key={k} value={k}>{label}</option>
+            ))}
+          </select>
+
+          <div style={{ position: "relative", flex: 1, minWidth: 180 }}>
+            <span style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "var(--text-faint)", display: "flex" }}>
+              <IconSearch size={14} />
+            </span>
+            <input
+              className="field"
+              style={{ paddingLeft: 34 }}
+              placeholder="Buscar operador ou detalhe..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+
+          {tab === "resolvidos" && resolvedAlerts.length > 0 && (
+            <button className="btn-small" style={{ color: "var(--danger)", borderColor: "var(--danger)" }} onClick={handleClearResolved}>
+              <IconTrash size={13} /> Limpar resolvidos
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-title">
+          {tab === "abertos" ? "Padrões suspeitos abertos" : "Histórico de resolvidos"} ({filtered.length})
+        </div>
+
+        {loading ? (
+          <div className="schedule-empty">Carregando...</div>
+        ) : filtered.length === 0 ? (
+          <div className="schedule-empty">
+            <div className="schedule-empty-icon"><IconShield size={36} /></div>
+            <div>
+              {tab === "abertos"
+                ? "Nenhum alerta aberto. Clique em 'Escanear últimos 30 dias' para rodar uma nova verificação."
+                : "Nenhum alerta resolvido encontrado."}
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {filtered.map((a) => {
+              const sevColor = SEVERITY_COLORS[a.severity] || "var(--text-muted)";
+              return (
+                <div
+                  key={a.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 14,
+                    padding: "14px 16px",
+                    background: "var(--surface-raised)",
+                    border: "1px solid var(--border)",
+                    borderLeft: `4px solid ${sevColor}`,
+                    borderRadius: 12,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 220 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <span
+                        style={{
+                          padding: "2px 8px",
+                          borderRadius: 999,
+                          fontSize: 10.5,
+                          fontWeight: 700,
+                          textTransform: "uppercase",
+                          color: sevColor,
+                          border: `1px solid ${sevColor}`,
+                        }}
+                      >
+                        {a.severity || "media"}
+                      </span>
+                      <strong style={{ fontSize: 14 }}>
+                        {FRAUD_LABELS[a.alert_type] || a.alert_type}
+                      </strong>
+                      <span style={{ fontSize: 12.5, color: "var(--accent)", fontWeight: 600 }}>
+                        · {a.operator_name || a.operator_code} #{a.operator_code}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 13, color: "var(--text)", marginTop: 6 }}>{a.details}</div>
+                    <div style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: 4 }}>
+                      Detectado em {fmtDate(a.created_at)} às {fmtClock(a.created_at).slice(0, 5)}
+                      {a.resolved_at && ` · Resolvido em ${fmtDate(a.resolved_at)}`}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                    {!a.resolved && (
+                      <button
+                        className="btn-small"
+                        style={{ color: "var(--ok)", borderColor: "var(--ok)", background: "var(--ok-soft)" }}
+                        onClick={() => handleResolve(a.id)}
+                      >
+                        <IconCheck size={13} /> Resolver
+                      </button>
+                    )}
+                    <button
+                      className="btn-small"
+                      style={{ color: "var(--danger)", borderColor: "var(--danger)" }}
+                      onClick={() => handleDelete(a.id)}
+                      title="Excluir"
+                    >
+                      <IconTrash size={13} />
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

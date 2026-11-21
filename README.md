@@ -1,6 +1,6 @@
-# 📦 Aponta CD — Hidráulica Tropeiro
+# 📦 Aponta CD
 
-Sistema web (PWA) de **rastreamento operacional e inteligência de estoque** para o Centro de Distribuição da Hidráulica Tropeiro. Eleva a operação do CD do simples apontamento para **inteligência operacional em tempo real**: cronometragem de atividades offline-first, fila de conferência, mapa interativo 2D/3D com curva ABC e slotting, inventário cíclico automático por gatilho, alertas proativos de SLA, roteirização serpentina de coleta e importação inteligente de planilhas ERP.
+Sistema web (PWA) de **rastreamento operacional e inteligência de estoque** para Centros de Distribuição. Eleva a operação do CD do simples apontamento para **inteligência operacional em tempo real**: cronometragem de atividades offline-first, fila de conferência, mapa interativo 2D/3D com curva ABC e slotting, inventário cíclico automático por gatilho, alertas proativos de SLA, roteirização serpentina de coleta e importação inteligente de planilhas ERP.
 
 ---
 

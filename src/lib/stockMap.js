@@ -6,13 +6,41 @@ import { supabase } from "../supabaseClient";
 
 export const AREA_TYPES = [
   { value: "prateleira", label: "Prateleira", color: "#4a7ba7" },
-  { value: "conferencia", label: "Mesa de conferência", color: "#10b981" },
-  { value: "recebimento", label: "Recebimento", color: "#f59e0b" },
+  { value: "conferencia_pedidos", label: "Mesa de conferência — Pedidos", color: "#10b981" },
+  { value: "conferencia_transferencia", label: "Mesa de conferência — Transferência", color: "#0284c7" },
+  { value: "carro_apoio", label: "Carro de apoio", color: "#f59e0b" },
+  { value: "conferencia", label: "Mesa de conferência (geral)", color: "#10b981" },
+  { value: "escada", label: "Escada", color: "#7c3aed" },
+  { value: "elevador", label: "Elevador / Monta-carga", color: "#4f46e5" },
+  { value: "recebimento", label: "Recebimento", color: "#f97316" },
   { value: "escritorio", label: "Escritório", color: "#6b7280" },
   { value: "infra", label: "Infraestrutura", color: "#8b5cf6" },
   { value: "corredor", label: "Corredor", color: "#00d4ff" },
   { value: "outro", label: "Outro", color: "#1e3a5f" },
 ];
+
+export function resolveSpecialAreaKind(area) {
+  if (!area) return null;
+  const type = String(area.area_type || "").toLowerCase();
+  const text = `${area.code || ""} ${area.label || ""}`.toLowerCase();
+
+  if (type === "escada" || /\bescad/.test(text)) return "escada";
+  if (type === "elevador" || /elevad|monta[\s-]?carga/.test(text)) return "elevador";
+  if (type === "carro_apoio" || /carro[\s_-]?(de[\s_-]?)?apoio|\bapoio\b|\bcarrinho\b/.test(text)) {
+    return "carro_apoio";
+  }
+  if (
+    type === "conferencia_transferencia" ||
+    (type === "conferencia" && /transf/.test(text)) ||
+    (/mesa|conf/.test(text) && /transf/.test(text))
+  ) {
+    return "conferencia_transferencia";
+  }
+  if (type === "conferencia_pedidos" || type === "conferencia") {
+    return "conferencia_pedidos";
+  }
+  return null;
+}
 
 export const SIDES = [
   { value: "par", label: "Par (direita)", short: "PAR" },

@@ -36,6 +36,30 @@ describe("etiqueta de endereço", () => {
     expect(parseAddressLabel("END:R2|||")).toMatchObject({ side: null });
     expect(parseAddressLabel("END:R3")).toMatchObject({ areaCode: "R3", slot: "" });
   });
+  it("aceita padrão compacto de endereço do CD (ex.: 1C1105EA) com lado par=direito e ímpar=esquerdo", () => {
+    expect(parseAddressLabel("1C1105EA")).toEqual({
+      areaCode: "1C",
+      side: "impar",
+      slot: "11",
+      level: "05EA",
+      compactCode: "1C1105EA",
+    });
+    expect(parseAddressLabel("1c1205eb")).toEqual({
+      areaCode: "1C",
+      side: "par",
+      slot: "12",
+      level: "05EB",
+      compactCode: "1C1205EB",
+    });
+    expect(classifyScan("1C1105EA")).toMatchObject({
+      kind: "address",
+      areaCode: "1C",
+      side: "impar",
+      slot: "11",
+      level: "05EA",
+      compactCode: "1C1105EA",
+    });
+  });
   it("rejeita o que não é etiqueta de endereço", () => {
     expect(parseAddressLabel("7891000100103")).toBeNull();
     expect(parseAddressLabel("END:")).toBeNull();

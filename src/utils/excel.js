@@ -196,7 +196,7 @@ export function exportHistoricoExcel({
 
   // Cabeçalho-resumo
   rows.push(["RELATÓRIO DE APONTAMENTOS"]);
-  rows.push(["Hidráulica Tropeiro — Aponta CD"]);
+  rows.push(["Aponta CD — Relatório Operacional"]);
   rows.push([]);
   rows.push(["Período:", periodLabel || "todo o histórico"]);
   rows.push(["Gerado em:", fmtDateTime(agora)]);
@@ -348,7 +348,7 @@ export function exportShortagesExcel({
 
   // Cabeçalho
   rows.push(["RELATÓRIO DE FALTAS DE PRODUTO"]);
-  rows.push(["Hidráulica Tropeiro — Aponta CD"]);
+  rows.push(["Aponta CD — Relatório Operacional"]);
   rows.push([]);
   rows.push(["Período:", periodLabel || "todo o histórico"]);
   rows.push(["Gerado em:", fmtDateTime(agora)]);
@@ -475,7 +475,7 @@ export function exportErrorsExcel({
 
   const rows = [];
   rows.push(["RELATÓRIO DE ERROS DE SEPARAÇÃO"]);
-  rows.push(["Hidráulica Tropeiro — Aponta CD"]);
+  rows.push(["Aponta CD — Relatório Operacional"]);
   rows.push([]);
   rows.push(["Período:", periodLabel || "todo o histórico"]);
   rows.push(["Gerado em:", fmtDateTime(agora)]);

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../supabaseClient";
 import { fmtClock, fmtDate, todayLocalISODate } from "../lib/format";
 import { playSound } from "../lib/sounds";
@@ -8,7 +8,7 @@ import {
   IconPlus,
   IconTrash,
   IconClipboardCheck,
-  IconSun,
+  IconCloudSun,
   IconMoon,
   IconX,
 } from "./Icons";
@@ -37,6 +37,9 @@ export default function CdChecklist({ operators, isAdmin }) {
 
   const [newItemLabel, setNewItemLabel] = useState("");
   const [editingItems, setEditingItems] = useState(false);
+
+  const codeInputRef = useRef(codeInput);
+  codeInputRef.current = codeInput;
 
   const today = todayLocalISODate();
 
@@ -102,16 +105,29 @@ export default function CdChecklist({ operators, isAdmin }) {
     }
   }, [currentRun]);
 
-  function handleDigit(d) {
-    if (codeInput.length < CODE_LENGTH) setCodeInput(codeInput + d);
-  }
-  function handleBackspace() {
-    setCodeInput((p) => p.slice(0, -1));
+  // Ao trocar entre Abertura e Fechamento, volta para a tela de identificação limpa
+  function switchType(nextType) {
+    if (nextType === checklistType) return;
+    setChecklistType(nextType);
+    setLoggedOperator(null);
+    setCodeInput("");
+    setLoginError("");
   }
 
-  async function handleLogin() {
-    if (codeInput.length < CODE_LENGTH) return;
-    const op = operators.find((o) => o.code === codeInput);
+  const handleDigit = useCallback((d) => {
+    setLoginError("");
+    setCodeInput((prev) => (prev.length < CODE_LENGTH ? prev + d : prev));
+  }, []);
+
+  const handleBackspace = useCallback(() => {
+    setLoginError("");
+    setCodeInput((prev) => prev.slice(0, -1));
+  }, []);
+
+  const handleLogin = useCallback(async (overrideCode = null) => {
+    const code = (overrideCode ?? codeInputRef.current).trim();
+    if (code.length < CODE_LENGTH) return;
+    const op = operators.find((o) => o.code === code);
     if (!op) {
       setLoginError("Código não encontrado.");
       setCodeInput("");
@@ -134,12 +150,61 @@ export default function CdChecklist({ operators, isAdmin }) {
         .single();
       if (err) { setError(err.message); return; }
       setRunId(data.id);
+      setRuns((prev) => [data, ...prev]);
     }
-  }
+  }, [operators, currentRun, today, checklistType]);
 
-  function logout() {
+  // Suporte completo ao teclado físico e teclado numérico (Numpad0..9, Enter, Backspace, Escape)
+  useEffect(() => {
+    if (loggedOperator) return undefined;
+
+    function onKeyDown(e) {
+      const tag = (e.target && e.target.tagName) || "";
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+      // Aceita tanto a fileira superior quanto o teclado numérico (Numpad)
+      let digit = null;
+      if (e.key >= "0" && e.key <= "9") {
+        digit = e.key;
+      } else if (e.code && /^Numpad[0-9]$/.test(e.code)) {
+        digit = e.code.slice(6);
+      }
+
+      if (digit !== null) {
+        e.preventDefault();
+        handleDigit(digit);
+      } else if (e.key === "Backspace") {
+        e.preventDefault();
+        handleBackspace();
+      } else if (e.key === "Enter" || e.code === "NumpadEnter") {
+        e.preventDefault();
+        handleLogin();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        setCodeInput("");
+        setLoginError("");
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [loggedOperator, handleDigit, handleBackspace, handleLogin]);
+
+  // Sair corretamente: fecha a tela ativa do checklist (sem ficar preso por causa de currentRun)
+  async function logout() {
+    if (busy) return;
+    // Se nenhum item foi marcado ainda e o checklist foi recém-aberto, remove o rascunho vazio
+    if (runId && completed.size === 0 && !note.trim()) {
+      setBusy(true);
+      await supabase.from("cd_checklist_runs").delete().eq("id", runId);
+      setRuns((prev) => prev.filter((r) => r.id !== runId));
+      setRunId(null);
+      setBusy(false);
+    }
     setLoggedOperator(null);
     setCodeInput("");
+    setLoginError("");
   }
 
   async function toggleItem(itemKey) {
@@ -208,7 +273,7 @@ export default function CdChecklist({ operators, isAdmin }) {
   const dots = Array.from({ length: CODE_LENGTH }, (_, i) => i < codeInput.length);
 
   return (
-    <div>
+    <div className="anim-fade-up">
       <div className="page-header-row" style={{ marginBottom: 22 }}>
         <div>
           <h1 className="page-title">Checklist do CD</h1>
@@ -238,17 +303,17 @@ export default function CdChecklist({ operators, isAdmin }) {
         <span className="quick-filters-label">Tipo:</span>
         <button
           className={`quick-filter-btn ${checklistType === "abertura" ? "active" : ""}`}
-          onClick={() => setChecklistType("abertura")}
+          onClick={() => switchType("abertura")}
           style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
         >
-          <IconSun size={13} /> Abertura
+          <IconCloudSun size={15} /> Abertura
         </button>
         <button
           className={`quick-filter-btn ${checklistType === "fechamento" ? "active" : ""}`}
-          onClick={() => setChecklistType("fechamento")}
+          onClick={() => switchType("fechamento")}
           style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
         >
-          <IconMoon size={13} /> Fechamento
+          <IconMoon size={14} /> Fechamento
         </button>
       </div>
 
@@ -288,14 +353,16 @@ export default function CdChecklist({ operators, isAdmin }) {
         </div>
       )}
 
-      {!loggedOperator && !currentRun && (
+      {!loggedOperator && (
         <div className="schedule-login-wrap">
           <div className="schedule-login-card">
             <div className="schedule-login-title">
               {checklistType === "abertura" ? "Abrir checklist" : "Fechar checklist"}
             </div>
             <div style={{ fontSize: 12.5, color: "var(--text-muted)", marginBottom: 14, textAlign: "center" }}>
-              Digite seu código para começar
+              {currentRun
+                ? `Em andamento por ${currentRun.operator_name} (${(currentRun.completed_items || []).length} marcados) — digite seu código para continuar`
+                : "Digite seu código (ou use o teclado numérico) para começar"}
             </div>
             <div className="schedule-login-dots">
               {dots.map((filled, i) => (
@@ -304,18 +371,22 @@ export default function CdChecklist({ operators, isAdmin }) {
             </div>
             <div className="kiosk-keypad">
               {["1","2","3","4","5","6","7","8","9"].map((d) => (
-                <button key={d} className="kiosk-key" onClick={() => handleDigit(d)}>{d}</button>
+                <button key={d} type="button" className="kiosk-key" onClick={() => handleDigit(d)}>{d}</button>
               ))}
-              <button className="kiosk-key kiosk-key-muted" onClick={handleBackspace}>←</button>
-              <button className="kiosk-key" onClick={() => handleDigit("0")}>0</button>
-              <button className="kiosk-key kiosk-key-primary" onClick={handleLogin}>OK</button>
+              <button type="button" className="kiosk-key kiosk-key-muted" onClick={handleBackspace} aria-label="Apagar">←</button>
+              <button type="button" className="kiosk-key" onClick={() => handleDigit("0")}>0</button>
+              <button type="button" className="kiosk-key kiosk-key-primary" onClick={() => handleLogin()}>OK</button>
             </div>
-            {loginError && <p className="kiosk-terminal-error">{loginError}</p>}
+            {loginError ? (
+              <p className="kiosk-terminal-error">{loginError}</p>
+            ) : (
+              <p className="kiosk-terminal-hint">digite pelo teclado ou toque nos números · Enter confirma</p>
+            )}
           </div>
         </div>
       )}
 
-      {(loggedOperator || currentRun) && (
+      {loggedOperator && (
         <div className="card">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
             <div className="card-title" style={{ marginBottom: 0, display: "flex", alignItems: "center", gap: 8 }}>
@@ -324,7 +395,8 @@ export default function CdChecklist({ operators, isAdmin }) {
             </div>
             <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
               {completed.size} / {currentItems.length} concluídos
-              {currentRun && ` · iniciado por ${currentRun.operator_name}`}
+              {" · "}<strong>{loggedOperator.name}</strong>
+              {currentRun && currentRun.operator_code !== loggedOperator.code && ` (iniciado por ${currentRun.operator_name})`}
             </div>
           </div>
 
@@ -343,6 +415,7 @@ export default function CdChecklist({ operators, isAdmin }) {
                     border: `1px solid ${isDone ? "var(--ok)" : "var(--border)"}`,
                     borderRadius: 10,
                     cursor: "pointer",
+                    transition: "all 180ms ease",
                   }}
                   onClick={() => toggleItem(it.item_key)}
                 >
@@ -360,6 +433,7 @@ export default function CdChecklist({ operators, isAdmin }) {
                   </span>
                   {editingItems && isAdmin && (
                     <button
+                      type="button"
                       className="btn-small"
                       style={{ padding: "5px 9px", color: "var(--danger)", borderColor: "var(--danger)" }}
                       onClick={(e) => { e.stopPropagation(); removeItem(it.id); }}
@@ -381,7 +455,7 @@ export default function CdChecklist({ operators, isAdmin }) {
                 value={newItemLabel}
                 onChange={(e) => setNewItemLabel(e.target.value)}
               />
-              <button className="btn-small btn-excel" onClick={addItem}>
+              <button type="button" className="btn-small btn-excel" onClick={addItem}>
                 <IconPlus size={14} /> Adicionar
               </button>
             </div>
@@ -401,6 +475,7 @@ export default function CdChecklist({ operators, isAdmin }) {
 
           <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
             <button
+              type="button"
               className="btn btn-primary"
               onClick={finishChecklist}
               disabled={busy || completed.size === 0}
@@ -408,7 +483,7 @@ export default function CdChecklist({ operators, isAdmin }) {
             >
               {busy ? "Salvando..." : `Finalizar checklist (${completed.size}/${currentItems.length})`}
             </button>
-            <button className="btn-small" onClick={logout} disabled={busy}>
+            <button type="button" className="btn-small" onClick={logout} disabled={busy}>
               Sair
             </button>
           </div>

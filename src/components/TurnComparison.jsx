@@ -3,7 +3,7 @@ import { fmtDuration } from "../lib/format";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
-import { IconTrendingUp, IconSun, IconMoon } from "./Icons";
+import { IconTrendingUp, IconSun, IconCloudSun } from "./Icons";
 
 function isManha(iso) {
   const h = new Date(iso).getHours();
@@ -79,7 +79,7 @@ export default function TurnComparison({ entries = [], activities = [], separati
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
         <div className="card" style={{ borderLeft: "4px solid var(--warning)" }}>
           <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <IconSun size={16} /> Turno Manhã
+            <IconCloudSun size={18} /> Turno Manhã
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <Metric label="Registros" value={stats.manha.total} />
@@ -93,7 +93,7 @@ export default function TurnComparison({ entries = [], activities = [], separati
 
         <div className="card" style={{ borderLeft: "4px solid var(--accent)" }}>
           <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <IconMoon size={16} /> Turno Tarde
+            <IconSun size={18} /> Turno Tarde
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <Metric label="Registros" value={stats.tarde.total} delta={delta(stats.manha.total, stats.tarde.total)} />

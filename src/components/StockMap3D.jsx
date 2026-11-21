@@ -2,7 +2,14 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import { fetchMapAreas, fetchMapItems, colorForType, labelForType, labelForSide } from "../lib/stockMap";
+import {
+  fetchMapAreas,
+  fetchMapItems,
+  colorForType,
+  labelForType,
+  labelForSide,
+  resolveSpecialAreaKind,
+} from "../lib/stockMap";
 import { fetchSystemStatus, upsertSystemStatus, fetchStockMapHistory, fetchConferenceHistory } from "../lib/api";
 import { fetchRecentScans } from "../lib/mapScan";
 import { computeSlottingAnalysis, heatmapColor, abcColor } from "../lib/slotting";
@@ -46,6 +53,187 @@ function webglAvailable() {
   } catch {
     return false;
   }
+}
+
+function buildStairs3D(m, floorHeightM) {
+  const grp = new THREE.Group();
+  grp.position.set(m.x, m.y, m.z);
+  const alongX = m.w >= m.d;
+  const runLen = alongX ? m.w : m.d;
+  const width = alongX ? m.d : m.w;
+  const totalH = Math.min(floorHeightM, Math.max(2.0, floorHeightM * 0.92));
+  const steps = Math.max(6, Math.min(14, Math.round(runLen / 0.36)));
+  const stepLen = runLen / steps;
+  const stepRise = totalH / steps;
+
+  const treadMat = new THREE.MeshStandardMaterial({ color: "#7c3aed", roughness: 0.6 });
+  const railMat = new THREE.MeshStandardMaterial({ color: "#cbd5e1", metalness: 0.4, roughness: 0.4 });
+
+  for (let i = 0; i < steps; i++) {
+    const h = stepRise * (i + 1);
+    const geom = alongX
+      ? new THREE.BoxGeometry(stepLen * 0.96, h, width * 0.92)
+      : new THREE.BoxGeometry(width * 0.92, h, stepLen * 0.96);
+    const mesh = new THREE.Mesh(geom, treadMat);
+    const posAlong = -runLen / 2 + stepLen * (i + 0.5);
+    mesh.position.set(alongX ? posAlong : 0, h / 2, alongX ? 0 : posAlong);
+    grp.add(mesh);
+  }
+
+  // Corrimãos laterais inclinados
+  const slopeLen = Math.hypot(runLen, totalH);
+  const slopeAngle = Math.atan2(totalH, runLen);
+  [-1, 1].forEach((sgn) => {
+    const rail = new THREE.Mesh(new THREE.BoxGeometry(alongX ? slopeLen : 0.06, 0.06, alongX ? 0.06 : slopeLen), railMat);
+    rail.position.set(
+      alongX ? 0 : (sgn * width * 0.46),
+      totalH / 2 + 0.75,
+      alongX ? (sgn * width * 0.46) : 0
+    );
+    if (alongX) rail.rotation.z = slopeAngle;
+    else rail.rotation.x = -slopeAngle;
+    grp.add(rail);
+  });
+
+  return { group: grp, height: totalH + 0.8 };
+}
+
+function buildElevator3D(m, floorHeightM) {
+  const grp = new THREE.Group();
+  grp.position.set(m.x, m.y, m.z);
+  const shaftH = Math.max(3.2, floorHeightM);
+
+  const glassMat = new THREE.MeshStandardMaterial({
+    color: "#4f46e5",
+    transparent: true,
+    opacity: 0.34,
+    roughness: 0.25,
+    metalness: 0.2,
+  });
+  const frameMat = new THREE.MeshStandardMaterial({ color: "#94a3b8", metalness: 0.5, roughness: 0.35 });
+  const doorMat = new THREE.MeshStandardMaterial({ color: "#1e1b4b", metalness: 0.4, roughness: 0.4 });
+  const capMat = new THREE.MeshStandardMaterial({ color: "#6366f1", roughness: 0.4 });
+
+  // Poço translúcido
+  const shaft = new THREE.Mesh(new THREE.BoxGeometry(m.w * 0.94, shaftH, m.d * 0.94), glassMat);
+  shaft.position.y = shaftH / 2;
+  grp.add(shaft);
+
+  // 4 pilares metálicos nos cantos
+  const pw = 0.09;
+  [-1, 1].forEach((sx) => {
+    [-1, 1].forEach((sz) => {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(pw, shaftH, pw), frameMat);
+      post.position.set((sx * m.w) / 2 * 0.94, shaftH / 2, (sz * m.d) / 2 * 0.94);
+      grp.add(post);
+    });
+  });
+
+  // Portas duplas frontais
+  const doorH = Math.min(2.3, shaftH * 0.72);
+  const doorW = m.w * 0.36;
+  [-1, 1].forEach((sgn) => {
+    const door = new THREE.Mesh(new THREE.BoxGeometry(doorW, doorH, 0.08), doorMat);
+    door.position.set(sgn * (doorW / 2 + 0.03), doorH / 2 + 0.04, (m.d / 2) * 0.95);
+    grp.add(door);
+  });
+
+  // Casa de máquina no topo
+  const cap = new THREE.Mesh(new THREE.BoxGeometry(m.w * 0.98, 0.26, m.d * 0.98), capMat);
+  cap.position.y = shaftH + 0.13;
+  grp.add(cap);
+
+  return { group: grp, height: shaftH + 0.3 };
+}
+
+function buildConferenceTable3D(m, kind) {
+  const grp = new THREE.Group();
+  grp.position.set(m.x, m.y, m.z);
+  const isTransf = kind === "conferencia_transferencia";
+  const topColor = isTransf ? "#0284c7" : "#10b981";
+  const trimColor = isTransf ? "#38bdf8" : "#34d399";
+  const tableH = 0.92;
+
+  const legMat = new THREE.MeshStandardMaterial({ color: "#334155", metalness: 0.4, roughness: 0.5 });
+  const topMat = new THREE.MeshStandardMaterial({ color: topColor, roughness: 0.45 });
+  const trimMat = new THREE.MeshStandardMaterial({ color: trimColor, roughness: 0.3 });
+
+  // Tampo principal
+  const top = new THREE.Mesh(new THREE.BoxGeometry(m.w * 0.94, 0.08, m.d * 0.94), topMat);
+  top.position.y = tableH;
+  grp.add(top);
+
+  // Prateleira inferior de apoio
+  const shelf = new THREE.Mesh(new THREE.BoxGeometry(m.w * 0.86, 0.05, m.d * 0.86), legMat);
+  shelf.position.y = 0.28;
+  grp.add(shelf);
+
+  // Faixa superior de identificação (Pedidos = verde, Transferência = azul)
+  const trim = new THREE.Mesh(new THREE.BoxGeometry(m.w * 0.9, 0.02, Math.max(0.14, m.d * 0.18)), trimMat);
+  trim.position.set(0, tableH + 0.05, 0);
+  grp.add(trim);
+
+  // 4 pés metálicos
+  [-1, 1].forEach((sx) => {
+    [-1, 1].forEach((sz) => {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.07, tableH, 0.07), legMat);
+      leg.position.set(sx * (m.w * 0.42), tableH / 2, sz * (m.d * 0.42));
+      grp.add(leg);
+    });
+  });
+
+  // Mini monitor/terminal na ponta da mesa
+  const screen = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.24, 0.05), new THREE.MeshStandardMaterial({ color: "#0f172a", emissive: topColor, emissiveIntensity: 0.25 }));
+  screen.position.set(m.w * 0.28, tableH + 0.22, -m.d * 0.26);
+  grp.add(screen);
+
+  return { group: grp, height: tableH + 0.4 };
+}
+
+function buildSupportCart3D(m) {
+  const grp = new THREE.Group();
+  grp.position.set(m.x, m.y, m.z);
+  const cartH = 0.86;
+  const w = Math.max(0.65, m.w * 0.9);
+  const d = Math.max(0.55, m.d * 0.9);
+
+  const trayMat = new THREE.MeshStandardMaterial({ color: "#f59e0b", roughness: 0.45, metalness: 0.15 });
+  const frameMat = new THREE.MeshStandardMaterial({ color: "#cbd5e1", metalness: 0.55, roughness: 0.35 });
+  const wheelMat = new THREE.MeshStandardMaterial({ color: "#0f172a", roughness: 0.85 });
+
+  // 4 rodízios (rodas)
+  const wheelGeom = new THREE.CylinderGeometry(0.08, 0.08, 0.06, 12);
+  [-1, 1].forEach((sx) => {
+    [-1, 1].forEach((sz) => {
+      const wh = new THREE.Mesh(wheelGeom, wheelMat);
+      wh.rotation.z = Math.PI / 2;
+      wh.position.set(sx * (w * 0.42), 0.08, sz * (d * 0.42));
+      grp.add(wh);
+    });
+  });
+
+  // 2 bandejas (inferior e superior)
+  [0.24, cartH].forEach((yy) => {
+    const tray = new THREE.Mesh(new THREE.BoxGeometry(w, 0.06, d), trayMat);
+    tray.position.y = yy;
+    grp.add(tray);
+  });
+
+  // 4 hastes de canto
+  [-1, 1].forEach((sx) => {
+    [-1, 1].forEach((sz) => {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.045, cartH - 0.12, 0.045), frameMat);
+      post.position.set(sx * (w * 0.45), (cartH + 0.12) / 2, sz * (d * 0.45));
+      grp.add(post);
+    });
+  });
+
+  // Alça de empurrar elevada em uma extremidade
+  const handleBar = new THREE.Mesh(new THREE.BoxGeometry(w * 0.92, 0.045, 0.045), frameMat);
+  handleBar.position.set(0, cartH + 0.18, -d * 0.48);
+  grp.add(handleBar);
+
+  return { group: grp, height: cartH + 0.25 };
 }
 
 export default function StockMap3D({ isAdmin, onScanArea, onOpenMap, entries = [], shortages = [] }) {
@@ -263,9 +451,35 @@ export default function StockMap3D({ isAdmin, onScanArea, onOpenMap, entries = [
       const others = floorAreas.filter((a) => a.area_type !== "prateleira");
       const picks = [];
 
-      // áreas que não são estante: lajes/blocos coloridos
+      // áreas que não são estante: modelos 3D dedicados (escada, elevador, mesas, carros) ou blocos coloridos
       others.forEach((a) => {
         const m = areaToMeters(a, cfg);
+        const specialKind = resolveSpecialAreaKind(a);
+
+        if (specialKind) {
+          let built;
+          if (specialKind === "escada") built = buildStairs3D(m, cfg.floorHeightM);
+          else if (specialKind === "elevador") built = buildElevator3D(m, cfg.floorHeightM);
+          else if (specialKind === "carro_apoio") built = buildSupportCart3D(m);
+          else built = buildConferenceTable3D(m, specialKind);
+
+          group.add(built.group);
+
+          const pick = new THREE.Mesh(
+            new THREE.BoxGeometry(m.w, built.height, m.d),
+            new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
+          );
+          pick.position.set(m.x, m.y + built.height / 2, m.z);
+          pick.userData = { areaId: a.id, floor: fl };
+          group.add(pick);
+          picks.push(pick);
+
+          const label = makeLabel(a.code || a.label || "");
+          label.position.set(m.x, m.y + built.height + 0.75, m.z);
+          group.add(label);
+          return;
+        }
+
         const h = a.area_type === "escritorio" ? 2.8 : a.area_type === "infra" ? 1.2 : a.area_type === "corredor" ? 0.04 : 0.08;
         const mesh = new THREE.Mesh(
           new THREE.BoxGeometry(m.w, h, m.d),

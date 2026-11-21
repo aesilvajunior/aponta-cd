@@ -41,17 +41,34 @@ export function addressLabelPayload({ areaCode, side = null, slot = "", level = 
 }
 
 // "END:R1D|PAR|03|2" -> { areaCode: "R1D", side: "par", slot: "03", level: "2" }
+// Também reconhece endereço compacto do CD (ex.: "1C1105EA" -> rua 1C, prédio/pos 11 [ímpar=esquerdo], nível 05, sufixo EA)
 export function parseAddressLabel(text) {
   const t = normalizeScan(text);
-  if (!t.toUpperCase().startsWith(ADDRESS_PREFIX)) return null;
-  const [areaCode, side, slot, level] = t.slice(ADDRESS_PREFIX.length).split("|");
-  if (!areaCode || !areaCode.trim()) return null;
-  return {
-    areaCode: areaCode.trim().toUpperCase(),
-    side: normalizeSide(side),
-    slot: (slot || "").trim(),
-    level: (level || "").trim(),
-  };
+  if (t.toUpperCase().startsWith(ADDRESS_PREFIX)) {
+    const [areaCode, side, slot, level] = t.slice(ADDRESS_PREFIX.length).split("|");
+    if (!areaCode || !areaCode.trim()) return null;
+    return {
+      areaCode: areaCode.trim().toUpperCase(),
+      side: normalizeSide(side),
+      slot: (slot || "").trim(),
+      level: (level || "").trim(),
+    };
+  }
+  // Formato compacto do CD: <rua ex: 1C><pos 2 dígitos ex: 11><nivel 2 dígitos ex: 05><sufixo ex: EA>
+  const compact = t.toUpperCase().match(/^(\d+[A-Z])(\d{2})(\d{2})([A-Z]{1,3})$/);
+  if (compact) {
+    const [, areaCode, pos, lvl, suffix] = compact;
+    const posNum = Number(pos);
+    const side = Number.isFinite(posNum) ? (posNum % 2 === 0 ? "par" : "impar") : null;
+    return {
+      areaCode,
+      side,
+      slot: pos,
+      level: `${lvl}${suffix}`,
+      compactCode: t.toUpperCase(),
+    };
+  }
+  return null;
 }
 
 // Classifica um bip: { kind: "empty" | "address" | "badge" | "product", ... }

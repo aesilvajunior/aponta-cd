@@ -10,16 +10,27 @@ import {
 } from "../lib/slaMonitor";
 import { fetchConferenceQueue } from "../lib/conference";
 import { fetchPauseLogs, fetchTeamGoals } from "../lib/api";
+import { IconCloudSun, IconSun, IconX } from "./Icons";
 
 const PERIODS = [
+  { key: 7, label: "7 dias" },
+  { key: 14, label: "14 dias" },
   { key: 28, label: "4 semanas" },
   { key: 56, label: "8 semanas" },
   { key: 112, label: "16 semanas" },
+  { key: 0, label: "Todo o histórico" },
 ];
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
 export default function Workload({ entries = [], activeSessions = [], onNavigate }) {
   const [days, setDays] = useState(56);
+  const [filterShift, setFilterShift] = useState("");
+  const [filterActivity, setFilterActivity] = useState("");
+  const [filterOperator, setFilterOperator] = useState("");
+  const [filterWeekday, setFilterWeekday] = useState("");
+  const [filterStation, setFilterStation] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+
   const [slaConfig, setSlaConfig] = useState(() => readLocalSlaConfig());
   const [slaEditOpen, setSlaEditOpen] = useState(false);
   const [slaSavedMsg, setSlaSavedMsg] = useState("");
@@ -39,6 +50,58 @@ export default function Workload({ entries = [], activeSessions = [], onNavigate
       setTeamGoals(tg?.data || []);
     });
   }, []);
+
+  // Opções dinâmicas para os filtros
+  const filterOptions = useMemo(() => {
+    const acts = new Set();
+    const ops = new Map();
+    const stations = new Set();
+    entries.forEach((e) => {
+      if (e.activity) acts.add(e.activity);
+      if (e.operator_code) ops.set(e.operator_code, e.operator_name || e.operator_code);
+      if (e.station) stations.add(e.station);
+    });
+    return {
+      activities: [...acts].sort((a, b) => a.localeCompare(b, "pt-BR")),
+      operators: [...ops.entries()].sort((a, b) => a[1].localeCompare(b[1], "pt-BR")),
+      stations: [...stations].sort((a, b) => a.localeCompare(b, "pt-BR")),
+    };
+  }, [entries]);
+
+  const list = useMemo(() => {
+    const since = days > 0 ? Date.now() - days * 86400000 : 0;
+    const q = searchQuery.trim().toLowerCase();
+    return entries.filter((e) => {
+      const startMs = new Date(e.start_time).getTime();
+      if (since && startMs < since) return false;
+      if (filterShift) {
+        const sh = e.shift || (new Date(startMs).getHours() < 14 ? "Manhã" : "Tarde");
+        if (sh !== filterShift) return false;
+      }
+      if (filterActivity && e.activity !== filterActivity) return false;
+      if (filterOperator && e.operator_code !== filterOperator) return false;
+      if (filterWeekday !== "" && new Date(startMs).getDay() !== Number(filterWeekday)) return false;
+      if (filterStation && (e.station || "") !== filterStation) return false;
+      if (q) {
+        const hay = `${e.operator_name || ""} ${e.operator_code || ""} ${e.activity || ""} ${e.order_number || ""} ${e.customer_name || ""}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [entries, days, filterShift, filterActivity, filterOperator, filterWeekday, filterStation, searchQuery]);
+
+  const hasExtraFilters = Boolean(
+    filterShift || filterActivity || filterOperator || filterWeekday !== "" || filterStation || searchQuery.trim()
+  );
+
+  function clearFilters() {
+    setFilterShift("");
+    setFilterActivity("");
+    setFilterOperator("");
+    setFilterWeekday("");
+    setFilterStation("");
+    setSearchQuery("");
+  }
 
   const shiftStatus = useMemo(
     () => computeShiftProductivityStatus(entries, teamGoals, slaConfig),
@@ -65,11 +128,6 @@ export default function Workload({ entries = [], activeSessions = [], onNavigate
     setTimeout(() => setSlaSavedMsg(""), 2500);
   }
 
-  const list = useMemo(() => {
-    const since = Date.now() - days * 86400000;
-    return entries.filter((e) => new Date(e.start_time).getTime() >= since);
-  }, [entries, days]);
-
   const heat = useMemo(() => buildHeatmap(list), [list]);
   const averages = useMemo(() => weekdayAverages(list), [list]);
   const forecast = useMemo(() => forecastNextDays(list, 7), [list]);
@@ -82,13 +140,13 @@ export default function Workload({ entries = [], activeSessions = [], onNavigate
   const maxForecast = Math.max(1, ...forecast.map((f) => f.expected));
 
   return (
-    <div>
-      <div className="page-header-row" style={{ marginBottom: 22 }}>
+    <div className="anim-fade-up">
+      <div className="page-header-row" style={{ marginBottom: 18 }}>
         <div>
           <h1 className="page-title">Carga de trabalho</h1>
           <p className="page-sub" style={{ marginBottom: 0 }}>
             Em que dias e horários o CD mais trabalha, quanto deve vir nos próximos dias e quem está rendendo
-            de forma justa. Base: {list.length} lançamentos.
+            de forma justa. Base: <strong>{list.length}</strong>{hasExtraFilters ? ` de ${entries.length}` : ""} lançamentos.
           </p>
         </div>
         <select className="field" style={{ width: "auto" }} value={days} onChange={(e) => setDays(Number(e.target.value))} aria-label="Período">
@@ -96,8 +154,80 @@ export default function Workload({ entries = [], activeSessions = [], onNavigate
         </select>
       </div>
 
+      {/* Barra completa de filtros */}
+      <div className="card" style={{ marginBottom: 20 }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <div style={{ display: "inline-flex", gap: 4 }}>
+            <button
+              type="button"
+              className={`quick-filter-btn ${filterShift === "" ? "active" : ""}`}
+              onClick={() => setFilterShift("")}
+            >
+              Todos turnos
+            </button>
+            <button
+              type="button"
+              className={`quick-filter-btn ${filterShift === "Manhã" ? "active" : ""}`}
+              onClick={() => setFilterShift(filterShift === "Manhã" ? "" : "Manhã")}
+              style={{ display: "inline-flex", alignItems: "center", gap: 5 }}
+            >
+              <IconCloudSun size={14} /> Manhã
+            </button>
+            <button
+              type="button"
+              className={`quick-filter-btn ${filterShift === "Tarde" ? "active" : ""}`}
+              onClick={() => setFilterShift(filterShift === "Tarde" ? "" : "Tarde")}
+              style={{ display: "inline-flex", alignItems: "center", gap: 5 }}
+            >
+              <IconSun size={14} /> Tarde
+            </button>
+          </div>
+
+          <select className="field" style={{ width: "auto", minWidth: 160 }} value={filterActivity} onChange={(e) => setFilterActivity(e.target.value)} aria-label="Filtrar por atividade">
+            <option value="">Todas atividades</option>
+            {filterOptions.activities.map((a) => <option key={a} value={a}>{a}</option>)}
+          </select>
+
+          <select className="field" style={{ width: "auto", minWidth: 160 }} value={filterOperator} onChange={(e) => setFilterOperator(e.target.value)} aria-label="Filtrar por operador">
+            <option value="">Todos operadores</option>
+            {filterOptions.operators.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
+          </select>
+
+          <select className="field" style={{ width: "auto" }} value={filterWeekday} onChange={(e) => setFilterWeekday(e.target.value)} aria-label="Filtrar por dia da semana">
+            <option value="">Todos os dias</option>
+            {[1, 2, 3, 4, 5, 6, 0].map((wd) => <option key={wd} value={wd}>{WEEKDAYS[wd]}</option>)}
+          </select>
+
+          {filterOptions.stations.length > 0 && (
+            <select className="field" style={{ width: "auto" }} value={filterStation} onChange={(e) => setFilterStation(e.target.value)} aria-label="Filtrar por estação">
+              <option value="">Todas estações</option>
+              {filterOptions.stations.map((st) => <option key={st} value={st}>{st}</option>)}
+            </select>
+          )}
+
+          <input
+            className="field"
+            style={{ flex: 1, minWidth: 160 }}
+            placeholder="Buscar pedido, cliente ou operador..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            aria-label="Buscar lançamentos"
+          />
+
+          {hasExtraFilters && (
+            <button type="button" className="btn-small" onClick={clearFilters}>
+              <IconX size={13} /> Limpar filtros
+            </button>
+          )}
+        </div>
+      </div>
+
       {list.length === 0 ? (
-        <div className="card"><p style={{ margin: 0, color: "var(--text-muted)" }}>Sem lançamentos no período.</p></div>
+        <div className="card">
+          <p style={{ margin: 0, color: "var(--text-muted)" }}>
+            {hasExtraFilters ? "Nenhum lançamento encontrado com os filtros aplicados." : "Sem lançamentos no período."}
+          </p>
+        </div>
       ) : (
         <>
           <div className="card" style={{ marginBottom: 20 }}>
@@ -118,7 +248,8 @@ export default function Workload({ entries = [], activeSessions = [], onNavigate
             {shiftStatus.active && (
               <div style={{ padding: "10px 14px", borderRadius: 10, background: shiftStatus.belowSla ? "var(--danger-soft)" : "var(--surface-raised)", border: `1px solid ${shiftStatus.belowSla ? "var(--danger)" : "var(--border)"}`, marginBottom: 12 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <span style={{ fontSize: 13, fontWeight: 700 }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    {shiftStatus.shift === "Manhã" ? <IconCloudSun size={15} /> : <IconSun size={15} />}
                     Turno {shiftStatus.shift} (em andamento · {shiftStatus.elapsedHours}h)
                   </span>
                   <span style={{ fontFamily: "var(--font-mono)", fontSize: 13, fontWeight: 700, color: shiftStatus.belowSla ? "var(--danger)" : "var(--ok)" }}>
