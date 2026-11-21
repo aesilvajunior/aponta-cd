@@ -426,18 +426,16 @@ export default function LandingPage({
             </p>
 
             <div className="br-hero-cta">
-              <button
-                type="button"
-                className="br-cta-primary"
-                onClick={openEmployeeArea}
-              >
-                {isOperatorGate
-                  ? "Área do Funcionário"
-                  : isAuthenticated
-                  ? "Ir para a Operação"
-                  : "Entrar no sistema"}{" "}
-                <IconChevronRight size={16} />
-              </button>
+              {!isOperatorGate && (
+                <button
+                  type="button"
+                  className="br-cta-primary"
+                  onClick={openEmployeeArea}
+                >
+                  {isAuthenticated ? "Ir para a Operação" : "Entrar no sistema"}{" "}
+                  <IconChevronRight size={16} />
+                </button>
+              )}
 
               {isAuthenticated && onOpenMap2D && onOpenMap3D ? (
                 <>
@@ -467,7 +465,7 @@ export default function LandingPage({
             </div>
           </div>
 
-          {/* Right column: Clean Editorial Showcase Card with 1-click "Área do Funcionário" */}
+          {/* Right column: Clean Editorial Showcase Card (sem botão duplicado de login) */}
           <div className="br-hero-right">
             <div className="br-studio-showcase">
               <BrandMark variant="full" />
@@ -479,18 +477,6 @@ export default function LandingPage({
                     : `${operators.filter((o) => o.active !== false).length} OPERADORES ATIVOS`}
                 </span>
               </div>
-              {isOperatorGate && (
-                <button
-                  type="button"
-                  className="br-submit-btn"
-                  style={{ marginTop: 6 }}
-                  onClick={openEmployeeArea}
-                >
-                  <IconLock size={15} />
-                  <span>Acessar Área do Funcionário</span>
-                  <IconChevronRight size={16} />
-                </button>
-              )}
             </div>
           </div>
         </div>

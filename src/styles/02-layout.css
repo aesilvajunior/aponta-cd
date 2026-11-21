@@ -7,7 +7,7 @@
   height: 100dvh;
   display: flex;
   overflow: hidden;
-  background: var(--bg);
+  background: var(--bg-gradient, var(--bg));
 }
 
 /* ==================================================================

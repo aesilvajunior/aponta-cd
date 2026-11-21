@@ -67,7 +67,7 @@ function activityIcon(name) {
   return <IconActivity size={26} />;
 }
 
-export default function Kiosk({ operators, activities, vehicles = [], entries = [], currentOperator = null, refreshEntries }) {
+export default function Kiosk({ operators, activities, vehicles = [], entries = [], activeSessions = [], isAdmin = false, currentOperator = null, refreshEntries }) {
   const { resolvedTheme, setTheme } = useTheme();
 
   const [codeInput, setCodeInput] = useState("");
@@ -899,6 +899,12 @@ export default function Kiosk({ operators, activities, vehicles = [], entries = 
     return [...favList, ...rest];
   })();
 
+  // Se já existe sessão ativa em activeSessions para o operador logado, sincroniza imediatamente
+  const liveActiveForLogged = loggedOperator
+    ? (activeSessions || []).find((s) => String(s.operator_code) === String(loggedOperator.code)) || null
+    : null;
+  const effectiveSession = session || liveActiveForLogged;
+
   const myTodayEntries = (() => {
     if (!loggedOperator || !Array.isArray(entries)) return [];
     const today = todayLocalISODate();
@@ -1061,10 +1067,19 @@ export default function Kiosk({ operators, activities, vehicles = [], entries = 
                   </div>
                 </div>
               </div>
-              <button className="kiosk-operator-change" onClick={() => reset(true)}>
-                Trocar operador
-              </button>
+              {(!effectiveSession || isAdmin) && (
+                <button className="kiosk-operator-change" onClick={() => reset(true)}>
+                  Trocar operador
+                </button>
+              )}
             </div>
+
+            {effectiveSession && !session && (
+              <div className="alert-card alert-warning" style={{ marginBottom: 16 }}>
+                <strong>Atividade em andamento: {effectiveSession.activity}.</strong>{" "}
+                Finalize a atividade atual antes de iniciar outra.
+              </div>
+            )}
 
             {/* Painel Pessoal do Turno (ocupa o centro de forma útil no lugar do teclado numérico) */}
             <div className="kiosk-personal-strip">
@@ -1088,7 +1103,7 @@ export default function Kiosk({ operators, activities, vehicles = [], entries = 
               </div>
             </div>
 
-            {!session && activities.length > 0 && !orderFormActivity && (
+            {(!effectiveSession || isAdmin) && !session && activities.length > 0 && !orderFormActivity && (
               <div className="kiosk-activities">
                 <div className="kiosk-section-title">Iniciar atividade em 1 clique</div>
                 <div className="kiosk-activities-grid">

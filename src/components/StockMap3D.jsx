@@ -936,21 +936,23 @@ export default function StockMap3D({ isAdmin, onScanArea, onOpenMap, entries = [
               : "Arraste para girar · role/pinça para aproximar · toque numa estante ou produto para ver os detalhes."}
           </p>
         </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button
-            type="button"
-            className={`btn-small ${editMode ? "btn-excel" : ""}`}
-            onClick={() => setEditMode((v) => !v)}
-            style={editMode ? { background: "var(--ok)", color: "#fff", borderColor: "var(--ok)" } : undefined}
-          >
-            <IconEdit size={14} /> {editMode ? "Sair da edição 3D" : "Modo edição 3D"}
-          </button>
-          {editMode && (
-            <button type="button" className="btn-small btn-excel" onClick={() => openNewObjModal3D()}>
-              <IconPlus size={14} /> Novo objeto
+        {isAdmin && (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              className={`btn-small ${editMode ? "btn-excel" : ""}`}
+              onClick={() => setEditMode((v) => !v)}
+              style={editMode ? { background: "var(--ok)", color: "#fff", borderColor: "var(--ok)" } : undefined}
+            >
+              <IconEdit size={14} /> {editMode ? "Sair da edição 3D" : "Modo edição 3D"}
             </button>
-          )}
-        </div>
+            {editMode && (
+              <button type="button" className="btn-small btn-excel" onClick={() => openNewObjModal3D()}>
+                <IconPlus size={14} /> Novo objeto
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {!webgl && (

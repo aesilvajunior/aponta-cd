@@ -33,42 +33,41 @@ import {
   IconAlertCircle,
   IconAward,
   IconTruck,
-  IconLayers,
   IconDownload,
   IconBuilding,
-  IconHistory,
   IconPause,
   IconCheckSquare,
   IconBarChart,
+  IconArrowLeftRight,
 } from "./Icons";
 
 const STORAGE_KEY = "aponta_sidebar_collapsed";
-const SECTIONS_KEY = "aponta_sidebar_sections_v2";
+const SECTIONS_KEY = "aponta_sidebar_sections_v3";
 const GROUPS_KEY = "aponta_sidebar_groups";
 
 const SECTIONS = [
   {
     title: "Operação",
-    accent: "#3b82f6",
+    accent: "#38bdf8",
     items: [
       { key: "kiosk", label: "Apontar atividade", Icon: IconActivity },
       { key: "errors-kiosk", label: "Apontar erro", Icon: IconAlertTriangle },
       { key: "conference", label: "Conferência", Icon: IconClipboardCheck },
-      { key: "checklist", label: "Checklist do CD", Icon: IconCheckSquare },
       { key: "schedules", label: "Agenda", Icon: IconCalendar },
-      { key: "rotation", label: "Rotação de tarefas", Icon: IconRotateCcw },
-      { key: "daily-routine", label: "Rotina do Líder", Icon: IconStar, requiresLeader: true },
     ],
   },
   {
     title: "Mapa & Estoque",
     accent: "#10b981",
     items: [
-      { key: "stock-map", label: "Mapa do estoque", Icon: IconMapPin },
-      { key: "stock-map-3d", label: "Mapa 3D", Icon: IconLayers },
+      {
+        key: "stock-map",
+        label: "Mapa",
+        Icon: IconMapPin,
+        matchTabs: ["stock-map", "stock-map-3d", "stock-map-history"],
+      },
       { key: "stock-scan", label: "Coletar endereços", Icon: IconPackage },
-      { key: "address-labels", label: "Etiquetas de endereço", Icon: IconEdit3 },
-      { key: "stock-map-history", label: "Histórico do mapa", Icon: IconHistory },
+      { key: "address-labels", label: "Etiquetas de endereço", Icon: IconEdit3, requiresAdmin: true },
       {
         key: "faltas-group",
         label: "Faltas",
@@ -76,57 +75,67 @@ const SECTIONS = [
         children: [
           { key: "shortages", label: "Todas as faltas" },
           { key: "supplier-shortages", label: "Por fornecedor", Icon: IconBuilding },
+          { key: "transfer-shortages", label: "Por transferência", Icon: IconArrowLeftRight },
         ],
       },
     ],
   },
   {
-    title: "Análise & KPIs",
+    title: "Gestão & Liderança",
     accent: "#f59e0b",
     items: [
-      { key: "executive", label: "Visão geral", Icon: IconTrendingUp },
-      { key: "panel", label: "Indicadores", Icon: IconLayoutDashboard },
-      { key: "turn-comparison", label: "Comparação de turnos", Icon: IconBarChart },
-      { key: "workload", label: "Carga de trabalho", Icon: IconActivity },
-      { key: "pauses", label: "Pausas", Icon: IconPause },
-      { key: "monthly-report", label: "Relatório mensal", Icon: IconDownload },
+      { key: "checklist", label: "Checklist do CD", Icon: IconCheckSquare, requiresLeader: true },
+      { key: "rotation", label: "Rotação de tarefas", Icon: IconRotateCcw, requiresLeader: true },
+      { key: "daily-routine", label: "Rotina do Líder", Icon: IconStar, requiresLeader: true },
     ],
   },
   {
-    title: "Equipe & Metas",
+    title: "Equipe & Recursos",
     accent: "#8b5cf6",
     items: [
+      { key: "sales-query", label: "Líder da equipe", Icon: IconSearch },
+      { key: "sales-team", label: "Equipe comercial", Icon: IconUsers, requiresAdmin: true },
+      { key: "badges", label: "Crachás", Icon: IconStar },
+      { key: "equipment", label: "Equipamentos", Icon: IconTruck },
       {
         key: "metas-group",
         label: "Metas",
         Icon: IconTarget,
         children: [
-          { key: "goals", label: "Individuais" },
-          { key: "team-goals", label: "Por equipe" },
           { key: "goals-dashboard", label: "Dashboard" },
+          { key: "goals", label: "Individuais", requiresAdmin: true },
+          { key: "team-goals", label: "Por equipe", requiresAdmin: true },
         ],
       },
-      { key: "achievements", label: "Conquistas", Icon: IconAward },
-      { key: "sales-query", label: "Líder da equipe", Icon: IconSearch },
-      { key: "sales-team", label: "Equipe comercial", Icon: IconUsers },
-      { key: "badges", label: "Crachás", Icon: IconStar },
-      { key: "equipment", label: "Equipamentos", Icon: IconTruck },
-      { key: "team", label: "Cadastros", Icon: IconSettings },
+      { key: "achievements", label: "Conquistas", Icon: IconAward, requiresAdmin: true },
+      { key: "team", label: "Cadastros", Icon: IconSettings, requiresAdmin: true },
+    ],
+  },
+  {
+    title: "Análise & KPIs",
+    accent: "#0ea5c6",
+    items: [
+      { key: "executive", label: "Visão geral", Icon: IconTrendingUp, requiresAdmin: true },
+      { key: "panel", label: "Indicadores", Icon: IconLayoutDashboard, requiresAdmin: true },
+      { key: "turn-comparison", label: "Comparação de turnos", Icon: IconBarChart, requiresAdmin: true },
+      { key: "workload", label: "Carga de trabalho", Icon: IconActivity, requiresAdmin: true },
+      { key: "pauses", label: "Pausas", Icon: IconPause, requiresAdmin: true },
+      { key: "monthly-report", label: "Relatório mensal", Icon: IconDownload, requiresAdmin: true },
     ],
   },
   {
     title: "Sistema",
     accent: "#64748b",
     items: [
-      { key: "admin-master", label: "Central de controle", Icon: IconStar },
-      { key: "manual", label: "Lançamento manual", Icon: IconEdit3 },
-      { key: "csv-import", label: "Importar CSV / Excel", Icon: IconUpload },
-      { key: "fraud", label: "Detecção de fraude", Icon: IconShield },
-      { key: "reports-scheduler", label: "Export agendado", Icon: IconDownload },
-      { key: "alert-settings", label: "Alertas Telegram", Icon: IconAlertCircle },
-      { key: "sound-settings", label: "Sons do sistema", Icon: IconVolume2 },
-      { key: "health", label: "Saúde do sistema", Icon: IconActivity },
-      { key: "audit", label: "Auditoria", Icon: IconClock },
+      { key: "admin-master", label: "Central de controle", Icon: IconStar, requiresAdmin: true },
+      { key: "manual", label: "Lançamento manual", Icon: IconEdit3, requiresAdmin: true },
+      { key: "csv-import", label: "Importar CSV / Excel", Icon: IconUpload, requiresAdmin: true },
+      { key: "fraud", label: "Detecção de fraude", Icon: IconShield, requiresAdmin: true },
+      { key: "reports-scheduler", label: "Export agendado", Icon: IconDownload, requiresAdmin: true },
+      { key: "alert-settings", label: "Alertas Telegram", Icon: IconAlertCircle, requiresAdmin: true },
+      { key: "sound-settings", label: "Sons do sistema", Icon: IconVolume2, requiresAdmin: true },
+      { key: "health", label: "Saúde do sistema", Icon: IconActivity, requiresAdmin: true },
+      { key: "audit", label: "Auditoria", Icon: IconClock, requiresAdmin: true },
       { key: "routine-settings", label: "Config. Rotina", Icon: IconSettings, requiresAdmin: true },
     ],
   },
@@ -134,13 +143,18 @@ const SECTIONS = [
 
 export default function Sidebar({ id, tab, setTab, isAdmin, onLock, onOperatorLogout, currentOperator, mobileOpen }) {
   const { session, signOut } = useAuth();
-  const isLeader = currentOperator?.role === "lider" || isAdmin;
+  const isLeader =
+    isAdmin ||
+    currentOperator?.role === "lider" ||
+    currentOperator?.role === "gestor" ||
+    currentOperator?.role === "admin";
 
   const [collapsedPref, setCollapsed] = useState(() => {
     try { return localStorage.getItem(STORAGE_KEY) === "1"; } catch { return false; }
   });
 
   const [navSearch, setNavSearch] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
 
   const [sectionOpen, setSectionOpen] = useState(() => {
     try {
@@ -150,8 +164,9 @@ export default function Sidebar({ id, tab, setTab, isAdmin, onLock, onOperatorLo
     return {
       Operação: true,
       "Mapa & Estoque": true,
+      "Gestão & Liderança": true,
+      "Equipe & Recursos": true,
       "Análise & KPIs": false,
-      "Equipe & Metas": false,
       Sistema: false,
     };
   });
@@ -164,10 +179,24 @@ export default function Sidebar({ id, tab, setTab, isAdmin, onLock, onOperatorLo
     return { "faltas-group": false, "metas-group": false };
   });
 
+  const email = session?.user?.email || "";
+
+  // Proteção contra autofill do navegador jogando o e-mail no campo de busca do menu
+  useEffect(() => {
+    if (navSearch && (navSearch.includes("@") || (email && navSearch.toLowerCase() === email.toLowerCase()))) {
+      setNavSearch("");
+    }
+  }, [navSearch, email]);
+
   // Garante que a seção da aba ativa esteja sempre aberta
   useEffect(() => {
     const activeSection = SECTIONS.find((s) =>
-      s.items.some((it) => it.key === tab || it.children?.some((c) => c.key === tab))
+      s.items.some(
+        (it) =>
+          it.key === tab ||
+          it.matchTabs?.includes(tab) ||
+          it.children?.some((c) => c.key === tab)
+      )
     );
     if (activeSection) {
       setSectionOpen((prev) => (prev[activeSection.title] ? prev : { ...prev, [activeSection.title]: true }));
@@ -215,25 +244,31 @@ export default function Sidebar({ id, tab, setTab, isAdmin, onLock, onOperatorLo
     await signOut();
   }
 
-  const email = session?.user?.email || "";
-
   function groupHasActiveChild(item) {
     if (!item.children) return false;
     return item.children.some((c) => c.key === tab);
   }
 
-  const normalizedSearch = navSearch.trim().toLowerCase();
+  const normalizedSearch = navSearch.includes("@") ? "" : navSearch.trim().toLowerCase();
 
   const filteredSections = useMemo(() => {
     return SECTIONS.map((section) => {
-      const visibleItems = section.items.filter((item) => {
-        if (item.requiresLeader && !isLeader) return false;
-        if (item.requiresAdmin && !isAdmin) return false;
-        if (!normalizedSearch) return true;
-        if (item.label.toLowerCase().includes(normalizedSearch)) return true;
-        if (item.children?.some((c) => c.label.toLowerCase().includes(normalizedSearch))) return true;
-        return false;
-      });
+      const visibleItems = section.items
+        .filter((item) => {
+          if (item.requiresLeader && !isLeader) return false;
+          // Lançamento manual e Equipe comercial só aparecem para Admin
+          if ((item.key === "manual" || item.key === "sales-team") && !isAdmin) return false;
+          if (!normalizedSearch) return true;
+          if (item.label.toLowerCase().includes(normalizedSearch)) return true;
+          if (item.children?.some((c) => c.label.toLowerCase().includes(normalizedSearch))) return true;
+          return false;
+        })
+        .map((item) => {
+          if (!item.children) return item;
+          const children = item.children.filter((c) => !c.requiresAdmin || isAdmin);
+          return { ...item, children };
+        })
+        .filter((item) => !item.children || item.children.length > 0);
       return { ...section, visibleItems };
     }).filter((s) => s.visibleItems.length > 0);
   }, [isLeader, isAdmin, normalizedSearch]);
@@ -305,12 +340,13 @@ export default function Sidebar({ id, tab, setTab, isAdmin, onLock, onOperatorLo
     }
 
     const ItemIcon = item.Icon;
+    const isActive = tab === item.key || item.matchTabs?.includes(tab);
     return (
       <div
         key={item.key}
-        className={`nav-item ${tab === item.key ? "active" : ""}`}
+        className={`nav-item ${isActive ? "active" : ""}`}
         {...press(() => setTab(item.key))}
-        aria-current={tab === item.key ? "page" : undefined}
+        aria-current={isActive ? "page" : undefined}
         title={collapsed ? item.label : undefined}
       >
         <span className="nav-item-icon-pill">
@@ -349,11 +385,23 @@ export default function Sidebar({ id, tab, setTab, isAdmin, onLock, onOperatorLo
           <div className="sidebar-search-box">
             <span className="sidebar-search-icon"><IconSearch size={13} /></span>
             <input
-              type="text"
+              type="search"
+              name="aponta_sidebar_menu_filter"
               className="sidebar-search-input"
               placeholder="Filtrar menu..."
               value={navSearch}
-              onChange={(e) => setNavSearch(e.target.value)}
+              readOnly={!searchFocused}
+              onFocus={() => setSearchFocused(true)}
+              onPointerDown={() => setSearchFocused(true)}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val.includes("@")) return;
+                setNavSearch(val);
+              }}
+              autoComplete="off"
+              data-lpignore="true"
+              data-1p-ignore="true"
+              data-form-type="other"
               aria-label="Filtrar menu lateral"
             />
             {navSearch && (
@@ -423,7 +471,7 @@ export default function Sidebar({ id, tab, setTab, isAdmin, onLock, onOperatorLo
       <div className="sidebar-footer">
         {!collapsed && currentOperator && (
           <div className="sidebar-user" title={`${currentOperator.name} (cód. ${currentOperator.code})`}>
-            <div className="sidebar-user-avatar" style={{ background: "#f27416", color: "#fff" }}>
+            <div className="sidebar-user-avatar" style={{ background: "var(--accent)", color: "#fff" }}>
               {(currentOperator.name || "O").charAt(0).toUpperCase()}
             </div>
             <div style={{ minWidth: 0, flex: 1 }}>

@@ -61,17 +61,24 @@ function waitingLabel(seconds) {
   return m > 0 ? `${h}h ${m}min` : `${h}h`;
 }
 
-export default function ConferenceTable({ operators, isAdmin = false }) {
+export default function ConferenceTable({ operators, isAdmin = false, currentOperator = null, activeSessions = [] }) {
   const [queue, setQueue] = useState([]);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [now, setNow] = useState(Date.now());
 
-  const [loggedOperator, setLoggedOperator] = useState(null);
+  const [loggedOperator, setLoggedOperator] = useState(currentOperator || null);
+  const [manualSwitch, setManualSwitch] = useState(false);
   const [codeInput, setCodeInput] = useState("");
   const [loginError, setLoginError] = useState("");
   const [checkingLogin, setCheckingLogin] = useState(false);
+
+  useEffect(() => {
+    if (currentOperator && !manualSwitch) {
+      setLoggedOperator(currentOperator);
+    }
+  }, [currentOperator, manualSwitch]);
 
   const [finishModal, setFinishModal] = useState(null);
   const [problemModal, setProblemModal] = useState(null);
@@ -185,6 +192,7 @@ export default function ConferenceTable({ operators, isAdmin = false }) {
     setCheckingLogin(false);
   }
   function logout() {
+    setManualSwitch(true);
     setLoggedOperator(null);
     setCodeInput("");
     setLoginError("");
@@ -236,6 +244,18 @@ export default function ConferenceTable({ operators, isAdmin = false }) {
   async function handleAssume(item) {
     if (busy) return;
     if (!loggedOperator) return;
+    if (!isAdmin) {
+      const hasKioskActivity = (activeSessions || []).some(
+        (s) => String(s.operator_code || "") === String(loggedOperator.code)
+      );
+      const hasActiveConf = inProgress.some(
+        (q) => String(q.conference_operator_code || "") === String(loggedOperator.code)
+      );
+      if (hasKioskActivity || hasActiveConf) {
+        setError("Você já possui uma atividade ou conferência em andamento. Finalize a atual antes de iniciar outra.");
+        return;
+      }
+    }
     setBusy(true);
     const { error: err } = await startConference(item.id, loggedOperator);
     setBusy(false);

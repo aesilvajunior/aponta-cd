@@ -14,31 +14,39 @@ import {
   readLocalSlaConfig,
   evaluateAllSlaBottlenecks,
 } from "../lib/slaMonitor";
-import { IconVolume2, IconX, IconAlertCircle, IconAlertTriangle } from "./Icons";
+import { IconVolume2, IconX, IconAlertCircle, IconAlertTriangle, IconTrash } from "./Icons";
+
+const DISMISSED_SLA_KEY = "aponta_dismissed_sla_alerts";
 
 export default function PushSetup({
   activeSessions = [],
   entries = [],
   isLeader = false,
+  isAdmin = false,
   onNavigate,
 }) {
   const [supported, setSupported] = useState(true);
   const [permission, setPermission] = useState("default");
   const [enabled, setEnabled] = useState(false);
   const [dismissed, setDismissed] = useState(() => {
-    try {
-      return localStorage.getItem("aponta_push_dismissed") === "1";
-    } catch {
-      return false;
-    }
+    try { return localStorage.getItem("aponta_push_dismissed") === "1"; } catch { return false; }
   });
   const [working, setWorking] = useState(false);
 
-  // Monitor proativo de gargalos (SLA)
+  // Gargalos cancelados/excluídos pelo Admin
+  const [dismissedAlerts, setDismissedAlerts] = useState(() => {
+    try {
+      const raw = localStorage.getItem(DISMISSED_SLA_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
+
   const [slaConfig, setSlaConfig] = useState(() => readLocalSlaConfig());
   const [slaAlerts, setSlaAlerts] = useState([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const lastNotifiedRef = useRef(new Map()); // alert.id -> timestamp
+  const lastNotifiedRef = useRef(new Map());
 
   useEffect(() => {
     setSupported(isPushSupported());
@@ -70,7 +78,6 @@ export default function PushSetup({
       });
       setSlaAlerts(alerts);
 
-      // Dispara notificação push proativa para o líder (com cooldown por alerta)
       if (isPushEnabled() && alerts.length > 0) {
         const cooldownMs = Math.max(1, Number(slaConfig.cooldownMinutes) || 15) * 60 * 1000;
         const now = Date.now();
@@ -115,17 +122,44 @@ export default function PushSetup({
     setDismissed(true);
   }
 
-  const hasAlerts = slaAlerts.length > 0;
-  const hasCritical = slaAlerts.some((a) => a.severity === "critical");
+  function handleDeleteAlert(alertId) {
+    if (!isAdmin) return;
+    setDismissedAlerts((prev) => {
+      const next = [...new Set([...prev, alertId])];
+      try { localStorage.setItem(DISMISSED_SLA_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }
 
-  // Drawer flutuante com os gargalos SLA ativos
+  function handleClearAllAlerts() {
+    if (!isAdmin) return;
+    const ids = slaAlerts.map((a) => a.id);
+    setDismissedAlerts((prev) => {
+      const next = [...new Set([...prev, ...ids])];
+      try { localStorage.setItem(DISMISSED_SLA_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+    setDrawerOpen(false);
+  }
+
+  function handleRestoreAlerts() {
+    setDismissedAlerts([]);
+    try { localStorage.removeItem(DISMISSED_SLA_KEY); } catch {}
+    checkBottlenecks();
+  }
+
+  const visibleAlerts = slaAlerts.filter((a) => !dismissedAlerts.includes(a.id));
+  const hasAlerts = visibleAlerts.length > 0;
+  const hasCritical = visibleAlerts.some((a) => a.severity === "critical");
+
+  // Posicionado do lado DIREITO para nunca tampar o menu lateral ou botões
   const alertsPopover = drawerOpen && (
     <div
       style={{
         position: "fixed",
         bottom: 66,
-        left: 20,
-        width: 360,
+        right: 20,
+        width: 370,
         maxWidth: "calc(100vw - 40px)",
         background: "var(--bg-elevated)",
         border: `1px solid ${hasCritical ? "var(--danger)" : "var(--border-strong)"}`,
@@ -149,13 +183,13 @@ export default function PushSetup({
         </button>
       </div>
 
-      {slaAlerts.length === 0 ? (
+      {visibleAlerts.length === 0 ? (
         <div style={{ fontSize: 12.5, color: "var(--ok)", padding: "8px 0" }}>
-          ✓ Operação dentro do SLA (pausas, fila de conferência e turno sob controle).
+          ✓ Operação dentro do SLA (nenhum gargalo ativo).
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 260, overflowY: "auto" }}>
-          {slaAlerts.map((a) => (
+          {visibleAlerts.map((a) => (
             <div
               key={a.id}
               style={{
@@ -165,32 +199,73 @@ export default function PushSetup({
                 border: `1px solid ${a.severity === "critical" ? "var(--danger)" : "var(--warning)"}`,
               }}
             >
-              <div style={{ fontSize: 12.5, fontWeight: 700, color: a.severity === "critical" ? "var(--danger)" : "var(--text)" }}>
-                {a.title}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: a.severity === "critical" ? "var(--danger)" : "var(--text)" }}>
+                  {a.title}
+                </div>
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteAlert(a.id)}
+                    title="Cancelar / Excluir este alerta de gargalo"
+                    style={{
+                      background: "transparent",
+                      border: "none",
+                      color: "var(--danger)",
+                      cursor: "pointer",
+                      padding: 2,
+                      display: "inline-flex",
+                    }}
+                  >
+                    <IconTrash size={13} />
+                  </button>
+                )}
               </div>
               <div style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 2 }}>{a.message}</div>
-              {onNavigate && a.tab && (
-                <button
-                  type="button"
-                  className="btn-small"
-                  style={{ marginTop: 6, padding: "4px 8px", fontSize: 11 }}
-                  onClick={() => {
-                    onNavigate(a.tab);
-                    setDrawerOpen(false);
-                  }}
-                >
-                  Abrir tela →
-                </button>
-              )}
+              <div style={{ display: "flex", gap: 6, marginTop: 7 }}>
+                {onNavigate && a.tab && (
+                  <button
+                    type="button"
+                    className="btn-small"
+                    style={{ padding: "4px 8px", fontSize: 11 }}
+                    onClick={() => {
+                      onNavigate(a.tab);
+                      setDrawerOpen(false);
+                    }}
+                  >
+                    Abrir tela →
+                  </button>
+                )}
+                {isAdmin && (
+                  <button
+                    type="button"
+                    className="btn-small"
+                    style={{ padding: "4px 8px", fontSize: 11, color: "var(--danger)", borderColor: "var(--danger)" }}
+                    onClick={() => handleDeleteAlert(a.id)}
+                  >
+                    Cancelar gargalo
+                  </button>
+                )}
+              </div>
             </div>
           ))}
         </div>
       )}
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
-        <button type="button" className="btn-small" style={{ fontSize: 11.5 }} onClick={checkBottlenecks}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 12, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
+        <button type="button" className="btn-small" style={{ fontSize: 11.5 }} onClick={handleRestoreAlerts}>
           Reavaliar agora
         </button>
+        {isAdmin && visibleAlerts.length > 0 && (
+          <button
+            type="button"
+            className="btn-small"
+            style={{ fontSize: 11.5, color: "var(--danger)", borderColor: "var(--danger)" }}
+            onClick={handleClearAllAlerts}
+          >
+            Excluir todos
+          </button>
+        )}
         {enabled && (
           <button type="button" className="btn-small" style={{ fontSize: 11.5, color: "var(--danger)", borderColor: "var(--danger)" }} onClick={handleDisable}>
             Desativar push
@@ -200,18 +275,17 @@ export default function PushSetup({
     </div>
   );
 
-  // Se já está ativado (ou se é líder com alertas SLA ativos), mostra chip com contador de gargalos
   if (enabled || (isLeader && hasAlerts)) {
     return (
       <>
         {alertsPopover}
         <button
           onClick={() => setDrawerOpen((v) => !v)}
-          title={hasAlerts ? `${slaAlerts.length} alerta(s) de SLA ativo(s). Clique para ver.` : "Notificações e monitor de SLA ativos."}
+          title={hasAlerts ? `${visibleAlerts.length} alerta(s) de SLA ativo(s). Clique para ver.` : "Notificações e monitor de SLA ativos."}
           style={{
             position: "fixed",
             bottom: 20,
-            left: 20,
+            right: 20,
             background: hasCritical ? "var(--danger)" : hasAlerts ? "var(--warning)" : "var(--surface)",
             color: hasAlerts ? "#fff" : "var(--ok)",
             border: `1px solid ${hasCritical ? "var(--danger)" : hasAlerts ? "var(--warning)" : "var(--ok)"}`,
@@ -230,8 +304,8 @@ export default function PushSetup({
         >
           {hasAlerts ? <IconAlertTriangle size={14} /> : <IconVolume2 size={14} />}
           {hasAlerts
-            ? `${slaAlerts.length} gargalo${slaAlerts.length > 1 ? "s" : ""} SLA`
-            : "Notificações & SLA ativos"}
+            ? `${visibleAlerts.length} gargalo${visibleAlerts.length > 1 ? "s" : ""} SLA`
+            : "Notificações & SLA"}
         </button>
       </>
     );
@@ -241,15 +315,13 @@ export default function PushSetup({
   if (permission === "denied") return null;
   if (dismissed && !enabled) return null;
 
-  // Banner pedindo ativação
   return (
     <div
       style={{
         position: "fixed",
         bottom: 20,
-        left: 20,
         right: 20,
-        maxWidth: 500,
+        maxWidth: 440,
         background: "var(--bg-elevated)",
         border: "1px solid var(--accent)",
         borderRadius: 14,
@@ -269,7 +341,7 @@ export default function PushSetup({
           Ativar notificações proativas (SLA)
         </div>
         <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-          Avisar novos pedidos, pausas acima do limite, fila travada e queda de produtividade do turno
+          Avisar pausas acima do limite, fila travada e produtividade do turno
         </div>
       </div>
       <button

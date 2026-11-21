@@ -22,7 +22,7 @@ import {
 
 const COLORS = ["#1e3a5f", "#4a7ba7", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444"];
 
-export default function ShortagePanel({ onOpenScanTask }) {
+export default function ShortagePanel({ onOpenScanTask, initialScope = "all" }) {
   const [shortages, setShortages] = useState([]);
   const [entries, setEntries] = useState([]);
   const [operators, setOperators] = useState([]);
@@ -33,6 +33,9 @@ export default function ShortagePanel({ onOpenScanTask }) {
   const [triggerMsg, setTriggerMsg] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  const [scope, setScope] = useState(initialScope); // "all" | "pedido" | "transferencia"
+  useEffect(() => { setScope(initialScope); }, [initialScope]);
 
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -137,8 +140,22 @@ export default function ShortagePanel({ onOpenScanTask }) {
         if (filterEncaixe === "no") return !r.isEncaixe;
         return true;
       })
+      .filter((r) => {
+        if (scope === "all") return true;
+        const ord = String(r.orderNumber || "").toUpperCase();
+        const act = String(r.activity || "").toLowerCase();
+        const cust = String(r.customerName || "").toLowerCase();
+        const isTransf =
+          ord.startsWith("AP") ||
+          ord.startsWith("ZN") ||
+          ord.includes("TRANSF") ||
+          act.includes("transf") ||
+          cust.includes("transf") ||
+          cust.includes("filial");
+        return scope === "transferencia" ? isTransf : !isTransf;
+      })
       .sort((a, b) => new Date(b.date) - new Date(a.date));
-  }, [rows, dateFrom, dateTo, filterProduct, filterCustomer, filterOperator, filterEncaixe]);
+  }, [rows, dateFrom, dateTo, filterProduct, filterCustomer, filterOperator, filterEncaixe, scope]);
 
   const stats = useMemo(() => {
     const totalFaltas = filteredRows.length;
@@ -248,11 +265,17 @@ export default function ShortagePanel({ onOpenScanTask }) {
 
   const hasFilters = dateFrom || dateTo || filterProduct || filterCustomer || filterOperator || filterEncaixe;
 
-  return (
+    return (
     <div>
-      <div className="page-header-row" style={{ marginBottom: 22 }}>
+      <div className="page-header-row" style={{ marginBottom: 16 }}>
         <div>
-          <h1 className="page-title">Faltas</h1>
+          <h1 className="page-title">
+            {scope === "transferencia"
+              ? "Faltas por transferência"
+              : scope === "pedido"
+              ? "Faltas em pedidos"
+              : "Todas as faltas"}
+          </h1>
           <p className="page-sub" style={{ marginBottom: 0 }}>
             {filteredRows.length} falta{filteredRows.length !== 1 ? "s" : ""} no período · {stats.totalPedidos} pedido{stats.totalPedidos !== 1 ? "s" : ""} afetado{stats.totalPedidos !== 1 ? "s" : ""}
           </p>
@@ -270,6 +293,24 @@ export default function ShortagePanel({ onOpenScanTask }) {
             <IconDownload size={14} /> Exportar CSV
           </button>
         </div>
+      </div>
+
+      {/* Filtro rápido de escopo de faltas */}
+      <div className="pill-row" style={{ marginBottom: 18 }}>
+        {[
+          { key: "all", label: "Todas as faltas" },
+          { key: "transferencia", label: "Por transferência" },
+          { key: "pedido", label: "Somente pedidos" },
+        ].map((opt) => (
+          <button
+            key={opt.key}
+            type="button"
+            className={`pill ${scope === opt.key ? "pill-active" : ""}`}
+            onClick={() => setScope(opt.key)}
+          >
+            {opt.label}
+          </button>
+        ))}
       </div>
 
       {triggerMsg && (

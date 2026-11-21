@@ -36,9 +36,16 @@ function errorIcon(name) {
   return <IconXCircle size={26} />;
 }
 
-export default function ErrorKiosk({ operators, errorTypes }) {
+export default function ErrorKiosk({ operators, errorTypes, currentOperator = null }) {
   const [codeInput, setCodeInput] = useState("");
-  const [loggedOperator, setLoggedOperator] = useState(null);
+  const [loggedOperator, setLoggedOperator] = useState(currentOperator || null);
+  const [manualSwitch, setManualSwitch] = useState(false);
+
+  useEffect(() => {
+    if (currentOperator && !manualSwitch) {
+      setLoggedOperator(currentOperator);
+    }
+  }, [currentOperator, manualSwitch]);
   const [note, setNote] = useState("");
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
@@ -170,10 +177,15 @@ export default function ErrorKiosk({ operators, errorTypes }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loggedOperator, operators]);
 
-  function reset() {
+  function reset(forceLogout = false) {
     if (autoReturnTimeoutRef.current) clearTimeout(autoReturnTimeoutRef.current);
     setCodeInput("");
-    setLoggedOperator(null);
+    if (forceLogout === true || !currentOperator) {
+      setManualSwitch(true);
+      setLoggedOperator(null);
+    } else {
+      setLoggedOperator(currentOperator);
+    }
     setNote("");
     setMsg("");
     setConfirmation(null);

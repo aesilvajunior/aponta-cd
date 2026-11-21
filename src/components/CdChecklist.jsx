@@ -15,7 +15,7 @@ import {
 
 const CODE_LENGTH = 3;
 
-export default function CdChecklist({ operators, isAdmin }) {
+export default function CdChecklist({ operators, isAdmin, currentOperator = null }) {
   const [items, setItems] = useState([]);
   const [runs, setRuns] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -28,8 +28,15 @@ export default function CdChecklist({ operators, isAdmin }) {
   });
 
   const [codeInput, setCodeInput] = useState("");
-  const [loggedOperator, setLoggedOperator] = useState(null);
+  const [loggedOperator, setLoggedOperator] = useState(currentOperator || null);
+  const [manualSwitch, setManualSwitch] = useState(false);
   const [loginError, setLoginError] = useState("");
+
+  useEffect(() => {
+    if (currentOperator && !manualSwitch) {
+      setLoggedOperator(currentOperator);
+    }
+  }, [currentOperator, manualSwitch]);
 
   const [runId, setRunId] = useState(null);
   const [completed, setCompleted] = useState(new Set());

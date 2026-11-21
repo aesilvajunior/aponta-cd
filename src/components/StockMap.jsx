@@ -939,14 +939,16 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId, entries = [
           <button className="btn-small" onClick={loadAll}>
             <IconRefresh size={14} /> Atualizar
           </button>
-          <button
-            className={`btn-small ${editMode ? "btn-excel" : ""}`}
-            onClick={() => setEditMode((v) => !v)}
-            style={editMode ? { background: "var(--ok)", color: "#fff", borderColor: "var(--ok)" } : undefined}
-          >
-            <IconEdit size={14} /> {editMode ? "Sair do modo edição" : "Modo edição"}
-          </button>
-          {editMode && (
+          {isAdmin && (
+            <button
+              className={`btn-small ${editMode ? "btn-excel" : ""}`}
+              onClick={() => setEditMode((v) => !v)}
+              style={editMode ? { background: "var(--ok)", color: "#fff", borderColor: "var(--ok)" } : undefined}
+            >
+              <IconEdit size={14} /> {editMode ? "Sair do modo edição" : "Modo edição"}
+            </button>
+          )}
+          {isAdmin && editMode && (
             <button className="btn-small btn-excel" onClick={() => openNewObjectModal()}>
               <IconPlus size={14} /> Novo objeto
             </button>

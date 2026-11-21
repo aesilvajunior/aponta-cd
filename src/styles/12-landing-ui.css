@@ -438,7 +438,7 @@
   overflow-y: auto;
   overflow-x: hidden;
   scroll-behavior: smooth;
-  background: var(--bg);
+  background: var(--bg-gradient, var(--bg));
   color: var(--text);
 }
 
@@ -1892,6 +1892,16 @@
   width: 100%;
   height: auto;
   display: block;
+}
+
+.aponta-logo-original-img {
+  width: 100%;
+  max-width: 520px;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+  border-radius: 22px;
+  object-fit: contain;
 }
 
 /* Caminhão sai do galpão ao longo do eixo 30° isométrico, pausa e entra de volta */

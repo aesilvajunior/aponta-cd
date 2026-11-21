@@ -84,69 +84,71 @@ button, input, select, textarea {
 
 :root,
 [data-theme="light"] {
-  --bg: #f7f8fa;
+  --bg: #eef3f9;
+  --bg-gradient: radial-gradient(ellipse at top, #d8e6f5 0%, #eef3f9 62%);
   --bg-elevated: #ffffff;
   --surface: #ffffff;
-  --surface-raised: #fbfcfd;
-  --surface-sunken: #f1f3f6;
+  --surface-raised: #f6f9fc;
+  --surface-sunken: #e4ecf5;
 
-  --glass-bg: rgba(255, 255, 255, 0.72);
-  --glass-bg-strong: rgba(255, 255, 255, 0.85);
-  --glass-border: rgba(255, 255, 255, 0.6);
-  --glass-highlight: rgba(255, 255, 255, 0.9);
-  --glass-shadow: rgba(15, 23, 42, 0.06);
+  --glass-bg: rgba(240, 245, 251, 0.78);
+  --glass-bg-strong: rgba(245, 249, 253, 0.9);
+  --glass-border: rgba(74, 123, 167, 0.18);
+  --glass-highlight: rgba(255, 255, 255, 0.95);
+  --glass-shadow: rgba(15, 26, 46, 0.07);
 
-  --border: #eaecf0;
-  --border-strong: #d8dce3;
+  --border: #d9e2ec;
+  --border-strong: #c1cfe0;
 
-  --accent: #1e3a5f;
-  --accent-hover: #16304f;
-  --accent-soft: #e8eef6;
+  --accent: #4a7ba7;
+  --accent-hover: #3b668e;
+  --accent-soft: #e1ecf7;
   --accent-ink: #ffffff;
-  --accent-2: #4a7ba7;
-  --accent-2-soft: #eaf1f8;
+  --accent-2: #0ea5c6;
+  --accent-2-soft: #e0f4f9;
 
-  --ok: #0f9d58;
-  --ok-soft: #e7f5ec;
-  --danger: #c53030;
+  --ok: #10b981;
+  --ok-soft: #e6f7f0;
+  --danger: #ef4444;
   --danger-soft: #fbeaea;
-  --warning: #c47f17;
+  --warning: #f59e0b;
   --warning-soft: #fdf3e2;
 
-  --text: #1a1f2b;
-  --text-muted: #6b7280;
-  --text-faint: #9aa1ad;
+  --text: #111827;
+  --text-muted: #5b6878;
+  --text-faint: #8795a7;
 
-  --shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
-  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04), 0 2px 4px rgba(15, 23, 42, 0.04);
-  --shadow-md: 0 2px 4px rgba(15, 23, 42, 0.05), 0 6px 12px rgba(15, 23, 42, 0.06);
-  --shadow-lg: 0 4px 8px rgba(15, 23, 42, 0.06), 0 16px 32px rgba(15, 23, 42, 0.08);
-  --shadow-xl: 0 8px 16px rgba(15, 23, 42, 0.08), 0 24px 48px rgba(15, 23, 42, 0.12);
-  --shadow-focus: 0 0 0 4px rgba(30, 58, 95, 0.12);
+  --shadow-xs: 0 1px 2px rgba(15, 26, 46, 0.05);
+  --shadow-sm: 0 1px 3px rgba(15, 26, 46, 0.06), 0 2px 6px rgba(15, 26, 46, 0.05);
+  --shadow-md: 0 3px 6px rgba(15, 26, 46, 0.06), 0 8px 16px rgba(15, 26, 46, 0.07);
+  --shadow-lg: 0 6px 12px rgba(15, 26, 46, 0.07), 0 18px 36px rgba(15, 26, 46, 0.1);
+  --shadow-xl: 0 10px 20px rgba(15, 26, 46, 0.1), 0 26px 52px rgba(15, 26, 46, 0.14);
+  --shadow-focus: 0 0 0 4px rgba(74, 123, 167, 0.18);
 }
 
 [data-theme="dark"] {
-  --bg: #0b0e13;
-  --bg-elevated: #12161d;
-  --surface: #12161d;
-  --surface-raised: #171c25;
-  --surface-sunken: #0e1219;
+  --bg: #0a0e14;
+  --bg-gradient: radial-gradient(ellipse at top, #0f1a2e 0%, #0a0e14 60%);
+  --bg-elevated: #111823;
+  --surface: #111823;
+  --surface-raised: #162030;
+  --surface-sunken: #0c1118;
 
-  --glass-bg: rgba(18, 22, 29, 0.72);
-  --glass-bg-strong: rgba(18, 22, 29, 0.88);
-  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-bg: rgba(17, 24, 35, 0.78);
+  --glass-bg-strong: rgba(17, 24, 35, 0.9);
+  --glass-border: rgba(74, 123, 167, 0.18);
   --glass-highlight: rgba(255, 255, 255, 0.12);
-  --glass-shadow: rgba(0, 0, 0, 0.4);
+  --glass-shadow: rgba(0, 0, 0, 0.45);
 
-  --border: #1f242e;
-  --border-strong: #2c3340;
+  --border: #1f2937;
+  --border-strong: #2c3a4f;
 
-  --accent: #7ca8d8;
-  --accent-hover: #94b9e2;
-  --accent-soft: #172436;
-  --accent-ink: #0b0e13;
-  --accent-2: #8fb8d9;
-  --accent-2-soft: #1a2738;
+  --accent: #4a7ba7;
+  --accent-hover: #6496c2;
+  --accent-soft: #152538;
+  --accent-ink: #0a0e14;
+  --accent-2: #38bdf8;
+  --accent-2-soft: #132a40;
 
   --ok: #34d399;
   --ok-soft: #0f2921;
@@ -188,7 +190,7 @@ button, input, select, textarea {
 }
 
 body {
-  background: var(--bg);
+  background: var(--bg-gradient, var(--bg));
   color: var(--text);
   font-family: var(--font-sans);
   font-size: 14px;

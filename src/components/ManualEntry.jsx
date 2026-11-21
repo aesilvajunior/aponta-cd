@@ -18,6 +18,7 @@ function todayLocalISODate() {
 export default function ManualEntry({ operators, activities, refreshEntries }) {
   const [operatorCode, setOperatorCode] = useState("");
   const [activity, setActivity] = useState("");
+  const [customActivity, setCustomActivity] = useState("");
   const [date, setDate] = useState(todayLocalISODate());
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
@@ -31,6 +32,7 @@ export default function ManualEntry({ operators, activities, refreshEntries }) {
   function resetForm() {
     setOperatorCode("");
     setActivity("");
+    setCustomActivity("");
     setStartTime("");
     setEndTime("");
     setIsEncaixe(false);
@@ -58,8 +60,9 @@ export default function ManualEntry({ operators, activities, refreshEntries }) {
     setError("");
     setSuccess("");
     const op = operators.find((o) => o.code === operatorCode);
+    const finalActivity = activity === "__custom__" ? customActivity.trim() : activity;
     if (!op) return setError("Selecione o operador.");
-    if (!activity) return setError("Selecione a atividade.");
+    if (!finalActivity) return setError("Selecione ou digite a atividade.");
     if (!date) return setError("Selecione a data.");
     if (!startTime || !endTime) return setError("Preencha horário de início e fim.");
 
@@ -85,7 +88,7 @@ export default function ManualEntry({ operators, activities, refreshEntries }) {
     const { error: insertError } = await addManualEntry({
       operatorCode: op.code,
       operatorName: op.name,
-      activity,
+      activity: finalActivity,
       startTime: startISO,
       endTime: endISO,
       durationSeconds,
@@ -99,7 +102,7 @@ export default function ManualEntry({ operators, activities, refreshEntries }) {
       setError("Erro ao salvar. " + (insertError.message || "Tente novamente."));
       return;
     }
-    setSuccess(`Registro de ${op.name} — ${activity} lançado com sucesso.`);
+    setSuccess(`Registro de ${op.name} — ${finalActivity} lançado com sucesso.`);
     resetForm();
     refreshEntries?.();
   }
@@ -154,7 +157,19 @@ export default function ManualEntry({ operators, activities, refreshEntries }) {
               {activities.map((a) => (
                 <option key={a.name} value={a.name}>{a.name}</option>
               ))}
+              <option value="__custom__">+ Outra atividade (digitar manualmente)...</option>
             </select>
+            {activity === "__custom__" && (
+              <input
+                type="text"
+                className="field"
+                style={{ marginTop: 10 }}
+                placeholder="Digite o nome da atividade..."
+                value={customActivity}
+                onChange={(e) => setCustomActivity(e.target.value)}
+                disabled={saving}
+              />
+            )}
           </div>
 
           <div>

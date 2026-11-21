@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { IconLock, IconShield } from "./Icons";
 import { verifyAdminPin } from "../lib/api";
 
@@ -6,6 +6,12 @@ export default function AdminGate({ onUnlock }) {
   const [attempt, setAttempt] = useState("");
   const [error, setError] = useState("");
   const [checking, setChecking] = useState(false);
+  // Evita que o gerenciador de senhas do navegador preencha 1 dígito automático ao abrir
+  const [unlockedInput, setUnlockedInput] = useState(false);
+
+  useEffect(() => {
+    setAttempt("");
+  }, []);
 
   async function submit() {
     if (checking || attempt.trim().length < 4) return;
@@ -17,7 +23,6 @@ export default function AdminGate({ onUnlock }) {
     if (ok) {
       onUnlock();
     } else if (verifyError) {
-      // O servidor bloqueia por alguns minutos depois de 5 erros seguidos
       setError(
         /tentativas/i.test(verifyError.message || "")
           ? verifyError.message
@@ -55,13 +60,22 @@ export default function AdminGate({ onUnlock }) {
           </p>
         </div>
 
-        <div className="card" style={{ width: 320, padding: "28px 26px 24px 26px" }}>
+        <form
+          className="card"
+          style={{ width: 320, padding: "28px 26px 24px 26px" }}
+          autoComplete="off"
+          onSubmit={(e) => {
+            e.preventDefault();
+            submit();
+          }}
+        >
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 18, color: "var(--text-faint)" }}>
             <IconShield size={18} strokeWidth={1.5} />
           </div>
 
           <input
             type="password"
+            name="aponta_admin_pin_guard"
             className="login-field"
             style={{
               width: "100%",
@@ -76,32 +90,46 @@ export default function AdminGate({ onUnlock }) {
             }}
             placeholder="PIN"
             value={attempt}
+            readOnly={!unlockedInput}
+            onFocus={() => setUnlockedInput(true)}
+            onPointerDown={() => setUnlockedInput(true)}
+            onKeyDown={(e) => {
+              if (!unlockedInput) setUnlockedInput(true);
+              if (e.key === "Enter") {
+                e.preventDefault();
+                submit();
+              }
+            }}
             onChange={(e) => setAttempt(e.target.value.replace(/\D/g, ""))}
-            onKeyDown={(e) => e.key === "Enter" && submit()}
             maxLength={8}
             inputMode="numeric"
-            autoComplete="off"
+            autoComplete="new-password"
+            data-lpignore="true"
+            data-1p-ignore="true"
+            data-form-type="other"
             aria-label="PIN de administrador"
-            autoFocus
           />
 
-          <button className="btn btn-primary" onClick={submit} disabled={attempt.length < 4 || checking}>
+          <button type="submit" className="btn btn-primary" disabled={attempt.length < 4 || checking}>
             {checking ? "Verificando..." : "Entrar"}
           </button>
 
           {error && (
-            <p role="alert" style={{
-              color: "var(--danger)",
-              fontSize: 12.5,
-              textAlign: "center",
-              marginTop: 12,
-              marginBottom: 0,
-              fontWeight: 500,
-            }}>
+            <p
+              role="alert"
+              style={{
+                color: "var(--danger)",
+                fontSize: 12.5,
+                textAlign: "center",
+                marginTop: 12,
+                marginBottom: 0,
+                fontWeight: 500,
+              }}
+            >
               {error}
             </p>
           )}
-        </div>
+        </form>
       </div>
     </div>
   );

@@ -8,6 +8,8 @@ import { checkAdminSession, lockAdminSession } from "./lib/api";
 import { lazyWithRetry } from "./lib/lazyWithRetry";
 import { registerServiceWorker } from "./lib/registerSW";
 import { useMediaQuery, MOBILE_QUERY } from "./hooks/useMediaQuery";
+import { fmtDate, shiftFor } from "./lib/format";
+import { IconCloudSun, IconSun, IconMapPin, IconLayers, IconHistory } from "./components/Icons";
 
 // Telas que todo mundo usa logo ao abrir: carregam junto com o app.
 import Sidebar from "./components/Sidebar";
@@ -116,8 +118,12 @@ export default function App() {
     lockAdminSession();
   }
 
-  // Líder OU admin pode acessar a Rotina do Líder
-  const isLeader = currentOperator?.role === "lider" || isAdmin;
+  // Líder/Gestor OU admin pode acessar Checklist, Rotação e Rotina do Líder
+  const isLeader =
+    isAdmin ||
+    currentOperator?.role === "lider" ||
+    currentOperator?.role === "gestor" ||
+    currentOperator?.role === "admin";
 
   const alertedRef = useRef(new Set());
 
@@ -299,12 +305,14 @@ export default function App() {
   const adminTabs = [
     "executive", "panel", "team", "manual", "audit", "sales-team",
     "admin-master", "goals", "csv-import", "fraud", "reports-scheduler",
-    "stock-map-edit", "turn-comparison", "supplier-shortages", "sound-settings",
-    "alert-settings", "team-goals", "achievements", "equipment",
-    "stock-map-history", "monthly-report", "workload", "pauses", "health", "badges", "address-labels",
-    // ↓↓↓ NOVO: Configuração da Rotina ↓↓↓
+    "stock-map-edit", "turn-comparison", "sound-settings",
+    "alert-settings", "team-goals", "achievements",
+    "stock-map-history", "monthly-report", "workload", "pauses", "health", "address-labels",
     "routine-settings",
   ];
+
+  const isMorningNow = new Date().getHours() < 13;
+  const isMapTab = tab === "stock-map" || tab === "stock-map-3d" || tab === "stock-map-history";
 
   const shortagesByEntry = (() => {
     const m = {};
@@ -361,7 +369,26 @@ export default function App() {
       />
 
       <main className="main">
-        <div className="main-quick-theme">
+        <div className="main-quick-theme" style={{ alignItems: "center", gap: 10 }}>
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "6px 12px",
+              borderRadius: 999,
+              background: "var(--surface)",
+              border: "1px solid var(--border-strong)",
+              fontSize: 12,
+              fontWeight: 600,
+              color: "var(--text)",
+            }}
+          >
+            {isMorningNow ? <IconCloudSun size={14} /> : <IconSun size={14} />}
+            <span>Turno {shiftFor(new Date())}</span>
+            <span style={{ opacity: 0.55 }}>·</span>
+            <span style={{ color: "var(--text-muted)", fontWeight: 500 }}>{fmtDate(new Date())}</span>
+          </span>
           <ThemeToggle compact />
         </div>
         {import.meta.env.VITE_APP_ENV && import.meta.env.VITE_APP_ENV !== "production" && (
@@ -387,6 +414,41 @@ export default function App() {
         {actionError && <div className="alert-card alert-danger">{actionError}</div>}
 
         <Suspense fallback={<ScreenFallback />}>
+        {isMapTab && (
+          <div className="card" style={{ padding: "10px 14px", marginBottom: 16, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className={`quick-filter-btn ${tab === "stock-map" ? "active" : ""}`}
+                onClick={() => setTab("stock-map")}
+                style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+              >
+                <IconMapPin size={14} /> Mapa 2D
+              </button>
+              <button
+                type="button"
+                className={`quick-filter-btn ${tab === "stock-map-3d" ? "active" : ""}`}
+                onClick={() => setTab("stock-map-3d")}
+                style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+              >
+                <IconLayers size={14} /> Mapa 3D
+              </button>
+              {isAdmin && (
+                <button
+                  type="button"
+                  className={`quick-filter-btn ${tab === "stock-map-history" ? "active" : ""}`}
+                  onClick={() => setTab("stock-map-history")}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+                >
+                  <IconHistory size={14} /> Histórico do Mapa
+                </button>
+              )}
+            </div>
+            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+              {isAdmin ? "Modo Admin: visualização e edição liberadas" : "Modo consulta: visualização e pesquisa"}
+            </span>
+          </div>
+        )}
         <div key={tab} className="tab-stage">
           {tab === "welcome" && (
             <EmployeeHome
@@ -414,32 +476,53 @@ export default function App() {
               activities={activities}
               vehicles={vehicles}
               entries={entries}
+              activeSessions={activeSessions}
+              isAdmin={isAdmin}
               currentOperator={currentOperator}
               refreshEntries={loadEntries}
             />
           )}
           {tab === "errors-kiosk" && (
-            <ErrorKiosk operators={operators} errorTypes={errorTypes} />
+            <ErrorKiosk operators={operators} errorTypes={errorTypes} currentOperator={currentOperator} />
           )}
           {tab === "schedules" && (
             <ScheduleManager operators={operators} isAdmin={isAdmin} />
           )}
           {tab === "conference" && (
-            <ConferenceTable operators={operators} isAdmin={isAdmin} />
+            <ConferenceTable
+              operators={operators}
+              isAdmin={isAdmin}
+              currentOperator={currentOperator}
+              activeSessions={activeSessions}
+            />
           )}
           {tab === "shortages" && (
-            <ShortagePanel onOpenScanTask={goScanTask} />
+            <ShortagePanel initialScope="all" onOpenScanTask={goScanTask} />
           )}
-          {tab === "checklist" && (
-            <CdChecklist operators={operators} isAdmin={isAdmin} />
+          {tab === "transfer-shortages" && (
+            <ShortagePanel initialScope="transferencia" onOpenScanTask={goScanTask} />
+          )}
+          {tab === "supplier-shortages" && (
+            <SupplierShortages />
+          )}
+          {tab === "checklist" && (isLeader || isAdmin) && (
+            <CdChecklist operators={operators} isAdmin={isAdmin} currentOperator={currentOperator} />
           )}
           {tab === "equipment" && (
-            <EquipmentManager />
+            <EquipmentManager isAdmin={isAdmin} operators={operators} />
+          )}
+          {tab === "badges" && (
+            <BadgePrinter
+              operators={operators}
+              currentOperator={currentOperator}
+              isAdmin={isAdmin}
+              onManageOperators={() => setTab("team")}
+            />
           )}
           {tab === "sales-query" && (
             <SalesTeamQuery />
           )}
-          {tab === "rotation" && (
+          {tab === "rotation" && (isLeader || isAdmin) && (
             <RotationManager
               operators={operators}
               isAdmin={isAdmin}
@@ -453,12 +536,12 @@ export default function App() {
             <StockMap isAdmin={isAdmin} onScanArea={goScanArea} focusAreaId={mapFocusAreaId} entries={entries} shortages={shortages} />
           )}
 
-          {/* ↓↓↓ NOVO: Rotina do Líder (líder ou admin) ↓↓↓ */}
+          {/* ↓↓↓ Rotina do Líder (líder/gestor ou admin) ↓↓↓ */}
           {tab === "daily-routine" && (isLeader || isAdmin) && (
             <DailyRoutine currentOperator={currentOperator} onOpenScanTask={goScanTask} />
           )}
 
-          {adminTabs.includes(tab) && !isAdmin && (
+          {(adminTabs.includes(tab) || ((tab === "checklist" || tab === "rotation" || tab === "daily-routine") && !isLeader)) && !isAdmin && (
             <AdminGate onUnlock={() => setIsAdmin(true)} />
           )}
 
@@ -491,9 +574,6 @@ export default function App() {
               separationErrors={separationErrors}
               shortagesByEntry={shortagesByEntry}
             />
-          )}
-          {tab === "supplier-shortages" && isAdmin && (
-            <SupplierShortages />
           )}
           {tab === "team-goals" && isAdmin && (
             <TeamGoals />
@@ -530,7 +610,6 @@ export default function App() {
           {tab === "health" && isAdmin && (
             <SystemHealth realtimeStatus={realtimeStatus} entriesCount={entries.length} updateReady={updateReady} />
           )}
-          {tab === "badges" && isAdmin && <BadgePrinter operators={operators} />}
           {tab === "audit" && isAdmin && (
             <AuditLog />
           )}
@@ -565,6 +644,7 @@ export default function App() {
         activeSessions={activeSessions}
         entries={entries}
         isLeader={isLeader}
+        isAdmin={isAdmin}
         onNavigate={setTab}
       />
 
