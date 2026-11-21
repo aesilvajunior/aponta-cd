@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Stage, Layer, Rect, Text, Line, Circle, Transformer } from "react-konva";
+import { Stage, Layer, Group, Rect, Text, Line, Circle, Transformer } from "react-konva";
 import Konva from "konva";
 import {
   fetchMapAreas,
@@ -13,6 +13,9 @@ import {
   MAP_OBJECT_PRESETS,
   colorForType,
   labelForType,
+  getAreaRotation,
+  withAreaRotation,
+  normalizeRotation,
   resolveSpecialAreaKind,
   groupItemsBySide,
   groupItemsByCategory,
@@ -315,7 +318,7 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId, entries = [
   const [newAreaModal, setNewAreaModal] = useState(false);
   const [newAreaForm, setNewAreaForm] = useState({
     code: "", label: "", areaType: "prateleira", floor: "terreo",
-    x: 40, y: 40, width: 10, height: 15,
+    x: 40, y: 40, width: 10, height: 15, rotation: 0,
     hasSides: false,
   });
   const [areaBusy, setAreaBusy] = useState(false);
@@ -765,7 +768,12 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId, entries = [
   async function handleAreaDragEnd(a, e) {
     const node = e.target;
     const world = areaToWorld(a);
-    const pct = worldToAreaPct({ x: node.x(), y: node.y(), width: world.width, height: world.height });
+    const pct = worldToAreaPct({
+      x: node.x() - world.width / 2,
+      y: node.y() - world.height / 2,
+      width: world.width,
+      height: world.height,
+    });
     setActiveDragId(null);
     setAreas((prev) => prev.map((x) => (x.id === a.id ? { ...x, x: pct.x, y: pct.y } : x)));
     setSelectedArea((prev) => (prev?.id === a.id ? { ...prev, x: pct.x, y: pct.y } : prev));
@@ -781,24 +789,39 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId, entries = [
 
   async function handleAreaTransformEnd(a, e) {
     const node = e.target;
-    const newWorldWidth = Math.max(MIN_WORLD_W, node.width() * node.scaleX());
-    const newWorldHeight = Math.max(MIN_WORLD_H, node.height() * node.scaleY());
+    const world = areaToWorld(a);
+    const newWorldWidth = Math.max(MIN_WORLD_W, world.width * node.scaleX());
+    const newWorldHeight = Math.max(MIN_WORLD_H, world.height * node.scaleY());
+    const nextRot = normalizeRotation(node.rotation());
     node.scaleX(1);
     node.scaleY(1);
-    node.width(newWorldWidth);
-    node.height(newWorldHeight);
 
-    const pct = worldToAreaPct({ x: node.x(), y: node.y(), width: newWorldWidth, height: newWorldHeight });
-    setAreas((prev) => prev.map((x) => (x.id === a.id ? { ...x, ...pct } : x)));
-    setSelectedArea((prev) => (prev?.id === a.id ? { ...prev, ...pct } : prev));
-    const beforeData = { x: a.x, y: a.y, width: a.width, height: a.height };
-    const { error: err } = await updateMapArea(a.id, pct);
+    const pct = worldToAreaPct({
+      x: node.x() - newWorldWidth / 2,
+      y: node.y() - newWorldHeight / 2,
+      width: newWorldWidth,
+      height: newWorldHeight,
+    });
+    const nextMeta = withAreaRotation(a, nextRot);
+    setAreas((prev) => prev.map((x) => (x.id === a.id ? { ...x, ...pct, meta: nextMeta } : x)));
+    setSelectedArea((prev) => (prev?.id === a.id ? { ...prev, ...pct, meta: nextMeta } : prev));
+    const beforeData = { x: a.x, y: a.y, width: a.width, height: a.height, rotation: getAreaRotation(a) };
+    const { error: err } = await updateMapArea(a.id, { ...pct, meta: nextMeta });
     if (err) {
       setError(err.message);
       return;
     }
-    await auditMap({ action: "resize", areaId: a.id, areaCode: a.code, beforeData, afterData: pct });
-    flashSuccess("Área redimensionada");
+    await auditMap({ action: "resize", areaId: a.id, areaCode: a.code, beforeData, afterData: { ...pct, rotation: nextRot } });
+    flashSuccess(`Atualizado (${Math.round(nextRot)}°)`);
+  }
+
+  async function handleRotateArea(a, nextDeg) {
+    const rot = normalizeRotation(nextDeg);
+    const nextMeta = withAreaRotation(a, rot);
+    setAreas((prev) => prev.map((x) => (x.id === a.id ? { ...x, meta: nextMeta } : x)));
+    setSelectedArea((prev) => (prev?.id === a.id ? { ...prev, meta: nextMeta } : prev));
+    const { error: err } = await updateMapArea(a.id, { meta: nextMeta });
+    if (err) setError(err.message);
   }
 
   function handleTransformerBoundBox(oldBox, newBox) {
@@ -824,6 +847,7 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId, entries = [
       width: Number(newAreaForm.width),
       height: Number(newAreaForm.height),
       color: colorForType(newAreaForm.areaType),
+      meta: Number(newAreaForm.rotation) ? { rotation: normalizeRotation(newAreaForm.rotation) } : null,
     });
     setAreaBusy(false);
     if (err) return setError(err.message);
@@ -1191,15 +1215,39 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId, entries = [
                         : "rgba(255,255,255,0.15)";
                       const canInteract = editMode || a.matches;
 
+                      const rot = getAreaRotation(a);
+                      const localWorld = { x: 0, y: 0, width: world.width, height: world.height };
+
                       return (
-                        <React.Fragment key={a.id}>
+                        <Group
+                          key={a.id}
+                          ref={(node) => {
+                            if (node) shapeRefs.current[a.id] = node;
+                            else delete shapeRefs.current[a.id];
+                          }}
+                          x={world.x + world.width / 2}
+                          y={world.y + world.height / 2}
+                          offsetX={world.width / 2}
+                          offsetY={world.height / 2}
+                          width={world.width}
+                          height={world.height}
+                          rotation={rot}
+                          listening={canInteract}
+                          draggable={editMode}
+                          onDragStart={() => setActiveDragId(a.id)}
+                          onDragEnd={(e) => handleAreaDragEnd(a, e)}
+                          onTransformEnd={(e) => handleAreaTransformEnd(a, e)}
+                          onClick={() => { setSelectedArea(a); setPanelView("lista"); }}
+                          onTap={() => { setSelectedArea(a); setPanelView("lista"); }}
+                          onMouseEnter={(e) => {
+                            setHoveredArea(a);
+                            setMousePos({ x: e.evt.clientX, y: e.evt.clientY, show: true });
+                          }}
+                          onMouseLeave={() => setHoveredArea(null)}
+                        >
                           <Rect
-                            ref={(node) => {
-                              if (node) shapeRefs.current[a.id] = node;
-                              else delete shapeRefs.current[a.id];
-                            }}
-                            x={world.x}
-                            y={world.y}
+                            x={0}
+                            y={0}
                             width={world.width}
                             height={world.height}
                             fill={fill}
@@ -1208,30 +1256,18 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId, entries = [
                             dash={isCorridor ? [8, 6] : undefined}
                             cornerRadius={isCorridor ? 14 : specialKind === "carro_apoio" ? 10 : 7}
                             opacity={a.matches ? 1 : 0.12}
-                            listening={canInteract}
-                            draggable={editMode}
                             perfectDrawEnabled={false}
-                            onDragStart={() => setActiveDragId(a.id)}
-                            onDragEnd={(e) => handleAreaDragEnd(a, e)}
-                            onTransformEnd={(e) => handleAreaTransformEnd(a, e)}
-                            onClick={() => { setSelectedArea(a); setPanelView("lista"); }}
-                            onTap={() => { setSelectedArea(a); setPanelView("lista"); }}
-                            onMouseEnter={(e) => {
-                              setHoveredArea(a);
-                              setMousePos({ x: e.evt.clientX, y: e.evt.clientY, show: true });
-                            }}
-                            onMouseLeave={() => setHoveredArea(null)}
                             shadowColor="black"
                             shadowBlur={isSelected ? 18 : 0}
                             shadowOpacity={isSelected ? 0.5 : 0}
                           />
 
-                          {specialKind && renderSpecialAreaDetails(specialKind, world, a.matches ? 1 : 0.12)}
+                          {specialKind && renderSpecialAreaDetails(specialKind, localWorld, a.matches ? 1 : 0.12)}
 
                           {layers.labels && world.width > 16 && world.height > 10 && (
                             <Text
-                              x={world.x}
-                              y={world.y + world.height / 2 - 7}
+                              x={0}
+                              y={world.height / 2 - 7}
                               width={world.width}
                               align="center"
                               text={isCorridor ? (a.label || "") : a.code}
@@ -1244,8 +1280,8 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId, entries = [
 
                           {!isCorridor && layers.labels && world.height > 55 && (a.stats.skus > 0 || isHeatmapShelf) && (
                             <Text
-                              x={world.x}
-                              y={world.y + world.height / 2 + 9}
+                              x={0}
+                              y={world.height / 2 + 9}
                               width={world.width}
                               align="center"
                               text={
@@ -1259,18 +1295,20 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId, entries = [
                               listening={false}
                             />
                           )}
-                        </React.Fragment>
+                        </Group>
                       );
                     })}
 
                   {editMode && (
                     <Transformer
                       ref={transformerRef}
-                      rotateEnabled={false}
+                      rotateEnabled
+                      rotationSnaps={[]}
                       keepRatio={false}
                       anchorFill="#0a0e14"
                       anchorStroke="#00d4ff"
                       anchorSize={9}
+                      anchorCornerRadius={3}
                       borderStroke="#00d4ff"
                       borderDash={[4, 4]}
                       boundBoxFunc={handleTransformerBoundBox}
@@ -1453,6 +1491,45 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId, entries = [
                     ))}
                   </select>
                 </label>
+
+                <div style={{ padding: "8px 10px", borderRadius: 10, background: "var(--surface-raised)", border: "1px solid var(--border)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <span style={{ fontSize: 11.5, fontWeight: 700, color: "var(--text-muted)" }}>Rotação livre (0°–360°)</span>
+                    <input
+                      type="number"
+                      min="0"
+                      max="360"
+                      step="1"
+                      className="field"
+                      style={{ width: 68, padding: "3px 6px", fontSize: 12, textAlign: "center" }}
+                      value={Math.round(getAreaRotation(selectedArea))}
+                      onChange={(e) => handleRotateArea(selectedArea, Number(e.target.value))}
+                    />
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="359"
+                    step="1"
+                    value={Math.round(getAreaRotation(selectedArea))}
+                    onChange={(e) => handleRotateArea(selectedArea, Number(e.target.value))}
+                    style={{ width: "100%", accentColor: "#00d4ff" }}
+                  />
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 4, marginTop: 6 }}>
+                    {[-45, -15, 0, 15, 45].map((delta) => (
+                      <button
+                        key={delta}
+                        type="button"
+                        className="btn-small"
+                        style={{ padding: "4px 2px", fontSize: 11, justifyContent: "center" }}
+                        onClick={() => handleRotateArea(selectedArea, delta === 0 ? 0 : getAreaRotation(selectedArea) + delta)}
+                      >
+                        {delta === 0 ? "0°" : `${delta > 0 ? "+" : ""}${delta}°`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <button className="btn-small" style={{ width: "100%", color: "var(--danger)", borderColor: "var(--danger)" }} onClick={() => handleDeleteArea(selectedArea)}>
                   <IconTrash size={13} /> Remover área
                 </button>
@@ -1585,6 +1662,10 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId, entries = [
                 <div>
                   <label className="schedule-modal-label">Altura (%)</label>
                   <input type="number" min="2" max="100" className="schedule-modal-field" value={newAreaForm.height} onChange={(e) => setNewAreaForm({ ...newAreaForm, height: e.target.value })} />
+                </div>
+                <div className="schedule-modal-full">
+                  <label className="schedule-modal-label">Rotação (0°–360°)</label>
+                  <input type="number" min="0" max="360" className="schedule-modal-field" value={newAreaForm.rotation ?? 0} onChange={(e) => setNewAreaForm({ ...newAreaForm, rotation: e.target.value })} />
                 </div>
                 {newAreaForm.areaType === "prateleira" && (
                   <div className="schedule-modal-full">

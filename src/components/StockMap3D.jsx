@@ -13,6 +13,9 @@ import {
   colorForType,
   labelForType,
   labelForSide,
+  getAreaRotation,
+  withAreaRotation,
+  normalizeRotation,
   resolveSpecialAreaKind,
 } from "../lib/stockMap";
 import { Accordion } from "./ui/Accordion";
@@ -269,7 +272,7 @@ export default function StockMap3D({ isAdmin, onScanArea, onOpenMap, entries = [
   const [newObjModal, setNewObjModal] = useState(false);
   const [newObjForm, setNewObjForm] = useState({
     code: "", label: "", areaType: "prateleira", floor: "terreo",
-    x: 42, y: 42, width: 10, height: 15, hasSides: false,
+    x: 42, y: 42, width: 10, height: 15, rotation: 0, hasSides: false,
   });
   const [objBusy, setObjBusy] = useState(false);
   const [flashMsg, setFlashMsg] = useState("");
@@ -406,6 +409,7 @@ export default function StockMap3D({ isAdmin, onScanArea, onOpenMap, entries = [
       width: Number(newObjForm.width),
       height: Number(newObjForm.height),
       color: colorForType(newObjForm.areaType),
+      meta: Number(newObjForm.rotation) ? { rotation: normalizeRotation(newObjForm.rotation) } : null,
     });
     setObjBusy(false);
     if (err) { setError(err.message); return; }
@@ -658,6 +662,7 @@ export default function StockMap3D({ isAdmin, onScanArea, onOpenMap, entries = [
       // áreas que não são estante: modelos 3D dedicados (escada, elevador, mesas, carros) ou blocos coloridos
       others.forEach((a) => {
         const m = areaToMeters(a, cfg);
+        const rotRad = -(getAreaRotation(a) * Math.PI) / 180;
         const specialKind = resolveSpecialAreaKind(a);
 
         if (specialKind) {
@@ -667,6 +672,7 @@ export default function StockMap3D({ isAdmin, onScanArea, onOpenMap, entries = [
           else if (specialKind === "carro_apoio") built = buildSupportCart3D(m);
           else built = buildConferenceTable3D(m, specialKind);
 
+          built.group.rotation.y = rotRad;
           group.add(built.group);
 
           const pick = new THREE.Mesh(
@@ -674,6 +680,7 @@ export default function StockMap3D({ isAdmin, onScanArea, onOpenMap, entries = [
             new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
           );
           pick.position.set(m.x, m.y + built.height / 2, m.z);
+          pick.rotation.y = rotRad;
           pick.userData = { areaId: a.id, floor: fl };
           group.add(pick);
           picks.push(pick);
@@ -690,6 +697,7 @@ export default function StockMap3D({ isAdmin, onScanArea, onOpenMap, entries = [
           new THREE.MeshStandardMaterial({ color: colorForType(a.area_type), transparent: true, opacity: h < 0.1 ? 0.55 : 0.85 })
         );
         mesh.position.set(m.x, m.y + h / 2, m.z);
+        mesh.rotation.y = rotRad;
         mesh.userData = { areaId: a.id, floor: fl };
         group.add(mesh);
         picks.push(mesh);
@@ -700,7 +708,7 @@ export default function StockMap3D({ isAdmin, onScanArea, onOpenMap, entries = [
         }
       });
 
-      // estantes: postes e tábuas instanciados (poucos objetos mesmo com muitas ruas)
+      // estantes: postes e tábuas instanciados (com suporte completo a rotação 0-360°)
       const postsPer = racks.map((a) => rackGeometry(a, cfg)).map((g) => 2 * (g.bays + 1));
       const totalPosts = postsPer.reduce((s, n) => s + n, 0);
       const totalBoards = racks.length * (cfg.levels + 1);
@@ -714,14 +722,19 @@ export default function StockMap3D({ isAdmin, onScanArea, onOpenMap, entries = [
 
       racks.forEach((a) => {
         const g = rackGeometry(a, cfg);
+        const rotRad = -(getAreaRotation(a) * Math.PI) / 180;
+        const cos = Math.cos(rotRad);
+        const sin = Math.sin(rotRad);
         const bayLen = g.length / g.bays;
         for (let i = 0; i <= g.bays; i++) {
           [-1, 1].forEach((sgn) => {
             const u = -g.length / 2 + i * bayLen;
             const v = (sgn * g.thickness) / 2;
-            dummy.position.set(g.x + (g.alongX ? u : v), g.y + rackH / 2, g.z + (g.alongX ? v : u));
+            const lx = g.alongX ? u : v;
+            const lz = g.alongX ? v : u;
+            dummy.position.set(g.x + lx * cos + lz * sin, g.y + rackH / 2, g.z - lx * sin + lz * cos);
             dummy.scale.set(1, rackH, 1);
-            dummy.rotation.set(0, 0, 0);
+            dummy.rotation.set(0, rotRad, 0);
             dummy.updateMatrix();
             posts.setMatrixAt(pi++, dummy.matrix);
           });
@@ -729,6 +742,7 @@ export default function StockMap3D({ isAdmin, onScanArea, onOpenMap, entries = [
         for (let k = 0; k <= cfg.levels; k++) {
           dummy.position.set(g.x, g.y + 0.08 + k * levelH, g.z);
           dummy.scale.set(g.alongX ? g.length : g.thickness, 1, g.alongX ? g.thickness : g.length);
+          dummy.rotation.set(0, rotRad, 0);
           dummy.updateMatrix();
           boards.setMatrixAt(bi++, dummy.matrix);
         }
@@ -738,6 +752,7 @@ export default function StockMap3D({ isAdmin, onScanArea, onOpenMap, entries = [
           new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false })
         );
         pick.position.set(g.x, g.y + rackH / 2, g.z);
+        pick.rotation.y = rotRad;
         pick.userData = { areaId: a.id, floor: fl };
         group.add(pick);
         picks.push(pick);
@@ -750,8 +765,23 @@ export default function StockMap3D({ isAdmin, onScanArea, onOpenMap, entries = [
       boards.instanceMatrix.needsUpdate = true;
       group.add(posts, boards);
 
-      // produtos (uma caixa por item), colorida por categoria
-      const placed = racks.flatMap((a) => layoutItems(a, itemsByArea.get(String(a.id)) || [], cfg).map((p) => ({ ...p, areaId: a.id })));
+      // produtos (uma caixa por item), acompanhando a rotação da estante
+      const placed = racks.flatMap((a) => {
+        const g = rackGeometry(a, cfg);
+        const rotRad = -(getAreaRotation(a) * Math.PI) / 180;
+        const cos = Math.cos(rotRad);
+        const sin = Math.sin(rotRad);
+        return layoutItems(a, itemsByArea.get(String(a.id)) || [], cfg).map((p) => {
+          const lx = p.position[0] - g.x;
+          const lz = p.position[2] - g.z;
+          return {
+            ...p,
+            areaId: a.id,
+            rotRad,
+            position: [g.x + lx * cos + lz * sin, p.position[1], g.z - lx * sin + lz * cos],
+          };
+        });
+      });
       let productsMesh = null;
       if (placed.length > 0) {
         productsMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ roughness: 0.7 }), placed.length);
@@ -759,6 +789,7 @@ export default function StockMap3D({ isAdmin, onScanArea, onOpenMap, entries = [
         placed.forEach((p, i) => {
           dummy.position.set(...p.position);
           dummy.scale.set(...p.size);
+          dummy.rotation.set(0, p.rotRad || 0, 0);
           dummy.updateMatrix();
           productsMesh.setMatrixAt(i, dummy.matrix);
           const c = categoryColor(p.item.category);
@@ -857,6 +888,7 @@ export default function StockMap3D({ isAdmin, onScanArea, onOpenMap, entries = [
     t.outline.geometry.dispose();
     t.outline.geometry = new THREE.EdgesGeometry(pickMesh.geometry);
     t.outline.position.copy(pickMesh.position);
+    t.outline.rotation.copy(pickMesh.rotation);
     t.outline.visible = true;
   }, [selected, areas, cfg, loading]);
 
@@ -1108,6 +1140,47 @@ export default function StockMap3D({ isAdmin, onScanArea, onOpenMap, entries = [
                     />
                   </label>
                 </div>
+                <div style={{ padding: "8px 10px", borderRadius: 8, background: "rgba(148,163,184,0.1)", border: "1px solid rgba(148,163,184,0.22)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700 }}>Rotação (0°–360°)</span>
+                    <input
+                      type="number"
+                      min="0"
+                      max="360"
+                      step="1"
+                      className="field"
+                      style={{ width: 64, padding: "3px 6px", fontSize: 12, textAlign: "center" }}
+                      value={Math.round(getAreaRotation(selArea))}
+                      onChange={(e) => handlePatchArea3D(selArea, { meta: withAreaRotation(selArea, Number(e.target.value)) })}
+                    />
+                  </div>
+                  <input
+                    type="range"
+                    min="0"
+                    max="359"
+                    step="1"
+                    value={Math.round(getAreaRotation(selArea))}
+                    onChange={(e) => handlePatchArea3D(selArea, { meta: withAreaRotation(selArea, Number(e.target.value)) })}
+                    style={{ width: "100%", accentColor: "#38bdf8" }}
+                  />
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 4, marginTop: 6 }}>
+                    {[-45, -15, 0, 15, 45].map((delta) => (
+                      <button
+                        key={delta}
+                        type="button"
+                        className="btn-small"
+                        style={{ padding: "4px 2px", fontSize: 11, justifyContent: "center" }}
+                        onClick={() =>
+                          handlePatchArea3D(selArea, {
+                            meta: withAreaRotation(selArea, delta === 0 ? 0 : getAreaRotation(selArea) + delta),
+                          })
+                        }
+                      >
+                        {delta === 0 ? "0°" : `${delta > 0 ? "+" : ""}${delta}°`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <label style={{ fontSize: 11, opacity: 0.85 }}>
                   Andar
                   <select
@@ -1224,6 +1297,10 @@ export default function StockMap3D({ isAdmin, onScanArea, onOpenMap, entries = [
                 <div>
                   <label className="schedule-modal-label">Profundidade (%)</label>
                   <input type="number" min="2" max="100" className="schedule-modal-field" value={newObjForm.height} onChange={(e) => setNewObjForm({ ...newObjForm, height: e.target.value })} />
+                </div>
+                <div className="schedule-modal-full">
+                  <label className="schedule-modal-label">Rotação (0°–360°)</label>
+                  <input type="number" min="0" max="360" className="schedule-modal-field" value={newObjForm.rotation ?? 0} onChange={(e) => setNewObjForm({ ...newObjForm, rotation: e.target.value })} />
                 </div>
               </div>
             </div>

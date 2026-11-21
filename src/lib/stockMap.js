@@ -76,6 +76,20 @@ export function colorForType(type) {
   return AREA_TYPES.find((t) => t.value === type)?.color || "#1e3a5f";
 }
 
+export function normalizeRotation(deg) {
+  const n = Number(deg);
+  if (!Number.isFinite(n)) return 0;
+  return Math.round((((n % 360) + 360) % 360) * 10) / 10;
+}
+
+export function getAreaRotation(area) {
+  return normalizeRotation(area?.meta?.rotation ?? 0);
+}
+
+export function withAreaRotation(area, deg) {
+  return { ...(area?.meta || {}), rotation: normalizeRotation(deg) };
+}
+
 export function labelForType(type) {
   return AREA_TYPES.find((t) => t.value === type)?.label || type;
 }

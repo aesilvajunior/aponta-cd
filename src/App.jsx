@@ -91,8 +91,28 @@ export default function App() {
     loadAll, loadEntries, resetEntries, resetSeparationErrors, resetShortages,
   } = useAppData(session);
 
-  // Operador logado (para checar role: 'operator' | 'lider' | 'admin')
-  const [currentOperator, setCurrentOperator] = useState(null);
+  // Operador logado (controla tela inicial por código e role: 'operator' | 'lider' | 'admin')
+  const [currentOperator, setCurrentOperator] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem("aponta_current_operator");
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  function handleOperatorLogin(op) {
+    setCurrentOperator(op);
+    try { sessionStorage.setItem("aponta_current_operator", JSON.stringify(op)); } catch { /* ignora */ }
+    setTab("kiosk");
+  }
+
+  function handleOperatorLogout() {
+    setCurrentOperator(null);
+    setIsAdmin(false);
+    try { sessionStorage.removeItem("aponta_current_operator"); } catch { /* ignora */ }
+    lockAdminSession();
+  }
 
   // Líder OU admin pode acessar a Rotina do Líder
   const isLeader = currentOperator?.role === "lider" || isAdmin;
@@ -249,7 +269,7 @@ export default function App() {
 
   if (!session) {
     if (!showLogin) {
-      return <LandingPage onEnterLogin={() => setShowLogin(true)} />;
+      return <LandingPage mode="auth" onEnterLogin={() => setShowLogin(true)} />;
     }
     return <LoginScreen onBackToLanding={() => setShowLogin(false)} />;
   }
@@ -260,6 +280,17 @@ export default function App() {
         <div className="loading-spinner" />
         <div>Carregando...</div>
       </div>
+    );
+  }
+
+  // Tela inicial obrigatória até o funcionário entrar com seu código
+  if (!currentOperator && !isAdmin) {
+    return (
+      <LandingPage
+        mode="operator"
+        operators={operators}
+        onOperatorLogin={handleOperatorLogin}
+      />
     );
   }
 
@@ -322,6 +353,7 @@ export default function App() {
         }}
         isAdmin={isAdmin}
         onLock={lockAdmin}
+        onOperatorLogout={handleOperatorLogout}
         currentOperator={currentOperator}
         mobileOpen={mobileMenuOpen}
       />
@@ -352,7 +384,14 @@ export default function App() {
         <Suspense fallback={<ScreenFallback />}>
         <div key={tab} className="tab-stage">
           {tab === "landing" && (
-            <LandingPage isAuthenticated onEnterLogin={() => setTab("kiosk")} onOpenMap2D={() => setTab("stock-map")} onOpenMap3D={() => setTab("stock-map-3d")} />
+            <LandingPage
+              mode="authenticated"
+              isAuthenticated
+              currentOperator={currentOperator}
+              onEnterLogin={() => setTab("kiosk")}
+              onOpenMap2D={() => setTab("stock-map")}
+              onOpenMap3D={() => setTab("stock-map-3d")}
+            />
           )}
           {tab === "kiosk" && (
             <Kiosk operators={operators} activities={activities} vehicles={vehicles} refreshEntries={loadEntries} />

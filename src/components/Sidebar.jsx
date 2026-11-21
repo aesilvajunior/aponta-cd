@@ -131,7 +131,7 @@ const SECTIONS = [
   },
 ];
 
-export default function Sidebar({ id, tab, setTab, isAdmin, onLock, currentOperator, mobileOpen }) {
+export default function Sidebar({ id, tab, setTab, isAdmin, onLock, onOperatorLogout, currentOperator, mobileOpen }) {
   const { session, signOut } = useAuth();
   const isLeader = currentOperator?.role === "lider" || isAdmin;
 
@@ -421,7 +421,21 @@ export default function Sidebar({ id, tab, setTab, isAdmin, onLock, currentOpera
       </div>
 
       <div className="sidebar-footer">
-        {!collapsed && email && (
+        {!collapsed && currentOperator && (
+          <div className="sidebar-user" title={`${currentOperator.name} (cód. ${currentOperator.code})`}>
+            <div className="sidebar-user-avatar" style={{ background: "#f27416", color: "#fff" }}>
+              {(currentOperator.name || "O").charAt(0).toUpperCase()}
+            </div>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {currentOperator.name}
+              </div>
+              <div style={{ fontSize: 10.5, color: "var(--text-faint)" }}>Cód. {currentOperator.code}</div>
+            </div>
+          </div>
+        )}
+
+        {!collapsed && !currentOperator && email && (
           <div className="sidebar-user" title={email}>
             <div className="sidebar-user-avatar">{email.charAt(0).toUpperCase()}</div>
             <div className="sidebar-user-email">{email}</div>
@@ -429,6 +443,17 @@ export default function Sidebar({ id, tab, setTab, isAdmin, onLock, currentOpera
         )}
 
         <ThemeToggle compact={collapsed} />
+
+        {onOperatorLogout && currentOperator && (
+          <button
+            className="sidebar-logout"
+            onClick={onOperatorLogout}
+            title={collapsed ? "Trocar operador" : undefined}
+          >
+            <IconLogOut size={16} />
+            {!collapsed && <span>Trocar operador</span>}
+          </button>
+        )}
 
         {isAdmin && (
           <button
