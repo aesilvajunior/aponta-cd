@@ -108,12 +108,12 @@ const FAQ_ITEMS = [
   {
     question: "Como acesso as funcionalidades do Aponta CD?",
     answer:
-      "Informe seu código de funcionário no campo de acesso no topo desta página inicial (pelo teclado físico, teclado numérico ou teclado na tela). As telas e o menu lateral são liberados imediatamente conforme o seu perfil.",
+      "Clique no botão 'Área do Funcionário' no topo desta página e informe seu código e sua senha (no primeiro acesso, use os números do seu próprio código). As telas e o menu lateral são liberados imediatamente conforme o seu perfil.",
   },
   {
     question: "Posso editar e girar objetos nos mapas 2D e 3D?",
     answer:
-      "Sim. Ative o Modo Edição tanto no Mapa 2D quanto no Mapa 3D para criar, mover, redimensionar e girar em qualquer grau (0°–360°) prateleiras, escadas, elevadores, mesas de conferência (pedidos e transferência), carros de apoio, salas, corredores e andares.",
+      "Todos os colaboradores podem consultar e pesquisar produtos nos mapas 2D e 3D. Já o Modo Edição (criar, mover, redimensionar, girar em 0°–360° e criar andares) e o Histórico do Mapa são exclusivos do perfil Administrador.",
   },
   {
     question: "Como funcionam as etiquetas de endereço do CD?",

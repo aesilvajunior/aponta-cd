@@ -657,7 +657,7 @@ export default function TeamManager({
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20, maxWidth: 780 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 20, marginBottom: 20, maxWidth: 820 }}>
         <div className="card">
           <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <IconLock size={16} /> PIN de administrador
@@ -718,7 +718,7 @@ export default function TeamManager({
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr", gap: 20, marginBottom: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 20, marginBottom: 20 }}>
         <div className="card">
           <div className="card-title" style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <IconUsers size={16} /> Operadores

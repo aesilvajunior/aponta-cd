@@ -208,7 +208,7 @@ export default function Kiosk({ operators, activities, vehicles = [], entries = 
   }, []);
 
   useEffect(() => {
-    if (!loggedOperator) return;
+    if (!loggedOperator || currentOperator) return;
     const iv = setInterval(() => {
       if (finishModalOpenRef.current) return;
       if (showPrefsModal) return;
@@ -218,7 +218,7 @@ export default function Kiosk({ operators, activities, vehicles = [], entries = 
     }, 1000);
     return () => clearInterval(iv);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loggedOperator, paused, showPrefsModal, showWelcome]);
+  }, [loggedOperator, currentOperator, paused, showPrefsModal, showWelcome]);
 
   useEffect(() => {
     finishModalOpenRef.current = showFinishModal;
@@ -899,11 +899,20 @@ export default function Kiosk({ operators, activities, vehicles = [], entries = 
     return [...favList, ...rest];
   })();
 
-  // Se já existe sessão ativa em activeSessions para o operador logado, sincroniza imediatamente
+  // Se já existe sessão ativa em activeSessions para o operador logado, sincroniza imediatamente no estado session
   const liveActiveForLogged = loggedOperator
     ? (activeSessions || []).find((s) => String(s.operator_code) === String(loggedOperator.code)) || null
     : null;
   const effectiveSession = session || liveActiveForLogged;
+
+  useEffect(() => {
+    if (!session && liveActiveForLogged) {
+      setSession(liveActiveForLogged);
+      setPaused(!!liveActiveForLogged.paused_at);
+      setPausedAt(liveActiveForLogged.paused_at ? new Date(liveActiveForLogged.paused_at).getTime() : null);
+      setTotalPausedSeconds(liveActiveForLogged.total_paused_seconds || 0);
+    }
+  }, [session, liveActiveForLogged]);
 
   const myTodayEntries = (() => {
     if (!loggedOperator || !Array.isArray(entries)) return [];
@@ -941,17 +950,15 @@ export default function Kiosk({ operators, activities, vehicles = [], entries = 
 
       <header className="kiosk-header">
         <div className="kiosk-header-left">
-          <div className="kiosk-header-title">Aponta CD</div>
+          <div>
+            <div className="kiosk-header-title">Apontamento de Atividade</div>
+            <div className="kiosk-header-sub">Inicie, pause ou finalize sua atividade no turno</div>
+          </div>
         </div>
 
         <div className="kiosk-header-right">
           <div className="kiosk-header-clock">
             <div className="kiosk-header-time">{fmtClock(now)}</div>
-            <div className="kiosk-header-date">{fmtDate(now)}</div>
-          </div>
-          <div className="kiosk-header-shift">
-            <span className="kiosk-header-shift-dot" />
-            Turno {shiftFor(now)}
           </div>
           <button
             className={`kiosk-header-station ${!stationName ? "kiosk-header-station-alert" : ""}`}
@@ -1067,7 +1074,7 @@ export default function Kiosk({ operators, activities, vehicles = [], entries = 
                   </div>
                 </div>
               </div>
-              {(!effectiveSession || isAdmin) && (
+              {isAdmin && (
                 <button className="kiosk-operator-change" onClick={() => reset(true)}>
                   Trocar operador
                 </button>

@@ -249,7 +249,7 @@ export default function ConferenceTable({ operators, isAdmin = false, currentOpe
         (s) => String(s.operator_code || "") === String(loggedOperator.code)
       );
       const hasActiveConf = inProgress.some(
-        (q) => String(q.conference_operator_code || "") === String(loggedOperator.code)
+        (q) => String(q.conference_started_by_code || q.conference_operator_code || "") === String(loggedOperator.code)
       );
       if (hasKioskActivity || hasActiveConf) {
         setError("Você já possui uma atividade ou conferência em andamento. Finalize a atual antes de iniciar outra.");
@@ -455,7 +455,9 @@ export default function ConferenceTable({ operators, isAdmin = false, currentOpe
           <button className="btn-small" onClick={load}>
             <IconRefresh size={14} /> Atualizar
           </button>
-          <button className="btn-small" onClick={logout}>Sair</button>
+          {!currentOperator && (
+            <button className="btn-small" onClick={logout}>Sair</button>
+          )}
         </div>
       </div>
 

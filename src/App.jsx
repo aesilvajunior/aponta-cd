@@ -107,14 +107,23 @@ export default function App() {
 
   function handleOperatorLogin(op) {
     setCurrentOperator(op);
-    try { sessionStorage.setItem("aponta_current_operator", JSON.stringify(op)); } catch { /* ignora */ }
+    try {
+      sessionStorage.setItem("aponta_current_operator", JSON.stringify(op));
+      sessionStorage.setItem(
+        "aponta_schedule_operator",
+        JSON.stringify({ code: op.code, name: op.name, role: op.role })
+      );
+    } catch { /* ignora */ }
     setTab("welcome");
   }
 
   function handleOperatorLogout() {
     setCurrentOperator(null);
     setIsAdmin(false);
-    try { sessionStorage.removeItem("aponta_current_operator"); } catch { /* ignora */ }
+    try {
+      sessionStorage.removeItem("aponta_current_operator");
+      sessionStorage.removeItem("aponta_schedule_operator");
+    } catch { /* ignora */ }
     lockAdminSession();
   }
 
@@ -123,7 +132,9 @@ export default function App() {
     isAdmin ||
     currentOperator?.role === "lider" ||
     currentOperator?.role === "gestor" ||
-    currentOperator?.role === "admin";
+    currentOperator?.role === "admin" ||
+    (Array.isArray(currentOperator?.roles) &&
+      (currentOperator.roles.includes("lider") || currentOperator.roles.includes("gestor")));
 
   const alertedRef = useRef(new Set());
 
@@ -191,17 +202,17 @@ export default function App() {
     return startAutoSync(() => { loadEntries(); });
   }, [session, loadEntries]);
 
-  // Carrega operador logado do sessionStorage (o Kiosk guarda ao logar)
+  // Sincroniza currentOperator com a lista atualizada de operadores do banco
   useEffect(() => {
-    try {
-      const raw = sessionStorage.getItem("aponta_schedule_operator");
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        const found = operators.find((o) => o.code === parsed.code);
-        if (found) setCurrentOperator(found);
-      }
-    } catch { /* sessionStorage indisponível */ }
-  }, [operators]);
+    if (!currentOperator || !operators.length) return;
+    const found = operators.find((o) => String(o.code) === String(currentOperator.code));
+    if (found && found !== currentOperator) {
+      setCurrentOperator(found);
+      try {
+        sessionStorage.setItem("aponta_current_operator", JSON.stringify(found));
+      } catch { /* ignora */ }
+    }
+  }, [operators, currentOperator]);
 
   useEffect(() => {
     if (!isPushEnabled()) return;
@@ -486,7 +497,7 @@ export default function App() {
             <ErrorKiosk operators={operators} errorTypes={errorTypes} currentOperator={currentOperator} />
           )}
           {tab === "schedules" && (
-            <ScheduleManager operators={operators} isAdmin={isAdmin} />
+            <ScheduleManager operators={operators} isAdmin={isAdmin} currentOperator={currentOperator} />
           )}
           {tab === "conference" && (
             <ConferenceTable
@@ -557,6 +568,7 @@ export default function App() {
               separationErrors={separationErrors}
               shortages={shortages}
               alertThreshold={alertThreshold}
+              isAdmin={isAdmin}
               onResetEntries={resetEntries}
               onResetSeparationErrors={resetSeparationErrors}
               onResetShortages={resetShortages}
@@ -654,6 +666,8 @@ export default function App() {
         operators={operators}
         entries={entries}
         activities={activities}
+        isAdmin={isAdmin}
+        isLeader={isLeader}
         onNavigate={setTab}
         onViewOperator={handleViewOperator}
         onApplyFilter={handleApplyFilter}

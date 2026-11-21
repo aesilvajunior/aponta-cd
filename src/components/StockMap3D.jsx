@@ -1105,7 +1105,7 @@ export default function StockMap3D({ isAdmin, onScanArea, onOpenMap, entries = [
               <button type="button" className="btn-small" onClick={() => onOpenMap?.(selArea)}>Ver no 2D</button>
             </div>
 
-            {editMode && (
+            {isAdmin && editMode && (
               <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid rgba(148,163,184,0.25)", display: "flex", flexDirection: "column", gap: 8 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#38bdf8" }}>
                   Editar objeto no 3D

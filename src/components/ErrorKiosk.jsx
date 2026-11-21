@@ -144,13 +144,13 @@ export default function ErrorKiosk({ operators, errorTypes, currentOperator = nu
   }, []);
 
   useEffect(() => {
-    if (!loggedOperator) return;
+    if (!loggedOperator || currentOperator) return;
     const iv = setInterval(() => {
       if (Date.now() - lastInteractionRef.current > IDLE_TIMEOUT_MS) reset();
     }, 1000);
     return () => clearInterval(iv);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loggedOperator]);
+  }, [loggedOperator, currentOperator]);
 
   useEffect(() => {
     return () => {
@@ -297,25 +297,15 @@ export default function ErrorKiosk({ operators, errorTypes, currentOperator = nu
     <div className="kiosk-page" ref={mainContainerRef}>
       <header className="kiosk-header">
         <div className="kiosk-header-left">
-          <div className="kiosk-header-title">Aponta CD</div>
+          <div>
+            <div className="kiosk-header-title">Apontamento de Erro</div>
+            <div className="kiosk-header-sub">Registre ocorrências e divergências de separação</div>
+          </div>
         </div>
 
         <div className="kiosk-header-right">
-          <button
-            className="kiosk-header-station"
-            onClick={cycleTheme}
-            title={`Tema: ${localTheme === "auto" ? "automático" : localTheme === "dark" ? "escuro" : "claro"} (clique para alternar)`}
-          >
-            {themeIcon}
-            {localTheme === "auto" ? "Auto" : localTheme === "dark" ? "Escuro" : "Claro"}
-          </button>
           <div className="kiosk-header-clock">
             <div className="kiosk-header-time">{fmtClock(now)}</div>
-            <div className="kiosk-header-date">{fmtDate(now)}</div>
-          </div>
-          <div className="kiosk-header-shift">
-            <span className="kiosk-header-shift-dot" />
-            Turno {shiftFor(now)}
           </div>
           <button
             className={`kiosk-header-station ${!stationName ? "kiosk-header-station-alert" : ""}`}
@@ -393,7 +383,9 @@ export default function ErrorKiosk({ operators, errorTypes, currentOperator = nu
                   <div className="kiosk-operator-role">{loggedOperator.role} · #{loggedOperator.code}</div>
                 </div>
               </div>
-              <button className="kiosk-operator-change" onClick={reset}>Trocar operador</button>
+              {!currentOperator && (
+                <button className="kiosk-operator-change" onClick={() => reset(true)}>Trocar operador</button>
+              )}
             </div>
 
             <div className="kiosk-activities">

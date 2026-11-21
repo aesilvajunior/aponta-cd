@@ -112,14 +112,45 @@ export default function CdChecklist({ operators, isAdmin, currentOperator = null
     }
   }, [currentRun]);
 
-  // Ao trocar entre Abertura e Fechamento, volta para a tela de identificação limpa
+  // Ao trocar entre Abertura e Fechamento, preserva o operador se já estiver logado na sessão principal
   function switchType(nextType) {
     if (nextType === checklistType) return;
     setChecklistType(nextType);
-    setLoggedOperator(null);
+    if (!currentOperator) {
+      setLoggedOperator(null);
+    }
     setCodeInput("");
     setLoginError("");
   }
+
+  // Se o operador já entrou na tela inicial e não há run aberta para este tipo, inicia o rascunho automaticamente
+  useEffect(() => {
+    if (loading || !loggedOperator || currentRun) return;
+    let cancelled = false;
+    (async () => {
+      const { data, error: err } = await supabase
+        .from("cd_checklist_runs")
+        .insert({
+          checklist_date: today,
+          checklist_type: checklistType,
+          operator_code: loggedOperator.code,
+          operator_name: loggedOperator.name,
+          completed_items: [],
+        })
+        .select()
+        .single();
+      if (cancelled) return;
+      if (err) {
+        setError(err.message);
+        return;
+      }
+      if (data) {
+        setRunId(data.id);
+        setRuns((prev) => [data, ...prev]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [loading, loggedOperator, currentRun, today, checklistType]);
 
   const handleDigit = useCallback((d) => {
     setLoginError("");
@@ -209,6 +240,7 @@ export default function CdChecklist({ operators, isAdmin, currentOperator = null
       setRunId(null);
       setBusy(false);
     }
+    setManualSwitch(true);
     setLoggedOperator(null);
     setCodeInput("");
     setLoginError("");
@@ -243,7 +275,9 @@ export default function CdChecklist({ operators, isAdmin, currentOperator = null
     setBusy(false);
     if (err) return setError(err.message);
     playSound("success");
-    setLoggedOperator(null);
+    if (!currentOperator) {
+      setLoggedOperator(null);
+    }
     setRunId(null);
     setCompleted(new Set());
     setNote("");

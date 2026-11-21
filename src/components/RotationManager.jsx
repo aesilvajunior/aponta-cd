@@ -32,7 +32,13 @@ import {
 } from "./Icons";
 
 export default function RotationManager({ operators = [], isAdmin, currentOperator = null }) {
-  const canEdit = isAdmin || !!currentOperator?.can_manage_rotation;
+  const isLeaderRole =
+    currentOperator?.role === "lider" ||
+    currentOperator?.role === "gestor" ||
+    currentOperator?.role === "admin" ||
+    (Array.isArray(currentOperator?.roles) &&
+      (currentOperator.roles.includes("lider") || currentOperator.roles.includes("gestor")));
+  const canEdit = isAdmin || isLeaderRole || !!currentOperator?.can_manage_rotation;
 
   const [tasks, setTasks] = useState([]);
   const [assignments, setAssignments] = useState([]);

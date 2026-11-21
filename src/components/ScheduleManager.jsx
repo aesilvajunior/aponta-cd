@@ -90,12 +90,13 @@ function isWithinBusinessHours(iso) {
 
 const MAX_VISIBLE = 2;
 
-export default function ScheduleManager({ operators, isAdmin }) {
+export default function ScheduleManager({ operators, isAdmin, currentOperator = null }) {
   const [schedules, setSchedules] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const [loggedOperator, setLoggedOperator] = useState(null);
+  const [loggedOperator, setLoggedOperator] = useState(currentOperator || null);
+  const [manualSwitch, setManualSwitch] = useState(false);
   const [codeInput, setCodeInput] = useState("");
   const [loginError, setLoginError] = useState("");
   const [checkingLogin, setCheckingLogin] = useState(false);
@@ -152,30 +153,34 @@ export default function ScheduleManager({ operators, isAdmin }) {
   });
 
   useEffect(() => {
+    if (currentOperator && !manualSwitch) {
+      setLoggedOperator(currentOperator);
+      return;
+    }
     try {
       const raw = sessionStorage.getItem(SESSION_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
         const found = operators.find((o) => o.code === parsed.code);
-        if (found && found.can_schedule_delivery) {
+        if (found) {
           setLoggedOperator(found);
         } else {
           sessionStorage.removeItem(SESSION_KEY);
         }
       }
     } catch {}
-  }, [operators]);
+  }, [operators, currentOperator, manualSwitch]);
 
   useEffect(() => {
     const iv = setInterval(() => {
-      if (!loggedOperator) return;
+      if (!loggedOperator || currentOperator) return;
       if (Date.now() - lastInteractionRef.current > IDLE_TIMEOUT_MS) {
         logout();
       }
     }, 1000);
     return () => clearInterval(iv);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loggedOperator]);
+  }, [loggedOperator, currentOperator]);
 
   useEffect(() => {
     if (loggedOperator || isAdmin) return;
@@ -265,6 +270,7 @@ export default function ScheduleManager({ operators, isAdmin }) {
     bump();
   }
   function logout() {
+    setManualSwitch(true);
     setLoggedOperator(null);
     setCodeInput("");
     setLoginError("");
@@ -580,7 +586,7 @@ export default function ScheduleManager({ operators, isAdmin }) {
               <IconPlus size={14} /> Novo agendamento
             </button>
           )}
-          {loggedOperator && (
+          {loggedOperator && !currentOperator && (
             <button className="btn-small" onClick={logout}>Sair</button>
           )}
           {isAdmin && (

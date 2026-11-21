@@ -75,6 +75,8 @@ export default function CommandPalette({
   operators = [],
   entries = [],
   activities = [],
+  isAdmin = false,
+  isLeader = false,
   onNavigate,
   onViewOperator,
   onApplyFilter,
@@ -100,68 +102,82 @@ export default function CommandPalette({
       { id: "nav-errors", type: "action", actionKey: "nav-errors", title: "Ir para Apontar erro", subtitle: "Registro de erro de separação", onSelect: () => onNavigate?.("errors-kiosk") },
       { id: "nav-schedules", type: "action", actionKey: "nav-schedules", title: "Ir para Agenda", subtitle: "Agendamentos de recebimento", onSelect: () => onNavigate?.("schedules") },
       { id: "nav-conference", type: "action", actionKey: "nav-conference", title: "Ir para Conferência", subtitle: "Mesa de conferência de pedidos", onSelect: () => onNavigate?.("conference") },
-      { id: "nav-checklist", type: "action", actionKey: "nav-checklist", title: "Ir para Checklist do CD", subtitle: "Abertura e fechamento do turno", onSelect: () => onNavigate?.("checklist") },
-      { id: "nav-shortages", type: "action", actionKey: "nav-shortages", title: "Ir para Faltas", subtitle: "Consulta de faltas de material", onSelect: () => onNavigate?.("shortages") },
-      { id: "nav-rotation", type: "action", actionKey: "nav-rotation", title: "Ir para Rotação de tarefas", subtitle: "Limpezas e organizações", onSelect: () => onNavigate?.("rotation") },
+      { id: "nav-shortages", type: "action", actionKey: "nav-shortages", title: "Ir para Todas as faltas", subtitle: "Consulta de faltas de material", onSelect: () => onNavigate?.("shortages") },
+      { id: "nav-transfer-shortages", type: "action", actionKey: "nav-shortages", title: "Ir para Faltas por transferência", subtitle: "Faltas em transferências AP/ZN", onSelect: () => onNavigate?.("transfer-shortages") },
+      { id: "nav-supplier-shortages", type: "action", actionKey: "nav-shortages", title: "Ir para Faltas por fornecedor", subtitle: "Ranking de faltas por fornecedor", onSelect: () => onNavigate?.("supplier-shortages") },
       { id: "nav-goals-dashboard", type: "action", actionKey: "nav-goals-dashboard", title: "Ir para Dashboard de metas", subtitle: "Progresso consolidado", onSelect: () => onNavigate?.("goals-dashboard") },
-      { id: "nav-stock-map", type: "action", actionKey: "nav-stock-map", title: "Ir para Mapa do estoque (2D)", subtitle: "Layout interativo e edição 360°", onSelect: () => onNavigate?.("stock-map") },
-      { id: "nav-stock-map-3d", type: "action", actionKey: "nav-stock-map-3d", title: "Ir para Mapa 3D", subtitle: "Galpão em 3D com edição e andares", onSelect: () => onNavigate?.("stock-map-3d") },
+      { id: "nav-stock-map", type: "action", actionKey: "nav-stock-map", title: "Ir para Mapa (2D & 3D)", subtitle: "Layout interativo do galpão", onSelect: () => onNavigate?.("stock-map") },
       { id: "nav-stock-scan", type: "action", actionKey: "nav-stock-scan", title: "Ir para Coletar endereços", subtitle: "Bipar códigos de barras e endereços", onSelect: () => onNavigate?.("stock-scan") },
-      { id: "nav-address-labels", type: "action", actionKey: "nav-address-labels", title: "Ir para Etiquetas de endereço", subtitle: "Gerar QR padrão CD (ex.: 1C1105EA)", onSelect: () => onNavigate?.("address-labels") },
-      { id: "nav-turn-comparison", type: "action", actionKey: "nav-turn-comparison", title: "Ir para Comparação de turnos", subtitle: "Manhã vs. Tarde", onSelect: () => onNavigate?.("turn-comparison") },
-      { id: "nav-workload", type: "action", actionKey: "nav-workload", title: "Ir para Carga de trabalho", subtitle: "Mapa de calor, previsão e filtros", onSelect: () => onNavigate?.("workload") },
-      { id: "nav-pauses", type: "action", actionKey: "nav-pauses", title: "Ir para Pausas", subtitle: "Histórico e motivos de pausa", onSelect: () => onNavigate?.("pauses") },
-      { id: "nav-monthly-report", type: "action", actionKey: "nav-monthly-report", title: "Ir para Relatório mensal", subtitle: "Consolidado gerencial do mês", onSelect: () => onNavigate?.("monthly-report") },
-      { id: "nav-landing", type: "action", actionKey: "nav-kiosk", title: "Ir para Página Inicial", subtitle: "Apresentação do Aponta CD", onSelect: () => onNavigate?.("landing") },
-      { id: "nav-panel", type: "action", actionKey: "nav-panel", title: "Ir para Indicadores", subtitle: "Painel de métricas do admin", onSelect: () => onNavigate?.("panel") },
-      { id: "nav-manual", type: "action", actionKey: "nav-manual", title: "Ir para Lançamento manual", subtitle: "Digitar dados antigos", onSelect: () => onNavigate?.("manual") },
-      { id: "nav-goals", type: "action", actionKey: "nav-goals", title: "Ir para Metas individuais", subtitle: "Configurar metas por operador", onSelect: () => onNavigate?.("goals") },
-      { id: "nav-admin-master", type: "action", actionKey: "nav-admin-master", title: "Ir para Central de controle", subtitle: "Poderes totais do admin", onSelect: () => onNavigate?.("admin-master") },
-      { id: "nav-csv-import", type: "action", actionKey: "nav-csv-import", title: "Ir para Importar CSV", subtitle: "Analisar planilhas externas", onSelect: () => onNavigate?.("csv-import") },
-      { id: "nav-fraud", type: "action", actionKey: "nav-fraud", title: "Ir para Detecção de fraude", subtitle: "Padrões suspeitos", onSelect: () => onNavigate?.("fraud") },
-      { id: "nav-reports-scheduler", type: "action", actionKey: "nav-reports-scheduler", title: "Ir para Export agendado", subtitle: "Envio automático de relatórios", onSelect: () => onNavigate?.("reports-scheduler") },
-      { id: "nav-team", type: "action", actionKey: "nav-team", title: "Ir para Cadastros", subtitle: "Operadores, atividades, veículos", onSelect: () => onNavigate?.("team") },
-      { id: "nav-sales-team", type: "action", actionKey: "nav-sales-team", title: "Ir para Equipe comercial", subtitle: "Líderes e vendedores", onSelect: () => onNavigate?.("sales-team") },
-      { id: "nav-audit", type: "action", actionKey: "nav-audit", title: "Ir para Auditoria", subtitle: "Histórico de alterações", onSelect: () => onNavigate?.("audit") },
-      { id: "action-tv", type: "action", actionKey: "action-tv", title: "Abrir Painel TV", subtitle: "Painel de exibição em nova aba", onSelect: () => window.open("/tv", "_blank", "noopener,noreferrer") },
-      { id: "action-today", type: "action", actionKey: "nav-panel", title: "Filtrar Indicadores por Hoje", subtitle: "Aplica filtro de período rápido", onSelect: () => { onNavigate?.("panel"); onApplyFilter?.({ type: "hoje" }); } },
-      { id: "action-week", type: "action", actionKey: "nav-panel", title: "Filtrar Indicadores por Últimos 7 dias", subtitle: "Aplica filtro de período rápido", onSelect: () => { onNavigate?.("panel"); onApplyFilter?.({ type: "7dias" }); } },
-      { id: "action-month", type: "action", actionKey: "nav-panel", title: "Filtrar Indicadores por Este mês", subtitle: "Aplica filtro de período rápido", onSelect: () => { onNavigate?.("panel"); onApplyFilter?.({ type: "mes" }); } },
+      { id: "nav-sales-query", type: "action", actionKey: "nav-sales-team", title: "Ir para Líder da equipe comercial", subtitle: "Consultar líder e vendedores", onSelect: () => onNavigate?.("sales-query") },
+      { id: "nav-badges", type: "action", actionKey: "nav-admin-master", title: "Ir para Crachás", subtitle: "Visualizar, imprimir ou exportar PDF", onSelect: () => onNavigate?.("badges") },
+      { id: "nav-equipment", type: "action", actionKey: "nav-kiosk", title: "Ir para Equipamentos", subtitle: "Consultar equipamentos e responsáveis", onSelect: () => onNavigate?.("equipment") },
     );
 
-    operators.forEach((op) => {
-      items.push({
-        id: `op-${op.code}`,
-        type: "operator",
-        title: op.name,
-        subtitle: `${op.role || "—"} · #${op.code}`,
-        keywords: `${op.name} ${op.code} ${op.role || ""}`.toLowerCase(),
-        onSelect: () => onViewOperator?.(op),
-      });
-    });
+    if (isLeader || isAdmin) {
+      items.push(
+        { id: "nav-checklist", type: "action", actionKey: "nav-checklist", title: "Ir para Checklist do CD", subtitle: "Abertura e fechamento do turno", onSelect: () => onNavigate?.("checklist") },
+        { id: "nav-rotation", type: "action", actionKey: "nav-rotation", title: "Ir para Rotação de tarefas", subtitle: "Limpezas e organizações", onSelect: () => onNavigate?.("rotation") },
+        { id: "nav-daily-routine", type: "action", actionKey: "nav-checklist", title: "Ir para Rotina do Líder", subtitle: "Etapas diárias da liderança", onSelect: () => onNavigate?.("daily-routine") },
+      );
+    }
 
-    const seenOrders = new Set();
-    entries.forEach((e) => {
-      if (!e.order_number) return;
-      const key = `${e.order_number}-${e.customer_name || ""}`;
-      if (seenOrders.has(key)) return;
-      seenOrders.add(key);
-      if (seenOrders.size > 200) return;
-      items.push({
-        id: `order-${key}`,
-        type: "order",
-        title: `Pedido #${e.order_number}`,
-        subtitle: `${e.customer_name || "sem cliente"} · ${e.operator_name || "—"}`,
-        keywords: `${e.order_number} ${e.customer_name || ""}`.toLowerCase(),
-        onSelect: () => {
-          onNavigate?.("panel");
-          onApplyFilter?.({ type: "pedido", value: e.order_number });
-        },
+    if (isAdmin) {
+      items.push(
+        { id: "nav-address-labels", type: "action", actionKey: "nav-address-labels", title: "Ir para Etiquetas de endereço", subtitle: "Gerar QR padrão CD (ex.: 1C1105EA)", onSelect: () => onNavigate?.("address-labels") },
+        { id: "nav-turn-comparison", type: "action", actionKey: "nav-turn-comparison", title: "Ir para Comparação de turnos", subtitle: "Manhã vs. Tarde", onSelect: () => onNavigate?.("turn-comparison") },
+        { id: "nav-workload", type: "action", actionKey: "nav-workload", title: "Ir para Carga de trabalho", subtitle: "Mapa de calor, previsão e filtros", onSelect: () => onNavigate?.("workload") },
+        { id: "nav-pauses", type: "action", actionKey: "nav-pauses", title: "Ir para Pausas", subtitle: "Histórico e motivos de pausa", onSelect: () => onNavigate?.("pauses") },
+        { id: "nav-monthly-report", type: "action", actionKey: "nav-monthly-report", title: "Ir para Relatório mensal", subtitle: "Consolidado gerencial do mês", onSelect: () => onNavigate?.("monthly-report") },
+        { id: "nav-panel", type: "action", actionKey: "nav-panel", title: "Ir para Indicadores", subtitle: "Painel de métricas do admin", onSelect: () => onNavigate?.("panel") },
+        { id: "nav-manual", type: "action", actionKey: "nav-manual", title: "Ir para Lançamento manual", subtitle: "Digitar dados antigos", onSelect: () => onNavigate?.("manual") },
+        { id: "nav-goals", type: "action", actionKey: "nav-goals", title: "Ir para Metas individuais", subtitle: "Configurar metas por operador", onSelect: () => onNavigate?.("goals") },
+        { id: "nav-admin-master", type: "action", actionKey: "nav-admin-master", title: "Ir para Central de controle", subtitle: "Poderes totais do admin", onSelect: () => onNavigate?.("admin-master") },
+        { id: "nav-csv-import", type: "action", actionKey: "nav-csv-import", title: "Ir para Importar CSV", subtitle: "Analisar planilhas externas", onSelect: () => onNavigate?.("csv-import") },
+        { id: "nav-fraud", type: "action", actionKey: "nav-fraud", title: "Ir para Detecção de fraude", subtitle: "Padrões suspeitos", onSelect: () => onNavigate?.("fraud") },
+        { id: "nav-reports-scheduler", type: "action", actionKey: "nav-reports-scheduler", title: "Ir para Export agendado", subtitle: "Envio automático de relatórios", onSelect: () => onNavigate?.("reports-scheduler") },
+        { id: "nav-team", type: "action", actionKey: "nav-team", title: "Ir para Cadastros", subtitle: "Operadores, atividades, veículos", onSelect: () => onNavigate?.("team") },
+        { id: "nav-sales-team", type: "action", actionKey: "nav-sales-team", title: "Ir para Equipe comercial (edição)", subtitle: "Gerenciar líderes e vendedores", onSelect: () => onNavigate?.("sales-team") },
+        { id: "nav-audit", type: "action", actionKey: "nav-audit", title: "Ir para Auditoria", subtitle: "Histórico de alterações", onSelect: () => onNavigate?.("audit") },
+        { id: "action-tv", type: "action", actionKey: "action-tv", title: "Abrir Painel TV", subtitle: "Painel de exibição em nova aba", onSelect: () => window.open("/tv", "_blank", "noopener,noreferrer") },
+        { id: "action-today", type: "action", actionKey: "nav-panel", title: "Filtrar Indicadores por Hoje", subtitle: "Aplica filtro de período rápido", onSelect: () => { onNavigate?.("panel"); onApplyFilter?.({ type: "hoje" }); } },
+        { id: "action-week", type: "action", actionKey: "nav-panel", title: "Filtrar Indicadores por Últimos 7 dias", subtitle: "Aplica filtro de período rápido", onSelect: () => { onNavigate?.("panel"); onApplyFilter?.({ type: "7dias" }); } },
+        { id: "action-month", type: "action", actionKey: "nav-panel", title: "Filtrar Indicadores por Este mês", subtitle: "Aplica filtro de período rápido", onSelect: () => { onNavigate?.("panel"); onApplyFilter?.({ type: "mes" }); } },
+      );
+
+      operators.forEach((op) => {
+        items.push({
+          id: `op-${op.code}`,
+          type: "operator",
+          title: op.name,
+          subtitle: `${op.role || "—"} · #${op.code}`,
+          keywords: `${op.name} ${op.code} ${op.role || ""}`.toLowerCase(),
+          onSelect: () => onViewOperator?.(op),
+        });
       });
-    });
+
+      const seenOrders = new Set();
+      entries.forEach((e) => {
+        if (!e.order_number) return;
+        const key = `${e.order_number}-${e.customer_name || ""}`;
+        if (seenOrders.has(key)) return;
+        seenOrders.add(key);
+        if (seenOrders.size > 200) return;
+        items.push({
+          id: `order-${key}`,
+          type: "order",
+          title: `Pedido #${e.order_number}`,
+          subtitle: `${e.customer_name || "sem cliente"} · ${e.operator_name || "—"}`,
+          keywords: `${e.order_number} ${e.customer_name || ""}`.toLowerCase(),
+          onSelect: () => {
+            onNavigate?.("panel");
+            onApplyFilter?.({ type: "pedido", value: e.order_number });
+          },
+        });
+      });
+    }
 
     return items;
-  }, [operators, entries, onNavigate, onViewOperator, onApplyFilter]);
+  }, [operators, entries, isAdmin, isLeader, onNavigate, onViewOperator, onApplyFilter]);
 
   const filteredItems = useMemo(() => {
     const q = query.trim().toLowerCase();

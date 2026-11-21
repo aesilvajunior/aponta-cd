@@ -1479,7 +1479,7 @@ export default function StockMap({ isAdmin, onScanArea, focusAreaId, entries = [
               </div>
             </div>
 
-            {(isAdmin || editMode) && (
+            {isAdmin && (
               <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
                 <label style={{ fontSize: 11.5, color: "var(--text-muted)", fontWeight: 600 }}>
                   Andar do objeto:

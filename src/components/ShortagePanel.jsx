@@ -296,7 +296,8 @@ export default function ShortagePanel({ onOpenScanTask, initialScope = "all" }) 
       </div>
 
       {/* Filtro rápido de escopo de faltas */}
-      <div className="pill-row" style={{ marginBottom: 18 }}>
+      <div className="quick-filters" style={{ marginBottom: 18 }}>
+        <span className="quick-filters-label">Categoria:</span>
         {[
           { key: "all", label: "Todas as faltas" },
           { key: "transferencia", label: "Por transferência" },
@@ -305,7 +306,7 @@ export default function ShortagePanel({ onOpenScanTask, initialScope = "all" }) 
           <button
             key={opt.key}
             type="button"
-            className={`pill ${scope === opt.key ? "pill-active" : ""}`}
+            className={`quick-filter-btn ${scope === opt.key ? "active" : ""}`}
             onClick={() => setScope(opt.key)}
           >
             {opt.label}

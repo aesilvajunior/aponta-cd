@@ -147,7 +147,9 @@ export default function Sidebar({ id, tab, setTab, isAdmin, onLock, onOperatorLo
     isAdmin ||
     currentOperator?.role === "lider" ||
     currentOperator?.role === "gestor" ||
-    currentOperator?.role === "admin";
+    currentOperator?.role === "admin" ||
+    (Array.isArray(currentOperator?.roles) &&
+      (currentOperator.roles.includes("lider") || currentOperator.roles.includes("gestor")));
 
   const [collapsedPref, setCollapsed] = useState(() => {
     try { return localStorage.getItem(STORAGE_KEY) === "1"; } catch { return false; }

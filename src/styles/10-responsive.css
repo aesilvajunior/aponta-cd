@@ -7,8 +7,7 @@
   .sidebar-section-title { padding: 10px 20px 6px 20px; }
   .nav-item { padding: 8px 12px; }
   .main { padding: 24px 32px 32px 32px; }
-  .kiosk-page { margin: -24px -32px 0 -32px; }
-  .kiosk-header { padding: 14px 32px; }
+  .kiosk-header { padding: 14px 20px; }
   .kiosk-main { padding: 28px 20px 32px 20px; }
   .footer-note { margin-top: 24px; }
 }
@@ -19,8 +18,7 @@
   .nav-item { padding: 7px 11px; font-size: 13px; }
   .nav-item-icon { width: 16px; height: 16px; }
   .main { padding: 20px 26px 24px 26px; }
-  .kiosk-page { margin: -20px -26px 0 -26px; }
-  .kiosk-header { padding: 12px 26px; }
+  .kiosk-header { padding: 12px 18px; }
   .kiosk-header-time { font-size: 18px; }
   .kiosk-main { padding: 20px 16px 24px 16px; }
   .kiosk-terminal-wrap { padding: 28px 24px 22px 24px; max-width: 360px; }
@@ -43,14 +41,12 @@
     max-width: 210px;
   }
   .main { padding: 24px 28px 28px 28px; }
-  .kiosk-page { margin: -24px -28px 0 -28px; }
-  .kiosk-header { padding: 14px 28px; }
+  .kiosk-header { padding: 14px 18px; }
 }
 
 @media (max-width: 900px) {
   .main { padding: 20px 24px 24px 24px; }
-  .kiosk-page { margin: -20px -24px 0 -24px; }
-  .kiosk-header { padding: 12px 24px; }
+  .kiosk-header { padding: 12px 16px; }
   .kiosk-logged { max-width: 100%; }
   .schedule-modal-grid { grid-template-columns: 1fr; }
   .exec-kpis { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
@@ -173,7 +169,7 @@
   }
 
   /* Ajustes de tipografia mobile */
-  .kiosk-page { margin: -68px -16px 0 -16px; padding-top: 68px; }
+  .kiosk-page { margin: 0; padding-top: 0; }
   .kiosk-header { padding: 12px 16px; gap: 12px; flex-wrap: wrap; }
   .kiosk-header-time { font-size: 18px; }
   .kiosk-header-shift { display: none; }
@@ -268,7 +264,7 @@
 
 @media (max-width: 480px) {
   .main { padding: 62px 12px 20px 12px !important; }
-  .kiosk-page { margin: -62px -12px 0 -12px; }
+  .kiosk-page { margin: 0; }
   .kiosk-header { padding: 10px 14px; }
   .kiosk-header-time { font-size: 16px; }
   .kiosk-main { padding: 14px 10px 22px 10px; }
