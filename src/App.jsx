@@ -17,6 +17,7 @@ import CommandPalette from "./components/CommandPalette";
 import PushSetup from "./components/PushSetup";
 import LoginScreen from "./components/LoginScreen";
 import LandingPage from "./components/LandingPage";
+import EmployeeHome from "./components/EmployeeHome";
 import StatusBar from "./components/StatusBar";
 import ThemeToggle from "./components/ThemeToggle";
 
@@ -73,7 +74,7 @@ function ScreenFallback() {
 export default function App() {
   const { session, loading: authLoading } = useAuth();
 
-  const [tab, setTab] = useState("kiosk");
+  const [tab, setTab] = useState("welcome");
   const [isAdmin, setIsAdmin] = useState(false);
 
   const [cmdOpen, setCmdOpen] = useState(false);
@@ -105,7 +106,7 @@ export default function App() {
   function handleOperatorLogin(op) {
     setCurrentOperator(op);
     try { sessionStorage.setItem("aponta_current_operator", JSON.stringify(op)); } catch { /* ignora */ }
-    setTab("kiosk");
+    setTab("welcome");
   }
 
   function handleOperatorLogout() {
@@ -387,12 +388,22 @@ export default function App() {
 
         <Suspense fallback={<ScreenFallback />}>
         <div key={tab} className="tab-stage">
+          {tab === "welcome" && (
+            <EmployeeHome
+              currentOperator={currentOperator}
+              isLeader={isLeader}
+              isAdmin={isAdmin}
+              entries={entries}
+              activeSessions={activeSessions}
+              onSelectTab={setTab}
+            />
+          )}
           {tab === "landing" && (
             <LandingPage
               mode="authenticated"
               isAuthenticated
               currentOperator={currentOperator}
-              onEnterLogin={() => setTab("kiosk")}
+              onEnterLogin={() => setTab("welcome")}
               onOpenMap2D={() => setTab("stock-map")}
               onOpenMap3D={() => setTab("stock-map-3d")}
             />

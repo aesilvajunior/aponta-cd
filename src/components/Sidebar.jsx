@@ -326,8 +326,8 @@ export default function Sidebar({ id, tab, setTab, isAdmin, onLock, onOperatorLo
       <div className="sidebar-brand-row">
         <div
           className="sidebar-brand"
-          {...press(() => setTab("landing"))}
-          title="Ver página inicial do Aponta CD"
+          {...press(() => setTab("welcome"))}
+          title="Voltar para o início"
           style={{ cursor: "pointer" }}
         >
           <BrandMark variant={collapsed ? "icon" : "lockup"} />

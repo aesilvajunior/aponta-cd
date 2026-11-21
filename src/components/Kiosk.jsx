@@ -939,14 +939,6 @@ export default function Kiosk({ operators, activities, vehicles = [], entries = 
         </div>
 
         <div className="kiosk-header-right">
-          <button
-            className="kiosk-header-station"
-            onClick={cycleTheme}
-            title={`Tema: ${localTheme === "auto" ? "automático" : localTheme === "dark" ? "escuro" : "claro"} (clique para alternar)`}
-          >
-            {themeIcon}
-            {localTheme === "auto" ? "Auto" : localTheme === "dark" ? "Escuro" : "Claro"}
-          </button>
           <div className="kiosk-header-clock">
             <div className="kiosk-header-time">{fmtClock(now)}</div>
             <div className="kiosk-header-date">{fmtDate(now)}</div>

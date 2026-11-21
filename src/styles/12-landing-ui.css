@@ -1610,54 +1610,282 @@
 .aponta-logo-stage {
   position: relative;
   width: 100%;
-  max-width: 620px;
-  margin: 0 auto 30px auto;
+  max-width: 580px;
+  margin: 0 auto 24px auto;
+  padding: 6px 0 4px 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
 }
 
 .aponta-logo-glow {
   position: absolute;
-  inset: 12% 10%;
+  inset: 14% 12%;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(14, 165, 198, 0.24) 0%, rgba(22, 51, 110, 0.14) 50%, transparent 75%);
-  filter: blur(28px);
+  background: radial-gradient(circle, rgba(14, 165, 198, 0.2) 0%, rgba(22, 51, 110, 0.1) 52%, transparent 74%);
+  filter: blur(34px);
   pointer-events: none;
   z-index: 0;
 }
 
-.aponta-logo-frame {
+.aponta-logo-svg {
   position: relative;
   z-index: 1;
-  overflow: hidden;
-  border-radius: 26px;
-  background: #ffffff;
-  border: 1px solid rgba(15, 23, 42, 0.1);
-  padding: 28px 36px;
-  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.16), 0 0 0 1px rgba(255, 255, 255, 0.5) inset;
-  animation: brFadeRise 900ms cubic-bezier(0.25, 1, 0.5, 1) both;
-}
-
-.aponta-logo-official-img {
   width: 100%;
-  max-height: 290px;
-  object-fit: contain;
+  height: auto;
   display: block;
+}
+
+/* ---------- Footer Editorial 3 colunas ---------- */
+.br-footer {
+  margin-top: 76px;
+  border-top: 1px solid var(--border);
+  padding: 48px 0 28px 0;
+  background: var(--surface);
+}
+
+.br-footer-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 0.75fr) minmax(0, 0.75fr);
+  gap: 36px;
+  padding-bottom: 36px;
+  border-bottom: 1px solid var(--border);
+}
+
+.br-footer-desc {
+  margin: 14px 0 0 0;
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: var(--text-muted);
+  max-width: 380px;
+}
+
+.br-footer-col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.br-footer-col-title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-bottom: 4px;
+}
+
+.br-footer-col a,
+.br-footer-link-btn {
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 13.5px;
+  font-weight: 500;
+  background: transparent;
+  border: none;
+  padding: 0;
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+  transition: color 180ms ease;
+}
+
+.br-footer-col a:hover,
+.br-footer-link-btn:hover {
+  color: var(--text);
+}
+
+.br-footer-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-top: 20px;
+}
+
+/* ---------- Tela de Boas-Vindas do Funcionário (Estilo Claude) ---------- */
+.emp-home {
+  max-width: 960px;
   margin: 0 auto;
-  animation: isoFloatSubtle 5.2s ease-in-out infinite;
+  padding: 28px 8px 48px 8px;
 }
 
-@keyframes logoSheenSweep {
-  0%, 72% { transform: translateX(-140%) skewX(-22deg); opacity: 0; }
-  84% { opacity: 0.45; }
-  100% { transform: translateX(220%) skewX(-22deg); opacity: 0; }
+.emp-home-hero {
+  text-align: center;
+  margin-bottom: 36px;
 }
 
-.aponta-logo-sheen {
-  position: absolute;
-  inset: 0;
-  width: 45%;
-  pointer-events: none;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.65), transparent);
-  animation: logoSheenSweep 6.5s cubic-bezier(0.25, 1, 0.5, 1) infinite;
+.emp-home-date-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 18px;
+  text-transform: capitalize;
+}
+
+.emp-home-greeting {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  font-family: var(--font-display);
+  font-size: clamp(30px, 4.2vw, 46px);
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1.1;
+  margin: 0 0 10px 0;
+  color: var(--text);
+}
+
+.emp-home-spark {
+  color: var(--accent-2, #0ea5c6);
+  font-size: 0.92em;
+  display: inline-block;
+  animation: isoPulseDot 3.2s ease-in-out infinite;
+}
+
+.emp-home-sub {
+  font-size: 17px;
+  color: var(--text-muted);
+  margin: 0 0 22px 0;
+}
+
+.emp-home-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.emp-home-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 13px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-size: 12.5px;
+  color: var(--text-muted);
+  font-family: inherit;
+}
+
+.emp-home-chip strong {
+  color: var(--text);
+}
+
+.emp-home-chip-live {
+  border-color: var(--ok);
+  background: var(--ok-soft);
+  color: var(--ok);
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.emp-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ok);
+  display: inline-block;
+}
+
+.emp-home-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.emp-action-card {
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--text);
+  animation: fadeUpIn 420ms cubic-bezier(0.25, 1, 0.5, 1) both;
+  transition: transform 240ms cubic-bezier(0.25, 1, 0.5, 1), border-color 200ms ease, box-shadow 240ms ease;
+}
+
+.emp-action-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--accent);
+  box-shadow: var(--shadow-md);
+}
+
+.emp-action-primary {
+  border-color: var(--accent);
+  background: linear-gradient(145deg, var(--surface), var(--accent-soft));
+}
+
+.emp-action-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.emp-action-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.emp-action-arrow {
+  color: var(--text-faint);
+  transition: transform 220ms cubic-bezier(0.25, 1, 0.5, 1), color 180ms ease;
+}
+
+.emp-action-card:hover .emp-action-arrow {
+  color: var(--accent);
+  transform: translateX(3px);
+}
+
+.emp-action-title {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.emp-action-desc {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+@media (max-width: 820px) {
+  .br-footer-grid {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+  .emp-home-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 540px) {
+  .emp-home-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .aponta-logo-svg {

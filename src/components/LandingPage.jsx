@@ -25,8 +25,8 @@ const SHOWCASE_MODULES = [
   {
     index: "01",
     tag: "ESPACIAL · 2D & 3D",
-    title: "Planta interativa em 360°",
-    desc: "Crie, mova, redimensione e gire livremente prateleiras, escadas, elevadores, mesas de pedidos/transferência, carros de apoio, salas e andares.",
+    title: "Gêmeo digital do galpão em 360°",
+    desc: "Modele e reorganize toda a planta do centro de distribuição em tempo real. Posicione, redimensione e rotacione prateleiras, escadas, elevadores, mesas de conferência, carros de apoio, salas e múltiplos andares com sincronia instantânea entre 2D e 3D.",
     tone: "cobalt",
     art: "map",
     image: "/images/showcase-map3d.jpg",
@@ -34,36 +34,36 @@ const SHOWCASE_MODULES = [
   },
   {
     index: "02",
-    tag: "CHÃO DE FÁBRICA",
-    title: "Kiosk & Conferência",
-    desc: "Registro ultrarrápido por código numérico, leitor de código de barras ou toque, com fila offline segura e controle de SLA.",
+    tag: "PRODUTIVIDADE NO TURNO",
+    title: "Apontamento ágil & Conferência",
+    desc: "Elimine gargalos no chão de fábrica com registro de atividades em um clique, leitura por código de barras, controle de fila de conferência e operação contínua mesmo sem conexão à internet.",
     tone: "obsidian",
     art: "kiosk",
     image: "/images/showcase-kiosk.jpg",
   },
   {
     index: "03",
-    tag: "ENDEREÇAMENTO",
-    title: "Etiquetas padrão CD",
-    desc: "Geração em lote no formato 1C1105EA com regra automática de corredor par (direito) e ímpar (esquerdo) e QR Codes prontos para impressão.",
+    tag: "RASTREABILIDADE",
+    title: "Endereçamento & Etiquetas CD",
+    desc: "Padronize o estoque com geração em lote de etiquetas no formato 1C1105EA, classificação automática de corredores pares e ímpares e QR Codes prontos para impressão térmica ou A4.",
     tone: "slate",
     art: "labels",
     image: "/images/showcase-labels.jpg",
   },
   {
     index: "04",
-    tag: "INTELIGÊNCIA",
-    title: "Slotting ABC & Turnos",
-    desc: "Mapa de calor de giro, comparação entre turno Manhã e Tarde, previsão de demanda para 7 dias e sugestões de realocação.",
+    tag: "INTELIGÊNCIA LOGÍSTICA",
+    title: "Slotting Curva ABC & Turnos",
+    desc: "Identifique itens de alto giro distantes da expedição pelo mapa de calor, compare o desempenho entre os turnos Manhã e Tarde e antecipe picos de demanda com projeção de 7 dias.",
     tone: "cyan",
     art: "slotting",
     image: "/images/showcase-analytics.jpg",
   },
   {
     index: "05",
-    tag: "GOVERNANÇA",
-    title: "Checklist, Pausas & Fraude",
-    desc: "Abertura e fechamento auditados por operador, controle de pausas, varredura de anomalias e exportação CSV em 1 clique.",
+    tag: "CONTROLE & AUDITORIA",
+    title: "Checklist, Pausas & Detecção de Fraude",
+    desc: "Assegure conformidade na abertura e fechamento do CD, monitore pausas operacionais, detecte anomalias automaticamente e exporte relatórios executivos em Excel, CSV, JSON ou PDF.",
     tone: "ink",
     art: "audit",
   },
@@ -377,7 +377,7 @@ export default function LandingPage({
             </nav>
 
             <div className="br-nav-actions">
-              <ThemeToggle compact />
+              <ThemeToggle compact showColors={false} />
               <button
                 type="button"
                 className="br-pill-btn"
@@ -726,10 +726,38 @@ export default function LandingPage({
 
       {/* ============ EDITORIAL FOOTER ============ */}
       <footer className="br-footer">
-        <div className="br-container br-footer-inner">
-          <BrandMark variant="lockup" />
-          <span className="br-muted-mono">GESTÃO DE CENTRO DE DISTRIBUIÇÃO · TEMPO REAL</span>
-          <a href="#topo" className="br-back-top">Topo ↑</a>
+        <div className="br-container">
+          <div className="br-footer-grid">
+            <div className="br-footer-brand-col">
+              <BrandMark variant="lockup" />
+              <p className="br-footer-desc">
+                Plataforma integrada de apontamento operacional, mapeamento 2D/3D e inteligência logística para centros de distribuição.
+              </p>
+            </div>
+
+            <div className="br-footer-col">
+              <div className="br-footer-col-title">Navegação</div>
+              <a href="#modulos">Módulos</a>
+              <a href="#processo">Fluxo operacional</a>
+              <a href="#duvidas">Dúvidas frequentes</a>
+            </div>
+
+            <div className="br-footer-col">
+              <div className="br-footer-col-title">Acesso rápido</div>
+              <button type="button" className="br-footer-link-btn" onClick={openEmployeeArea}>
+                Área do Funcionário
+              </button>
+              <a href="/tv" target="_blank" rel="noopener noreferrer">
+                Painel TV ao vivo ↗
+              </a>
+              <a href="#topo">Voltar ao topo ↑</a>
+            </div>
+          </div>
+
+          <div className="br-footer-bottom">
+            <span className="br-muted-mono">© {new Date().getFullYear()} APONTA CD · OPERAÇÃO LOGÍSTICA</span>
+            <span className="br-muted-mono">TEMPO REAL · 2D & 3D · OFFLINE-FIRST</span>
+          </div>
         </div>
       </footer>
 
