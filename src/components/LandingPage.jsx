@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import ThemeToggle from "./ThemeToggle";
 import BrandMark from "./BrandMark";
-import AnimatedLogoHero from "./AnimatedLogoHero";
 import { Accordion } from "./ui/Accordion";
 import {
   IconTv,
@@ -10,97 +9,194 @@ import {
   IconCheck,
 } from "./Icons";
 
-const MARQUEE_ITEMS = [
-  "MAPA 2D & 3D 360°",
-  "APONTAMENTO POR CÓDIGO",
-  "CURVA ABC & SLOTTING",
-  "ETIQUETAS 1C1105EA",
-  "CHECKLIST DO CD",
-  "DETECÇÃO DE FRAUDE",
-  "MODO OFFLINE",
-  "PAINEL TV AO VIVO",
+const MAP_RACKS = [
+  {
+    id: "1A0402EA",
+    aisle: "Rua 1A",
+    building: "04",
+    level: "02",
+    side: "Esquerdo (Ímpar)",
+    curve: "A",
+    turnover: "96% giro",
+    occupancy: "92%",
+    distance: "14m da doca",
+    x: 24,
+    y: 26,
+    w: 94,
+    h: 26,
+  },
+  {
+    id: "1A0801DA",
+    aisle: "Rua 1A",
+    building: "08",
+    level: "01",
+    side: "Direito (Par)",
+    curve: "A",
+    turnover: "91% giro",
+    occupancy: "88%",
+    distance: "19m da doca",
+    x: 130,
+    y: 26,
+    w: 94,
+    h: 26,
+  },
+  {
+    id: "1B0603EA",
+    aisle: "Rua 1B",
+    building: "06",
+    level: "03",
+    side: "Esquerdo (Ímpar)",
+    curve: "B",
+    turnover: "68% giro",
+    occupancy: "76%",
+    distance: "27m da doca",
+    x: 24,
+    y: 74,
+    w: 94,
+    h: 26,
+  },
+  {
+    id: "1B1002DA",
+    aisle: "Rua 1B",
+    building: "10",
+    level: "02",
+    side: "Direito (Par)",
+    curve: "A",
+    turnover: "89% giro",
+    occupancy: "94%",
+    distance: "24m da doca",
+    x: 130,
+    y: 74,
+    w: 94,
+    h: 26,
+  },
+  {
+    id: "1C1105EA",
+    aisle: "Rua 1C",
+    building: "11",
+    level: "05",
+    side: "Esquerdo (Ímpar)",
+    curve: "A",
+    turnover: "94% giro",
+    occupancy: "90%",
+    distance: "18m da doca",
+    x: 24,
+    y: 122,
+    w: 94,
+    h: 26,
+  },
+  {
+    id: "1C1204DA",
+    aisle: "Rua 1C",
+    building: "12",
+    level: "04",
+    side: "Direito (Par)",
+    curve: "B",
+    turnover: "62% giro",
+    occupancy: "71%",
+    distance: "31m da doca",
+    x: 130,
+    y: 122,
+    w: 94,
+    h: 26,
+  },
+  {
+    id: "1D0301EA",
+    aisle: "Rua 1D",
+    building: "03",
+    level: "01",
+    side: "Esquerdo (Ímpar)",
+    curve: "C",
+    turnover: "28% giro",
+    occupancy: "54%",
+    distance: "42m da doca",
+    x: 24,
+    y: 170,
+    w: 94,
+    h: 26,
+  },
+  {
+    id: "1D0902DA",
+    aisle: "Rua 1D",
+    building: "09",
+    level: "02",
+    side: "Direito (Par)",
+    curve: "C",
+    turnover: "31% giro",
+    occupancy: "60%",
+    distance: "46m da doca",
+    x: 130,
+    y: 170,
+    w: 94,
+    h: 26,
+  },
 ];
 
-const SHOWCASE_MODULES = [
+const SHIFT_LOGS = [
+  { time: "08:42", task: "Separação · Pedido #4812", ref: "1C1105EA", dur: "11m 20s", status: "Concluído" },
+  { time: "08:55", task: "Conferência · Carga Sul", ref: "DOCA 02", dur: "08m 05s", status: "Concluído" },
+  { time: "09:08", task: "Reposição · Tubos PVC 100mm", ref: "1A0402EA", dur: "14m 32s", status: "Em andamento" },
+  { time: "09:24", task: "Inventário Cíclico · Rua 1B", ref: "1B1002DA", dur: "Na fila", status: "Agendado" },
+];
+
+const SAMPLE_LABELS = [
+  { code: "1C1105EA", floor: "1º Andar", aisle: "Rua C", building: "Prédio 11", level: "Nível 05", parity: "ÍMPAR · LADO ESQUERDO", zone: "Curva A" },
+  { code: "1C1202DA", floor: "1º Andar", aisle: "Rua C", building: "Prédio 12", level: "Nível 02", parity: "PAR · LADO DIREITO", zone: "Curva A" },
+  { code: "2A0501EA", floor: "2º Andar", aisle: "Rua A", building: "Prédio 05", level: "Nível 01", parity: "ÍMPAR · LADO ESQUERDO", zone: "Curva B" },
+  { code: "2B0804DA", floor: "2º Andar", aisle: "Rua B", building: "Prédio 08", level: "Nível 04", parity: "PAR · LADO DIREITO", zone: "Curva C" },
+];
+
+const CAPABILITIES = [
   {
-    index: "01",
-    tag: "ESPACIAL · 2D & 3D",
-    title: "Gêmeo digital do galpão em 360°",
-    desc: "Modele e reorganize toda a planta do centro de distribuição em tempo real. Posicione, redimensione e rotacione prateleiras, escadas, elevadores, mesas de conferência, carros de apoio, salas e múltiplos andares com sincronia instantânea entre 2D e 3D.",
-    tone: "cobalt",
-    art: "map",
-    image: "/images/showcase-map3d.jpg",
-    wide: true,
+    code: "01",
+    title: "Apontamento & Conferência",
+    desc: "Registro de atividades em segundos por código numérico ou leitor de código de barras, com fila de conferência e operação contínua mesmo sem internet.",
+    meta: "Offline-first · Teclado numérico",
   },
   {
-    index: "02",
-    tag: "PRODUTIVIDADE NO TURNO",
-    title: "Apontamento ágil & Conferência",
-    desc: "Elimine gargalos no chão de fábrica com registro de atividades em um clique, leitura por código de barras, controle de fila de conferência e operação contínua mesmo sem conexão à internet.",
-    tone: "obsidian",
-    art: "kiosk",
-    image: "/images/showcase-kiosk.jpg",
-  },
-  {
-    index: "03",
-    tag: "RASTREABILIDADE",
+    code: "02",
     title: "Endereçamento & Etiquetas CD",
-    desc: "Padronize o estoque com geração em lote de etiquetas no formato 1C1105EA, classificação automática de corredores pares e ímpares e QR Codes prontos para impressão térmica ou A4.",
-    tone: "slate",
-    art: "labels",
-    image: "/images/showcase-labels.jpg",
+    desc: "Geração em lote no padrão compacto 1C1105EA, classificação automática de lado par e ímpar e QR Codes prontos para impressão térmica ou folha A4.",
+    meta: "Térmica & A4 · Paridade automática",
   },
   {
-    index: "04",
-    tag: "INTELIGÊNCIA LOGÍSTICA",
-    title: "Slotting Curva ABC & Turnos",
-    desc: "Identifique itens de alto giro distantes da expedição pelo mapa de calor, compare o desempenho entre os turnos Manhã e Tarde e antecipe picos de demanda com projeção de 7 dias.",
-    tone: "cyan",
-    art: "slotting",
-    image: "/images/showcase-analytics.jpg",
+    code: "03",
+    title: "Curva ABC, Slotting & Turnos",
+    desc: "Mapa de calor para aproximar itens de alto giro da expedição, comparativo direto entre os turnos Manhã e Tarde e projeção de demanda para 7 dias.",
+    meta: "Heatmap · Manhã vs. Tarde",
   },
   {
-    index: "05",
-    tag: "CONTROLE & AUDITORIA",
-    title: "Checklist, Pausas & Detecção de Fraude",
-    desc: "Assegure conformidade na abertura e fechamento do CD, monitore pausas operacionais, detecte anomalias automaticamente e exporte relatórios executivos em Excel, CSV, JSON ou PDF.",
-    tone: "ink",
-    art: "audit",
+    code: "04",
+    title: "Checklist, Pausas & Auditoria",
+    desc: "Conformidade na abertura e fechamento do galpão, controle de pausas operacionais, detecção de anomalias e exportação em Excel, CSV, JSON ou PDF.",
+    meta: "Auditoria · Relatórios executivos",
   },
 ];
 
-const PROCESS_STEPS = [
+const WORKFLOW_STEPS = [
   {
     num: "01",
-    title: "Acesso individual por código",
-    desc: "O colaborador digita seu código na página inicial — via teclado numérico ou toque — e o sistema libera apenas as ferramentas da sua função.",
-    stat: "2s",
-    statLabel: "Login no turno",
-    lit: [0, 1, 2, 5, 6],
+    title: "Identificação no turno",
+    desc: "O colaborador informa seu código numérico e senha. O sistema libera imediatamente apenas as telas da sua função.",
+    detail: "Acesso individual por perfil",
   },
   {
     num: "02",
-    title: "Layout sincronizado 2D ↔ 3D",
-    desc: "Arraste, crie andares e gire qualquer objeto de 0° a 360°. Toda alteração no Mapa 2D reflete instantaneamente no Mapa 3D.",
-    stat: "360°",
-    statLabel: "Rotação livre",
-    lit: [4, 5, 6, 9, 10, 11],
+    title: "Execução sem interrupção",
+    desc: "Apontamentos, conferência e inventário cíclico continuam operando se o Wi-Fi oscilar, subindo automaticamente ao reconectar.",
+    detail: "Fila offline sincronizada",
   },
   {
     num: "03",
-    title: "Rastreabilidade de ponta a ponta",
-    desc: "Bipe endereços, produtos e inventário cíclico mesmo se a rede oscilar. Tudo fica salvo na fila offline e sobe automaticamente.",
-    stat: "100%",
-    statLabel: "Offline-first",
-    lit: [7, 8, 12, 13, 14],
+    title: "Espaço sincronizado 2D ↔ 3D",
+    desc: "Reorganize prateleiras, corredores, docas e múltiplos andares com rotação livre de 0° a 360° e reflexo imediato no mapa 3D.",
+    detail: "Histórico completo de alterações",
   },
   {
     num: "04",
     title: "Visibilidade para líderes e TV",
-    desc: "Acompanhe metas, faltas, turnos e produtividade ao vivo no painel de gestão ou em modo TV no galpão.",
-    stat: "LIVE",
-    statLabel: "Tempo real",
-    lit: [2, 3, 6, 10, 11, 14, 15],
+    desc: "Acompanhe metas, faltas, turnos e produtividade ao vivo no painel de gestão ou em modo TV dedicado no galpão.",
+    detail: "Atualização em tempo real",
   },
 ];
 
@@ -120,113 +216,291 @@ const FAQ_ITEMS = [
     answer:
       "O gerador suporta tanto áreas do mapa quanto o padrão compacto do CD (ex.: 1C1105EA), aplicando automaticamente lado par = direito e lado ímpar = esquerdo.",
   },
+  {
+    question: "O sistema continua funcionando se a internet cair no galpão?",
+    answer:
+      "Sim. Os apontamentos e pausas são armazenados localmente em uma fila segura e sincronizados automaticamente com o servidor assim que a conexão for restabelecida.",
+  },
 ];
 
-function EditorialModuleArt({ kind }) {
-  if (kind === "map") {
-    return (
-      <svg viewBox="0 0 420 210" className="berriel-art-svg" aria-hidden="true">
-        <defs>
-          <pattern id="br-grid" width="24" height="24" patternUnits="userSpaceOnUse">
-            <path d="M 24 0 L 0 0 0 24" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="1" />
-          </pattern>
-        </defs>
-        <rect width="420" height="210" fill="url(#br-grid)" />
-        {/* Minimal Swiss isometric floorplan */}
-        <g transform="translate(210, 112)">
-          <polygon points="0,78 -148,4 0,-70 148,4" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.28)" strokeWidth="1.2" />
-          <g className="iso-float-slow">
-            <polygon points="-44,-10 -84,-30 -44,-50 -4,-30" fill="#38bdf8" />
-            <polygon points="-44,18 -84,-2 -84,-30 -44,-10" fill="#0284c7" />
-            <polygon points="-44,18 -4,-2 -4,-30 -44,-10" fill="#1d4ed8" />
-          </g>
-          <g className="iso-float-delay">
-            <polygon points="36,-22 -4,-42 36,-62 76,-42" fill="#ffffff" />
-            <polygon points="36,8 -4,-12 -4,-42 36,-22" fill="#cbd5e1" />
-            <polygon points="36,8 76,-12 76,-42 36,-22" fill="#94a3b8" />
-          </g>
-          <g className="iso-float-subtle">
-            <polygon points="22,36 -18,16 22,-4 62,16" fill="#22d3ee" />
-            <polygon points="22,56 -18,36 -18,16 22,36" fill="#0891b2" />
-            <polygon points="22,56 62,36 62,16 22,36" fill="#16336e" />
-          </g>
-          <path d="M-84,8 L22,56 L108,12" fill="none" stroke="#38bdf8" strokeWidth="2.2" strokeDasharray="6 6" className="iso-flow-path" />
-          <circle cx="-84" cy="8" r="4" fill="#fff" className="iso-pulse-dot" />
-          <circle cx="108" cy="12" r="4" fill="#38bdf8" className="iso-pulse-dot" />
-        </g>
-      </svg>
-    );
-  }
-  if (kind === "kiosk") {
-    return (
-      <svg viewBox="0 0 280 180" className="berriel-art-svg" aria-hidden="true">
-        <rect x="44" y="28" width="192" height="124" rx="14" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.22)" />
-        <rect x="64" y="48" width="152" height="28" rx="7" fill="rgba(56,189,248,0.18)" stroke="rgba(56,189,248,0.55)" />
-        <text x="140" y="67" textAnchor="middle" fill="#e0f2fe" fontSize="13" fontFamily="monospace" fontWeight="700" letterSpacing="4">1042</text>
-        {[0, 1, 2, 3, 4, 5].map((i) => (
-          <rect
-            key={i}
-            x={64 + (i % 3) * 53}
-            y={88 + Math.floor(i / 3) * 26}
-            width="45"
-            height="19"
-            rx="5"
-            fill={i === 5 ? "#0ea5c6" : "rgba(255,255,255,0.12)"}
-          />
-        ))}
-      </svg>
-    );
-  }
-  if (kind === "labels") {
-    return (
-      <svg viewBox="0 0 280 180" className="berriel-art-svg" aria-hidden="true">
-        <g className="iso-float-subtle">
-          <rect x="46" y="34" width="188" height="112" rx="12" fill="rgba(255,255,255,0.95)" />
-          <text x="64" y="64" fill="#0f172a" fontSize="18" fontFamily="monospace" fontWeight="800">1C1105EA</text>
-          <text x="64" y="82" fill="#0284c7" fontSize="10" fontFamily="sans-serif" fontWeight="700">ÍMPAR · LADO ESQUERDO</text>
-          <rect x="64" y="96" width="94" height="32" rx="4" fill="#0f172a" opacity="0.08" />
-          {[0, 4, 9, 12, 18, 22, 27, 33, 38, 44, 50, 56, 61, 68, 74, 80].map((x, idx) => (
-            <rect key={idx} x={70 + x} y="102" width={idx % 3 === 0 ? 3 : 1.8} height="20" fill="#0f172a" />
-          ))}
-          <rect x="174" y="88" width="42" height="42" rx="4" fill="#0f172a" />
-          <rect x="180" y="94" width="12" height="12" fill="#fff" />
-          <rect x="198" y="94" width="12" height="12" fill="#fff" />
-          <rect x="180" y="112" width="12" height="12" fill="#fff" />
-          <rect x="198" y="112" width="12" height="12" fill="#38bdf8" />
-        </g>
-      </svg>
-    );
-  }
-  if (kind === "slotting") {
-    return (
-      <svg viewBox="0 0 280 180" className="berriel-art-svg" aria-hidden="true">
-        {[
-          { x: 48, h: 42, c: "rgba(255,255,255,0.28)" },
-          { x: 84, h: 68, c: "rgba(255,255,255,0.45)" },
-          { x: 120, h: 96, c: "#38bdf8" },
-          { x: 156, h: 118, c: "#ffffff" },
-          { x: 192, h: 82, c: "rgba(255,255,255,0.6)" },
-        ].map((b, i) => (
-          <rect key={i} x={b.x} y={148 - b.h} width="24" height={b.h} rx="6" fill={b.c} className={i === 3 ? "iso-float-subtle" : undefined} />
-        ))}
-        <path d="M56,112 Q128,44 208,60" fill="none" stroke="#38bdf8" strokeWidth="2.5" strokeDasharray="5 5" className="iso-flow-path" />
-      </svg>
-    );
-  }
+function ProductStagePreview({ isAuthenticated, onOpenMap2D, onOpenMap3D }) {
+  const [activeTab, setActiveTab] = useState("map");
+  const [selectedRackId, setSelectedRackId] = useState("1C1105EA");
+  const [heatmapOn, setHeatmapOn] = useState(true);
+  const [selectedLabelIdx, setSelectedLabelIdx] = useState(0);
+
+  const selectedRack = MAP_RACKS.find((r) => r.id === selectedRackId) || MAP_RACKS[4];
+  const selectedLabel = SAMPLE_LABELS[selectedLabelIdx] || SAMPLE_LABELS[0];
+
   return (
-    <svg viewBox="0 0 280 180" className="berriel-art-svg" aria-hidden="true">
-      <circle cx="140" cy="90" r="54" fill="none" stroke="rgba(255,255,255,0.16)" strokeWidth="1.5" />
-      <circle cx="140" cy="90" r="36" fill="none" stroke="rgba(56,189,248,0.45)" strokeWidth="1.5" strokeDasharray="6 6" className="iso-flow-path" />
-      <circle cx="140" cy="90" r="16" fill="#0ea5c6" className="iso-pulse-dot" />
-      <polyline points="133,90 138,95 148,85" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
+    <div className="lp-stage" aria-label="Demonstração interativa da interface do Aponta CD">
+      <div className="lp-stage-bar">
+        <div className="lp-stage-tabs" role="tablist" aria-label="Visualizações do sistema">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "map"}
+            className={`lp-stage-tab ${activeTab === "map" ? "is-active" : ""}`}
+            onClick={() => setActiveTab("map")}
+          >
+            Mapa do Galpão
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "shift"}
+            className={`lp-stage-tab ${activeTab === "shift" ? "is-active" : ""}`}
+            onClick={() => setActiveTab("shift")}
+          >
+            Apontamento & Turno
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "labels"}
+            className={`lp-stage-tab ${activeTab === "labels" ? "is-active" : ""}`}
+            onClick={() => setActiveTab("labels")}
+          >
+            Etiquetas 1C1105EA
+          </button>
+        </div>
+
+        <div className="lp-stage-context">
+          {activeTab === "map" && (
+            <button
+              type="button"
+              className={`lp-stage-chip ${heatmapOn ? "is-on" : ""}`}
+              onClick={() => setHeatmapOn((v) => !v)}
+            >
+              Curva ABC: {heatmapOn ? "Ativa" : "Oculta"}
+            </button>
+          )}
+          {activeTab === "shift" && (
+            <span className="lp-stage-meta">Turno Manhã · Fila offline: 0</span>
+          )}
+          {activeTab === "labels" && (
+            <span className="lp-stage-meta">Padrão CD · Térmica / A4</span>
+          )}
+        </div>
+      </div>
+
+      <div className="lp-stage-body">
+        {activeTab === "map" && (
+          <div className="lp-preview-map">
+            <div className="lp-map-canvas-wrap">
+              <div className="lp-map-canvas-head">
+                <span className="lp-mono-sm">PLANTA BAIXA · PAVIMENTO 01</span>
+                <span className="lp-mono-sm">CLIQUE EM UM ENDEREÇO PARA INSPECIONAR</span>
+              </div>
+
+              <svg
+                viewBox="0 0 360 220"
+                className="lp-map-svg"
+                role="img"
+                aria-label="Planta interativa de corredores e prateleiras do centro de distribuição"
+              >
+                {/* Dock bays on the right */}
+                <rect x="252" y="26" width="84" height="52" rx="4" className="lp-map-zone" />
+                <text x="294" y="49" textAnchor="middle" className="lp-map-zone-lbl">DOCA 01</text>
+                <text x="294" y="63" textAnchor="middle" className="lp-map-zone-sub">Expedição</text>
+
+                <rect x="252" y="90" width="84" height="52" rx="4" className="lp-map-zone" />
+                <text x="294" y="113" textAnchor="middle" className="lp-map-zone-lbl">DOCA 02</text>
+                <text x="294" y="127" textAnchor="middle" className="lp-map-zone-sub">Recebimento</text>
+
+                <rect x="252" y="154" width="84" height="42" rx="4" className="lp-map-zone lp-map-zone-conf" />
+                <text x="294" y="179" textAnchor="middle" className="lp-map-zone-lbl">CONFERÊNCIA</text>
+
+                {/* Aisle labels */}
+                <text x="24" y="18" className="lp-map-aisle-lbl">RUA 1A</text>
+                <text x="24" y="66" className="lp-map-aisle-lbl">RUA 1B</text>
+                <text x="24" y="114" className="lp-map-aisle-lbl">RUA 1C</text>
+                <text x="24" y="162" className="lp-map-aisle-lbl">RUA 1D</text>
+
+                {/* Interactive racks */}
+                {MAP_RACKS.map((rack) => {
+                  const isSelected = rack.id === selectedRack.id;
+                  const curveClass = heatmapOn ? `lp-rack-curve-${rack.curve.toLowerCase()}` : "lp-rack-neutral";
+                  return (
+                    <g
+                      key={rack.id}
+                      className={`lp-map-rack ${curveClass} ${isSelected ? "is-selected" : ""}`}
+                      onClick={() => setSelectedRackId(rack.id)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setSelectedRackId(rack.id);
+                        }
+                      }}
+                      aria-label={`Selecionar endereço ${rack.id}`}
+                    >
+                      <rect x={rack.x} y={rack.y} width={rack.w} height={rack.h} rx="4" />
+                      <text x={rack.x + 8} y={rack.y + 16.5} className="lp-rack-code">
+                        {rack.id}
+                      </text>
+                      <text x={rack.x + rack.w - 8} y={rack.y + 16.5} textAnchor="end" className="lp-rack-curve">
+                        {rack.curve}
+                      </text>
+                    </g>
+                  );
+                })}
+              </svg>
+
+              <div className="lp-map-legend">
+                <span><i className="lp-swatch lp-swatch-a" /> Curva A (alto giro)</span>
+                <span><i className="lp-swatch lp-swatch-b" /> Curva B (médio)</span>
+                <span><i className="lp-swatch lp-swatch-c" /> Curva C (baixo)</span>
+              </div>
+            </div>
+
+            <aside className="lp-map-inspector">
+              <div className="lp-inspector-head">
+                <span className="lp-mono-sm">ENDEREÇO SELECIONADO</span>
+                <strong className="lp-inspector-code">{selectedRack.id}</strong>
+              </div>
+
+              <dl className="lp-spec-list">
+                <div>
+                  <dt>Localização</dt>
+                  <dd>{selectedRack.aisle} · Prédio {selectedRack.building} · Nível {selectedRack.level}</dd>
+                </div>
+                <div>
+                  <dt>Lado do corredor</dt>
+                  <dd>{selectedRack.side}</dd>
+                </div>
+                <div>
+                  <dt>Classificação ABC</dt>
+                  <dd>Curva {selectedRack.curve} ({selectedRack.turnover})</dd>
+                </div>
+                <div>
+                  <dt>Ocupação atual</dt>
+                  <dd>{selectedRack.occupancy} · {selectedRack.distance}</dd>
+                </div>
+              </dl>
+
+              {isAuthenticated && onOpenMap2D && onOpenMap3D && (
+                <div className="lp-inspector-actions">
+                  <button type="button" className="lp-btn-secondary lp-btn-sm" onClick={onOpenMap2D}>
+                    Abrir Mapa 2D
+                  </button>
+                  <button type="button" className="lp-btn-secondary lp-btn-sm" onClick={onOpenMap3D}>
+                    Abrir Mapa 3D
+                  </button>
+                </div>
+              )}
+            </aside>
+          </div>
+        )}
+
+        {activeTab === "shift" && (
+          <div className="lp-preview-shift">
+            <div className="lp-shift-operator">
+              <span className="lp-mono-sm">OPERADOR EM ATIVIDADE</span>
+              <div className="lp-shift-op-row">
+                <div className="lp-shift-badge">1042</div>
+                <div>
+                  <strong>Carlos Silva</strong>
+                  <span>Separação · Turno Manhã</span>
+                </div>
+              </div>
+
+              <div className="lp-shift-timer">
+                <span className="lp-mono-sm">ATIVIDADE ATUAL</span>
+                <strong>00:14:32</strong>
+                <span>Reposição · Tubos PVC 100mm (1A0402EA)</span>
+              </div>
+
+              <div className="lp-shift-sync">
+                <IconCheck size={14} />
+                <span>Sincronizado em tempo real · 0 itens na fila offline</span>
+              </div>
+            </div>
+
+            <div className="lp-shift-table-wrap">
+              <div className="lp-shift-table-head">
+                <span className="lp-mono-sm">HISTÓRICO RECENTE DO TURNO</span>
+                <span className="lp-mono-sm">4 REGISTROS</span>
+              </div>
+              <div className="lp-shift-rows">
+                {SHIFT_LOGS.map((row) => (
+                  <div key={row.time} className="lp-shift-row">
+                    <span className="lp-mono-sm lp-shift-time">{row.time}</span>
+                    <span className="lp-shift-task">{row.task}</span>
+                    <span className="lp-mono-sm lp-shift-ref">{row.ref}</span>
+                    <span className="lp-mono-sm lp-shift-dur">{row.dur}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === "labels" && (
+          <div className="lp-preview-labels">
+            <div className="lp-label-selector">
+              <span className="lp-mono-sm">SELECIONE UM ENDEREÇO DO LOTE</span>
+              <div className="lp-label-list">
+                {SAMPLE_LABELS.map((item, idx) => (
+                  <button
+                    key={item.code}
+                    type="button"
+                    className={`lp-label-option ${idx === selectedLabelIdx ? "is-active" : ""}`}
+                    onClick={() => setSelectedLabelIdx(idx)}
+                  >
+                    <strong>{item.code}</strong>
+                    <span>{item.floor} · {item.aisle} · {item.zone}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="lp-label-sheet-wrap">
+              <div className="lp-thermal-label">
+                <div className="lp-thermal-top">
+                  <span>APONTA CD · ENDEREÇAMENTO</span>
+                  <span>{selectedLabel.zone.toUpperCase()}</span>
+                </div>
+                <div className="lp-thermal-code">{selectedLabel.code}</div>
+                <div className="lp-thermal-parity">{selectedLabel.parity}</div>
+                <div className="lp-thermal-meta">
+                  <span>{selectedLabel.floor}</span>
+                  <span>{selectedLabel.aisle}</span>
+                  <span>{selectedLabel.building}</span>
+                  <span>{selectedLabel.level}</span>
+                </div>
+                <div className="lp-thermal-codes">
+                  <svg viewBox="0 0 180 38" className="lp-barcode-svg" aria-hidden="true">
+                    {[2, 6, 9, 14, 17, 22, 27, 30, 36, 40, 44, 49, 53, 58, 63, 67, 72, 77, 81, 86, 91, 95, 100, 106, 110, 114, 120, 124, 130, 134, 139, 145, 149, 154, 160, 165, 170].map((x, idx) => (
+                      <rect key={idx} x={x} y="2" width={idx % 3 === 0 ? 3 : 1.5} height="34" fill="#0f172a" />
+                    ))}
+                  </svg>
+                  <svg viewBox="0 0 38 38" className="lp-qr-svg" aria-hidden="true">
+                    <rect width="38" height="38" fill="#0f172a" rx="2" />
+                    <rect x="4" y="4" width="11" height="11" fill="#ffffff" />
+                    <rect x="7" y="7" width="5" height="5" fill="#0f172a" />
+                    <rect x="23" y="4" width="11" height="11" fill="#ffffff" />
+                    <rect x="26" y="7" width="5" height="5" fill="#0f172a" />
+                    <rect x="4" y="23" width="11" height="11" fill="#ffffff" />
+                    <rect x="7" y="26" width="5" height="5" fill="#0f172a" />
+                    <rect x="21" y="21" width="5" height="5" fill="#ffffff" />
+                    <rect x="29" y="21" width="5" height="5" fill="#ffffff" />
+                    <rect x="25" y="29" width="9" height="5" fill="#ffffff" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
 export default function LandingPage({
   mode = "auth", // "auth" | "operator" | "authenticated"
   operators = [],
-  currentOperator = null,
   onEnterLogin,
   onEnterEmployeeArea,
   onOperatorLogin,
@@ -243,12 +517,10 @@ export default function LandingPage({
   const [shake, setShake] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [empFieldsUnlocked, setEmpFieldsUnlocked] = useState(false);
-  const [activeStep, setActiveStep] = useState(0);
-  const [heroScrollFade, setHeroScrollFade] = useState(0);
   const inputRef = useRef(null);
-  const pageRef = useRef(null);
 
   const isOperatorGate = mode === "operator";
+  const activeOperatorsCount = operators.filter((o) => o.active !== false).length;
 
   useEffect(() => {
     if (!authModalOpen && !standaloneGate) return undefined;
@@ -284,56 +556,6 @@ export default function LandingPage({
     }
   }
 
-  // Efeito fade sutil apenas no palco do logo ao rolar (nunca desfoca o título ou login)
-  useEffect(() => {
-    const scroller = pageRef.current;
-    if (!scroller || isAuthenticated) return undefined;
-    let raf = 0;
-    const onScroll = () => {
-      if (raf) return;
-      raf = window.requestAnimationFrame(() => {
-        raf = 0;
-        const progress = Math.max(0, Math.min(1, (scroller.scrollTop - 120) / 360));
-        setHeroScrollFade(progress);
-      });
-    };
-    scroller.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      scroller.removeEventListener("scroll", onScroll);
-      if (raf) window.cancelAnimationFrame(raf);
-    };
-  }, [isAuthenticated]);
-
-  // Berriel-style smooth quartic scroll-reveal observer
-  useEffect(() => {
-    const rootEl = pageRef.current;
-    if (!rootEl) return undefined;
-    const targets = rootEl.querySelectorAll(".br-reveal");
-    if (typeof IntersectionObserver === "undefined") {
-      targets.forEach((el) => el.classList.add("is-visible"));
-      return undefined;
-    }
-    const io = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            entry.target.classList.add("is-visible");
-            io.unobserve(entry.target);
-          }
-        });
-      },
-      { root: isAuthenticated ? null : rootEl, threshold: 0.1 }
-    );
-    targets.forEach((el) => io.observe(el));
-    return () => io.disconnect();
-  }, [isAuthenticated]);
-
-  function handleSpotlight(e) {
-    const rect = e.currentTarget.getBoundingClientRect();
-    e.currentTarget.style.setProperty("--mx", `${e.clientX - rect.left}px`);
-    e.currentTarget.style.setProperty("--my", `${e.clientY - rect.top}px`);
-  }
-
   function triggerError(msg) {
     setCodeError(msg);
     setShake(true);
@@ -359,7 +581,6 @@ export default function LandingPage({
       triggerError(`Código "${cleanCode}" não encontrado ou inativo.`);
       return;
     }
-    // Neste primeiro momento, a senha de cada funcionário é o próprio número do seu código
     const expectedPass = String(found.password || found.code || "").trim().toUpperCase();
     if (cleanPass !== expectedPass) {
       triggerError("Senha incorreta. (Dica: use os números do seu código.)");
@@ -369,8 +590,6 @@ export default function LandingPage({
     setAuthModalOpen(false);
     onOperatorLogin?.(found);
   }
-
-  const step = PROCESS_STEPS[activeStep] || PROCESS_STEPS[0];
 
   // Página dedicada em /funcionario para o colaborador entrar com código + senha
   if (standaloneGate) {
@@ -485,7 +704,7 @@ export default function LandingPage({
             </button>
           </form>
 
-          {operators.filter((o) => o.active !== false).length === 0 && onOperatorLogin && (
+          {activeOperatorsCount === 0 && onOperatorLogin && (
             <button
               type="button"
               className="btn-small"
@@ -506,121 +725,106 @@ export default function LandingPage({
   }
 
   return (
-    <div ref={pageRef} className={`br-page ${isAuthenticated ? "br-embedded" : ""}`}>
-      {/* ============ MINIMAL SWISS EDITORIAL NAVBAR ============ */}
+    <div className={`lp-page ${isAuthenticated ? "lp-embedded" : ""}`}>
+      {/* ============ NAVIGATION ============ */}
       {!isAuthenticated && (
-        <header className="br-nav">
-          <div className="br-container br-nav-inner">
-            <a href="/" className="br-nav-brand" style={{ textDecoration: "none" }}>
+        <header className="lp-nav">
+          <div className="lp-container lp-nav-inner">
+            <a href="/" className="lp-nav-brand">
               <BrandMark variant="lockup" />
             </a>
 
-            <nav className="br-nav-links" aria-label="Navegação principal">
+            <nav className="lp-nav-links" aria-label="Navegação principal">
+              <a href="#operacao">Operação</a>
               <a href="#modulos">Módulos</a>
-              <a href="#processo">Processo</a>
+              <a href="#fluxo">Fluxo</a>
               <a href="#duvidas">Dúvidas</a>
-              <a href="/tv" target="_blank" rel="noopener noreferrer">
-                <IconTv size={13} style={{ verticalAlign: "-2px", marginRight: 5 }} />
-                Painel TV
-              </a>
             </nav>
 
-            <div className="br-nav-actions">
+            <div className="lp-nav-actions">
+              <a
+                href="/tv"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="lp-nav-tv"
+              >
+                <IconTv size={14} />
+                <span>Painel TV</span>
+              </a>
               <ThemeToggle compact showColors={false} />
               <a
                 href="/funcionario"
-                className="br-pill-btn"
-                style={{ textDecoration: "none" }}
+                className="lp-btn-primary lp-btn-nav"
                 onClick={openEmployeeArea}
               >
                 <span>Área do Funcionário</span>
-                <span className="br-pill-arrow">↗</span>
+                <IconChevronRight size={15} />
               </a>
             </div>
           </div>
         </header>
       )}
 
-      {/* ============ EDITORIAL MONUMENTAL HERO (ABOVE THE FOLD) ============ */}
-      <section id="topo" className="br-container br-hero">
-        <div className="br-hero-top-bar">
-          <div className="br-hero-eyebrow">
-            <span className="br-status-dot" />
-            <span>APONTA CD / OPERAÇÃO LOGÍSTICA EM TEMPO REAL</span>
-          </div>
-          <span className="br-hero-edition" aria-hidden="true">
-            {operators.filter((o) => o.active !== false).length > 0
-              ? `${String(operators.filter((o) => o.active !== false).length).padStart(2, "0")} OPERADORES ATIVOS`
-              : "SISTEMA DE GESTÃO CD"}
-          </span>
-        </div>
-
-        <div className="br-hero-stage-split">
-          <div className="br-hero-copy">
-            <h1 className="br-display-title">
-              <span className="br-line-mask"><span className="br-line-inner" style={{ animationDelay: "60ms" }}>Operação precisa,</span></span>
-              <span className="br-line-mask"><span className="br-line-inner" style={{ animationDelay: "160ms" }}>do piso ao <em className="br-accent-em">mapa 3D.</em></span></span>
+      {/* ============ HERO + INTERACTIVE PRODUCT STAGE ============ */}
+      <section id="topo" className="lp-container lp-hero">
+        <div className="lp-hero-grid">
+          <div className="lp-hero-title-col">
+            <h1 className="lp-h1">
+              Controle preciso do centro de distribuição.
             </h1>
+          </div>
 
-            <p className="br-hero-lead">
-              Apontamento por código, conferência, planta 2D e 3D em 360°, slotting por Curva ABC e auditoria operacional desenhados para clareza absoluta no turno.
+          <div className="lp-hero-copy-col">
+            <p className="lp-lead">
+              Apontamento por código, conferência, planta 2D e 3D sincronizada, etiquetas de endereço e indicadores de turno em uma única plataforma operacional.
             </p>
 
-            <div className="br-hero-cta">
+            <div className="lp-hero-actions">
               <a
                 href="/funcionario"
-                className="br-cta-primary"
-                style={{ textDecoration: "none" }}
+                className="lp-btn-primary"
                 onClick={openEmployeeArea}
               >
-                <span>Acessar Área do Funcionário</span>
+                <span>Área do Funcionário</span>
                 <IconChevronRight size={16} />
               </a>
 
               {isAuthenticated && onOpenMap2D && onOpenMap3D ? (
                 <>
-                  <button type="button" className="br-cta-ghost" onClick={onOpenMap2D}>Mapa 2D</button>
-                  <button type="button" className="br-cta-ghost" onClick={onOpenMap3D}>Mapa 3D</button>
+                  <button type="button" className="lp-btn-secondary" onClick={onOpenMap2D}>
+                    Abrir Mapa 2D
+                  </button>
+                  <button type="button" className="lp-btn-secondary" onClick={onOpenMap3D}>
+                    Abrir Mapa 3D
+                  </button>
                 </>
               ) : (
-                <a href="#modulos" className="br-cta-ghost" style={{ textDecoration: "none" }}>
-                  Explorar módulos ↓
+                <a
+                  href="/tv"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="lp-btn-secondary"
+                >
+                  <IconTv size={15} />
+                  <span>Abrir Painel TV</span>
                 </a>
               )}
             </div>
-          </div>
 
-          <div
-            className="br-hero-visual-col"
-            style={
-              !isAuthenticated && heroScrollFade > 0.01
-                ? {
-                    opacity: Math.max(0.4, 1 - heroScrollFade * 0.55),
-                    transform: `translateY(${Math.round(-heroScrollFade * 14)}px)`,
-                  }
-                : undefined
-            }
-          >
-            <AnimatedLogoHero />
+            <div className="lp-hero-footnote">
+              {activeOperatorsCount > 0
+                ? `${activeOperatorsCount} operadores ativos · Operação offline-first · Planta 2D & 3D`
+                : "Operação offline-first · Planta 2D & 3D · Painel TV ao vivo"}
+            </div>
           </div>
         </div>
 
-        <div className="br-hero-meta" role="list" aria-label="Pilares operacionais">
-          <div className="br-hero-meta-item" role="listitem">
-            <span className="br-meta-num">01</span>
-            <strong>Planta 2D & 3D</strong>
-            <span>Sincronia real com rotação 360°</span>
-          </div>
-          <div className="br-hero-meta-item" role="listitem">
-            <span className="br-meta-num">02</span>
-            <strong>Curva ABC</strong>
-            <span>Mapa de calor & slotting inteligente</span>
-          </div>
-          <div className="br-hero-meta-item" role="listitem">
-            <span className="br-meta-num">03</span>
-            <strong>Offline-first</strong>
-            <span>Fila segura mesmo sem internet no galpão</span>
-          </div>
+        <div id="operacao">
+          <ProductStagePreview
+            isAuthenticated={isAuthenticated}
+            onOpenMap2D={onOpenMap2D}
+            onOpenMap3D={onOpenMap3D}
+          />
         </div>
       </section>
 
@@ -733,7 +937,7 @@ export default function LandingPage({
               </button>
             </form>
 
-            {operators.filter((o) => o.active !== false).length === 0 && onOperatorLogin && (
+            {activeOperatorsCount === 0 && onOperatorLogin && (
               <button
                 type="button"
                 className="btn-small"
@@ -755,157 +959,165 @@ export default function LandingPage({
         </div>
       )}
 
-      {/* ============ CONTINUOUS EDITORIAL MARQUEE ============ */}
-      <div className="br-marquee-strip" aria-hidden="true">
-        <div className="br-marquee-track">
-          {[...MARQUEE_ITEMS, ...MARQUEE_ITEMS].map((txt, idx) => (
-            <span key={idx} className="br-marquee-item">
-              {txt} <span className="br-marquee-sep">/</span>
-            </span>
-          ))}
-        </div>
-      </div>
-
-      {/* ============ SELECTED MODULES — BERRIEL CASE-STUDY GRID ============ */}
-      <section id="modulos" className="br-container br-section">
-        <div className="br-section-bar br-reveal">
-          <span className="br-mono-label">01 / FUNCIONALIDADES SELECIONADAS</span>
-          <h2 className="br-section-h2">Minimalismo funcional no dia a dia do CD.</h2>
+      {/* ============ MODULES & SPATIAL ARCHITECTURE ============ */}
+      <section id="modulos" className="lp-container lp-section">
+        <div className="lp-section-head">
+          <div>
+            <span className="lp-kicker">Plataforma</span>
+            <h2 className="lp-h2">Construído para o ritmo real do galpão.</h2>
+          </div>
+          <p className="lp-section-sub">
+            Cada módulo foi desenhado para reduzir atrito na operação diária — da bipagem no corredor à leitura executiva do turno.
+          </p>
         </div>
 
-        <div className="br-work-grid">
-          {SHOWCASE_MODULES.map((mod, idx) => (
-            <article
-              key={mod.index}
-              className={`br-work-card ${mod.wide ? "br-work-wide" : ""} br-reveal`}
-              style={{ transitionDelay: `${idx * 70}ms` }}
-              onMouseMove={handleSpotlight}
-            >
-              <div className={`br-work-canvas br-tone-${mod.tone}`}>
-                {mod.image ? (
-                  <img src={mod.image} alt={mod.title} className="br-work-photo" loading="lazy" />
-                ) : (
-                  <EditorialModuleArt kind={mod.art} />
-                )}
-                <span className="br-work-hover-pill">Módulo {mod.index} ↗</span>
-              </div>
+        {/* Featured Spatial 2D/3D Showcase */}
+        <article className="lp-feature-band">
+          <div className="lp-feature-media">
+            <img
+              src="/images/showcase-map3d.jpg"
+              alt="Visualização isométrica 3D do centro de distribuição no Aponta CD"
+              loading="lazy"
+            />
+          </div>
 
-              <div className="br-work-meta">
-                <div className="br-work-top">
-                  <span className="br-mono-label">{mod.index} — {mod.tag}</span>
-                </div>
-                <h3>{mod.title}</h3>
-                <p>{mod.desc}</p>
+          <div className="lp-feature-content">
+            <span className="lp-kicker">Espacial · 2D & 3D</span>
+            <h3>Gêmeo digital do galpão em 360°</h3>
+            <p>
+              Modele e reorganize toda a planta do centro de distribuição em tempo real. Posicione, redimensione e rotacione prateleiras, escadas, elevadores, mesas de conferência e múltiplos pavimentos com sincronia imediata entre 2D e 3D.
+            </p>
+
+            <dl className="lp-feature-specs">
+              <div>
+                <dt>Rotação</dt>
+                <dd>0° a 360°</dd>
               </div>
+              <div>
+                <dt>Pavimentos</dt>
+                <dd>Múltiplos andares</dd>
+              </div>
+              <div>
+                <dt>Sincronia</dt>
+                <dd>2D ↔ 3D instantânea</dd>
+              </div>
+            </dl>
+          </div>
+        </article>
+
+        {/* 2x2 Architectural Capability Grid */}
+        <div className="lp-cap-grid">
+          {CAPABILITIES.map((cap) => (
+            <article key={cap.code} className="lp-cap-card">
+              <div className="lp-cap-top">
+                <span className="lp-mono-sm">{cap.code}</span>
+                <span className="lp-cap-meta">{cap.meta}</span>
+              </div>
+              <h3>{cap.title}</h3>
+              <p>{cap.desc}</p>
             </article>
           ))}
         </div>
       </section>
 
-      {/* ============ PROCESS / COMO FUNCIONA ============ */}
-      <section id="processo" className="br-container br-section br-reveal">
-        <div className="br-section-bar">
-          <span className="br-mono-label">02 / FLUXO OPERACIONAL</span>
-          <h2 className="br-section-h2">Como o Aponta CD conecta toda a equipe.</h2>
+      {/* ============ OPERATIONAL WORKFLOW ============ */}
+      <section id="fluxo" className="lp-container lp-section">
+        <div className="lp-section-head">
+          <div>
+            <span className="lp-kicker">Fluxo operacional</span>
+            <h2 className="lp-h2">Da entrada do operador ao painel da gestão.</h2>
+          </div>
+          <p className="lp-section-sub">
+            Quatro etapas integradas mantêm piso, conferência, estoque e liderança olhando para os mesmos dados em tempo real.
+          </p>
         </div>
 
-        <div className="br-process-grid">
-          <div className="br-process-list" role="tablist" aria-label="Fluxo operacional">
-            {PROCESS_STEPS.map((s, idx) => {
-              const active = idx === activeStep;
-              return (
-                <button
-                  key={s.num}
-                  type="button"
-                  role="tab"
-                  aria-selected={active}
-                  className={`br-process-row ${active ? "active" : ""}`}
-                  onClick={() => setActiveStep(idx)}
-                >
-                  <span className="br-process-num">{s.num}</span>
-                  <span className="br-process-title">{s.title}</span>
-                  <span className="br-process-arrow">→</span>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="br-process-stage">
-            <div className="br-process-copy">
-              <span className="br-mono-label">ETAPA {step.num}</span>
+        <div className="lp-flow-grid">
+          {WORKFLOW_STEPS.map((step) => (
+            <div key={step.num} className="lp-flow-step">
+              <div className="lp-flow-num">{step.num}</div>
               <h3>{step.title}</h3>
               <p>{step.desc}</p>
+              <span className="lp-flow-detail">{step.detail}</span>
             </div>
+          ))}
+        </div>
+      </section>
 
-            <div className="br-process-visual">
-              <div className="br-matrix-4x4" aria-hidden="true">
-                {Array.from({ length: 16 }, (_, i) => (
-                  <div
-                    key={i}
-                    className={`br-matrix-cell ${step.lit.includes(i) ? "lit" : ""}`}
-                    style={{ transitionDelay: `${(i % 4) * 40}ms` }}
-                  />
-                ))}
-              </div>
-              <div className="br-process-stat">
-                <strong>{step.stat}</strong>
-                <span>{step.statLabel}</span>
-              </div>
-            </div>
+      {/* ============ FAQ ============ */}
+      <section id="duvidas" className="lp-container lp-section">
+        <div className="lp-faq-grid">
+          <div className="lp-faq-side">
+            <span className="lp-kicker">Suporte</span>
+            <h2 className="lp-h2">Dúvidas frequentes.</h2>
+            <p className="lp-section-sub">
+              Primeiro acesso? Utilize os números do seu próprio código de funcionário como senha inicial.
+            </p>
+          </div>
+
+          <div className="lp-faq-list">
+            <Accordion items={FAQ_ITEMS} defaultOpen={[0]} />
           </div>
         </div>
       </section>
 
-      {/* ============ FAQ — XEVRION FOLDED-FLAP ACCORDION ============ */}
-      <section id="duvidas" className="br-container br-section br-reveal">
-        <div className="br-section-bar">
-          <span className="br-mono-label">03 / DÚVIDAS FREQUENTES</span>
-          <h2 className="br-section-h2">Respostas diretas.</h2>
-        </div>
-
-        <div className="br-faq-wrap">
-          <Accordion items={FAQ_ITEMS} defaultOpen={[0]} />
+      {/* ============ CLOSING BAND ============ */}
+      <section className="lp-container lp-closing-wrap">
+        <div className="lp-closing-band">
+          <div>
+            <h2>Pronto para iniciar o turno?</h2>
+            <p>Acesse com seu código de operador ou abra o painel ao vivo para o monitor do galpão.</p>
+          </div>
+          <div className="lp-closing-actions">
+            <a href="/funcionario" className="lp-btn-primary" onClick={openEmployeeArea}>
+              <span>Área do Funcionário</span>
+              <IconChevronRight size={16} />
+            </a>
+            <a href="/tv" target="_blank" rel="noopener noreferrer" className="lp-btn-secondary">
+              <IconTv size={15} />
+              <span>Painel TV</span>
+            </a>
+          </div>
         </div>
       </section>
 
-      {/* ============ EDITORIAL FOOTER ============ */}
-      <footer className="br-footer">
-        <div className="br-container">
-          <div className="br-footer-grid">
-            <div className="br-footer-brand-col">
+      {/* ============ FOOTER ============ */}
+      <footer className="lp-footer">
+        <div className="lp-container">
+          <div className="lp-footer-grid">
+            <div className="lp-footer-brand">
               <BrandMark variant="lockup" />
-              <p className="br-footer-desc">
-                Plataforma integrada de apontamento operacional, mapeamento 2D/3D e inteligência logística para centros de distribuição.
+              <p>
+                Plataforma de apontamento operacional, mapeamento 2D/3D e inteligência logística para centros de distribuição.
               </p>
             </div>
 
-            <div className="br-footer-col">
-              <div className="br-footer-col-title">Navegação</div>
+            <div className="lp-footer-col">
+              <div className="lp-footer-title">Navegação</div>
+              <a href="#operacao">Operação</a>
               <a href="#modulos">Módulos</a>
-              <a href="#processo">Fluxo operacional</a>
-              <a href="#duvidas">Dúvidas frequentes</a>
+              <a href="#fluxo">Fluxo</a>
+              <a href="#duvidas">Dúvidas</a>
             </div>
 
-            <div className="br-footer-col">
-              <div className="br-footer-col-title">Acesso rápido</div>
-              <a href="/funcionario" className="br-footer-link-btn" onClick={openEmployeeArea}>
-                Área do Funcionário ↗
+            <div className="lp-footer-col">
+              <div className="lp-footer-title">Acesso</div>
+              <a href="/funcionario" onClick={openEmployeeArea}>
+                Área do Funcionário
               </a>
               <a href="/tv" target="_blank" rel="noopener noreferrer">
-                Painel TV ao vivo ↗
+                Painel TV ao vivo
               </a>
-              <a href="#topo">Voltar ao topo ↑</a>
+              <a href="#topo">Voltar ao topo</a>
             </div>
           </div>
 
-          <div className="br-footer-bottom">
-            <span className="br-muted-mono">© {new Date().getFullYear()} APONTA CD · OPERAÇÃO LOGÍSTICA</span>
-            <span className="br-muted-mono">TEMPO REAL · 2D & 3D · OFFLINE-FIRST</span>
+          <div className="lp-footer-bottom">
+            <span>© {new Date().getFullYear()} Aponta CD</span>
+            <span className="lp-mono-sm">2D & 3D · OFFLINE-FIRST · TEMPO REAL</span>
           </div>
         </div>
       </footer>
-
-      <div className="br-scroll-fade-bottom" aria-hidden="true" />
     </div>
   );
 }
