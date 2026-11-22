@@ -623,8 +623,8 @@
 
 /* ---------- Monumental Editorial Hero ---------- */
 .br-hero {
-  padding-top: 64px;
-  padding-bottom: 96px;
+  padding-top: 34px;
+  padding-bottom: 64px;
 }
 
 .br-hero-top-bar {
@@ -632,8 +632,8 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding-bottom: 18px;
-  margin-bottom: 36px;
+  padding-bottom: 14px;
+  margin-bottom: 34px;
   border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
 }
@@ -667,33 +667,35 @@
   box-shadow: 0 0 0 4px rgba(14, 165, 198, 0.18);
 }
 
-.br-hero-editorial {
-  margin-top: 32px;
+.br-hero-stage-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(0, 0.92fr);
+  gap: 44px;
+  align-items: center;
+  margin-bottom: 48px;
+}
+
+.br-hero-visual-col {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 80ms linear, transform 80ms linear;
 }
 
 .br-display-title {
   font-family: var(--font-display);
-  font-size: clamp(44px, 6.8vw, 84px);
+  font-size: clamp(40px, 5.2vw, 68px);
   font-weight: 600;
-  line-height: 0.98;
-  letter-spacing: -0.05em;
-  margin: 0 0 36px 0;
+  line-height: 1.02;
+  letter-spacing: -0.045em;
+  margin: 0 0 22px 0;
   color: var(--text);
-  max-width: 980px;
-}
-
-.br-hero-split-copy {
-  display: grid;
-  grid-template-columns: minmax(0, 1.15fr) auto;
-  gap: 32px;
-  align-items: end;
-  margin-bottom: 52px;
 }
 
 .br-line-mask {
   display: block;
   overflow: hidden;
-  padding-bottom: 6px;
+  padding-bottom: 5px;
 }
 
 .br-line-inner {
@@ -707,11 +709,11 @@
 }
 
 .br-hero-lead {
-  font-size: 17.5px;
+  font-size: 16.5px;
   line-height: 1.65;
   color: var(--text-muted);
-  max-width: 580px;
-  margin: 0;
+  max-width: 520px;
+  margin: 0 0 28px 0;
   animation: brFadeRise 900ms cubic-bezier(0.25, 1, 0.5, 1) 180ms both;
 }
 
@@ -1347,14 +1349,18 @@
 /* ---------- Responsive ---------- */
 @media (max-width: 960px) {
   .br-hero {
-    padding-top: 40px;
-    padding-bottom: 64px;
+    padding-top: 28px;
+    padding-bottom: 56px;
   }
+  .br-hero-stage-split,
   .br-hero-split-copy,
   .br-hero-grid,
   .br-work-grid,
   .br-process-grid {
     grid-template-columns: 1fr;
+  }
+  .br-hero-visual-col {
+    order: -1;
   }
   .br-hero-meta {
     grid-template-columns: 1fr;
@@ -2073,7 +2079,7 @@
 .ed-word-aponta {
   font-family: var(--font-display);
   font-size: 86px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: -0.045em;
   fill: #16336e;
 }
@@ -2082,10 +2088,8 @@
   fill: #eef3f9;
 }
 
-.ed-pipe-stroke {
-  stroke-dasharray: 160;
-  stroke-dashoffset: 160;
-  animation: pipeDraw 900ms cubic-bezier(0.25, 1, 0.5, 1) 1.05s forwards;
+.ed-word-cd {
+  fill: #0ea5c6;
 }
 
 /* Caminhão sai do galpão ao longo do eixo 30° isométrico, pausa e entra de volta */

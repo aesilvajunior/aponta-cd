@@ -64,11 +64,6 @@ export default function AnimatedLogoHero({ className = "" }) {
             <stop offset="0%" stopColor="#c9834e" />
             <stop offset="100%" stopColor="#854c24" />
           </linearGradient>
-          <linearGradient id="ed-pipe-cyan" gradientUnits="userSpaceOnUse" x1="418" y1="255" x2="540" y2="335">
-            <stop offset="0%" stopColor="#47e0f7" />
-            <stop offset="55%" stopColor="#0ea5c6" />
-            <stop offset="100%" stopColor="#06718f" />
-          </linearGradient>
           <radialGradient id="ed-floor-shadow" cx="50%" cy="50%" r="50%">
             <stop offset="0%" stopColor="#0a0e14" stopOpacity="0.32" />
             <stop offset="70%" stopColor="#0a0e14" stopOpacity="0.1" />
@@ -175,43 +170,9 @@ export default function AnimatedLogoHero({ className = "" }) {
 
         {/* ============ 4. TIPOGRAFIA "aponta cd" MONTADA ABAIXO ============ */}
         <g className="ed-wordmark-reveal">
-          <text x="112" y="322" className="ed-word-aponta">
-            aponta
+          <text x="320" y="322" textAnchor="middle" className="ed-word-aponta">
+            aponta<tspan className="ed-word-cd"> cd</tspan>
           </text>
-          {/* "c" em tubulação ciano */}
-          <g>
-            <path
-              d="M 456,282 C 422,282 422,322 456,322"
-              fill="none"
-              stroke="url(#ed-pipe-cyan)"
-              strokeWidth="15"
-              strokeLinecap="butt"
-              className="ed-pipe-stroke"
-            />
-            <rect x="452" y="272" width="9" height="20" rx="3" fill="#0884a6" />
-            <rect x="452" y="312" width="9" height="20" rx="3" fill="#0884a6" />
-          </g>
-          {/* "d" em tubulação ciano */}
-          <g>
-            <path
-              d="M 518,282 C 484,282 484,322 518,322"
-              fill="none"
-              stroke="url(#ed-pipe-cyan)"
-              strokeWidth="15"
-              strokeLinecap="butt"
-              className="ed-pipe-stroke"
-            />
-            <path
-              d="M 520,256 L 520,330"
-              fill="none"
-              stroke="url(#ed-pipe-cyan)"
-              strokeWidth="15"
-              strokeLinecap="butt"
-              className="ed-pipe-stroke"
-            />
-            <rect x="509" y="252" width="22" height="8" rx="3" fill="#0884a6" />
-            <rect x="509" y="326" width="22" height="8" rx="3" fill="#0884a6" />
-          </g>
         </g>
       </svg>
     </div>

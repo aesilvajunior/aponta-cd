@@ -541,7 +541,7 @@ export default function LandingPage({
         </header>
       )}
 
-      {/* ============ EDITORIAL MONUMENTAL HERO ============ */}
+      {/* ============ EDITORIAL MONUMENTAL HERO (ABOVE THE FOLD) ============ */}
       <section id="topo" className="br-container br-hero">
         <div className="br-hero-top-bar">
           <div className="br-hero-eyebrow">
@@ -555,76 +555,71 @@ export default function LandingPage({
           </span>
         </div>
 
-        {/* Palco central do logo editorial */}
-        <div
-          className="br-hero-scroll-wrap"
-          style={
-            !isAuthenticated && heroScrollFade > 0.01
-              ? {
-                  opacity: Math.max(0.35, 1 - heroScrollFade * 0.65),
-                  transform: `translateY(${Math.round(-heroScrollFade * 16)}px) scale(${(1 - heroScrollFade * 0.04).toFixed(3)})`,
-                }
-              : undefined
-          }
-        >
-          <AnimatedLogoHero />
-        </div>
-
-        <div className="br-hero-editorial">
+        <div className="br-hero-stage-split">
           <div className="br-hero-copy">
             <h1 className="br-display-title">
               <span className="br-line-mask"><span className="br-line-inner" style={{ animationDelay: "60ms" }}>Operação precisa,</span></span>
               <span className="br-line-mask"><span className="br-line-inner" style={{ animationDelay: "160ms" }}>do piso ao <em className="br-accent-em">mapa 3D.</em></span></span>
             </h1>
 
-            <div className="br-hero-split-copy">
-              <p className="br-hero-lead">
-                Apontamento por código, conferência, planta 2D e 3D com rotação livre em 360°,
-                slotting por Curva ABC e auditoria operacional desenhados para máxima clareza no turno.
-              </p>
+            <p className="br-hero-lead">
+              Apontamento por código, conferência, planta 2D e 3D em 360°, slotting por Curva ABC e auditoria operacional desenhados para clareza absoluta no turno.
+            </p>
 
-              <div className="br-hero-cta">
-                {!isOperatorGate && (
-                  <button
-                    type="button"
-                    className="br-cta-primary"
-                    onClick={openEmployeeArea}
-                  >
-                    {isAuthenticated ? "Ir para a Operação" : "Entrar no sistema"}{" "}
-                    <IconChevronRight size={16} />
-                  </button>
-                )}
+            <div className="br-hero-cta">
+              <a
+                href="/funcionario"
+                className="br-cta-primary"
+                style={{ textDecoration: "none" }}
+                onClick={openEmployeeArea}
+              >
+                <span>Acessar Área do Funcionário</span>
+                <IconChevronRight size={16} />
+              </a>
 
-                {isAuthenticated && onOpenMap2D && onOpenMap3D ? (
-                  <>
-                    <button type="button" className="br-cta-ghost" onClick={onOpenMap2D}>Mapa 2D</button>
-                    <button type="button" className="br-cta-ghost" onClick={onOpenMap3D}>Mapa 3D</button>
-                  </>
-                ) : (
-                  <a href="#modulos" className="br-cta-ghost" style={{ textDecoration: "none" }}>
-                    Explorar módulos ↓
-                  </a>
-                )}
-              </div>
+              {isAuthenticated && onOpenMap2D && onOpenMap3D ? (
+                <>
+                  <button type="button" className="br-cta-ghost" onClick={onOpenMap2D}>Mapa 2D</button>
+                  <button type="button" className="br-cta-ghost" onClick={onOpenMap3D}>Mapa 3D</button>
+                </>
+              ) : (
+                <a href="#modulos" className="br-cta-ghost" style={{ textDecoration: "none" }}>
+                  Explorar módulos ↓
+                </a>
+              )}
             </div>
+          </div>
 
-            <div className="br-hero-meta" role="list" aria-label="Pilares operacionais">
-              <div className="br-hero-meta-item" role="listitem">
-                <span className="br-meta-num">01</span>
-                <strong>2D + 3D</strong>
-                <span>Rotação livre 360°</span>
-              </div>
-              <div className="br-hero-meta-item" role="listitem">
-                <span className="br-meta-num">02</span>
-                <strong>Curva ABC</strong>
-                <span>Mapa de calor & slotting</span>
-              </div>
-              <div className="br-hero-meta-item" role="listitem">
-                <span className="br-meta-num">03</span>
-                <strong>Offline-first</strong>
-                <span>Fila segura no galpão</span>
-              </div>
-            </div>
+          <div
+            className="br-hero-visual-col"
+            style={
+              !isAuthenticated && heroScrollFade > 0.01
+                ? {
+                    opacity: Math.max(0.4, 1 - heroScrollFade * 0.55),
+                    transform: `translateY(${Math.round(-heroScrollFade * 14)}px)`,
+                  }
+                : undefined
+            }
+          >
+            <AnimatedLogoHero />
+          </div>
+        </div>
+
+        <div className="br-hero-meta" role="list" aria-label="Pilares operacionais">
+          <div className="br-hero-meta-item" role="listitem">
+            <span className="br-meta-num">01</span>
+            <strong>Planta 2D & 3D</strong>
+            <span>Sincronia real com rotação 360°</span>
+          </div>
+          <div className="br-hero-meta-item" role="listitem">
+            <span className="br-meta-num">02</span>
+            <strong>Curva ABC</strong>
+            <span>Mapa de calor & slotting inteligente</span>
+          </div>
+          <div className="br-hero-meta-item" role="listitem">
+            <span className="br-meta-num">03</span>
+            <strong>Offline-first</strong>
+            <span>Fila segura mesmo sem internet no galpão</span>
           </div>
         </div>
       </section>
