@@ -1959,25 +1959,84 @@
   display: block;
 }
 
-.aponta-logo-motion-wrap {
+.aponta-logo-ui-frame {
   position: relative;
   z-index: 1;
   width: 100%;
   max-width: 540px;
+  aspect-ratio: 16 / 9;
   margin: 0 auto;
-  border-radius: 22px;
+  border-radius: 24px;
   overflow: hidden;
   background: #ffffff;
-  box-shadow: 0 22px 48px rgba(10, 14, 20, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 24px 56px rgba(10, 14, 20, 0.24);
+  cursor: pointer;
+  user-select: none;
+  transition: transform 380ms cubic-bezier(0.25, 1, 0.5, 1), box-shadow 380ms cubic-bezier(0.25, 1, 0.5, 1);
 }
 
-.aponta-logo-original-img {
+[data-theme="light"] .aponta-logo-ui-frame {
+  border-color: rgba(15, 26, 46, 0.08);
+  box-shadow: 0 20px 48px rgba(15, 26, 46, 0.1);
+}
+
+.aponta-logo-ui-frame:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 30px 64px rgba(10, 14, 20, 0.28);
+}
+
+.aponta-logo-ui-frame:focus-visible {
+  outline: 2px solid var(--accent-2, #0ea5c6);
+  outline-offset: 4px;
+}
+
+.aponta-logo-layer {
+  position: absolute;
+  inset: 0;
   width: 100%;
-  max-width: 540px;
-  height: auto;
-  display: block;
-  margin: 0 auto;
+  height: 100%;
   object-fit: contain;
+  display: block;
+}
+
+.aponta-logo-still {
+  z-index: 1;
+}
+
+.aponta-logo-gif {
+  z-index: 2;
+}
+
+.aponta-logo-replay-hint {
+  position: absolute;
+  right: 12px;
+  bottom: 10px;
+  z-index: 3;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 26, 46, 0.08);
+  color: #16336e;
+  font-size: 14px;
+  font-weight: 700;
+  opacity: 0;
+  transform: scale(0.9);
+  transition: opacity 220ms ease, transform 220ms cubic-bezier(0.25, 1, 0.5, 1), background-color 180ms ease;
+}
+
+.aponta-logo-ui-frame:hover .aponta-logo-replay-hint,
+.aponta-logo-ui-frame:focus-visible .aponta-logo-replay-hint {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.aponta-logo-replay-hint:hover {
+  background: rgba(14, 165, 198, 0.18);
+  color: #0ea5c6;
 }
 
 /* Caminhão sai do galpão ao longo do eixo 30° isométrico, pausa e entra de volta */
