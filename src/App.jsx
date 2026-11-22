@@ -80,6 +80,32 @@ export default function App() {
   const [tab, setTab] = useState("welcome");
   const [isAdmin, setIsAdmin] = useState(false);
 
+  // Roteamento simples por URL:
+  // "/" = Tela Inicial (apresentação)
+  // "/funcionario" = Área do Funcionário (login por código + painel operacional)
+  // "/tv" = Painel TV (tratado em main.jsx)
+  const [routePath, setRoutePath] = useState(() =>
+    typeof window !== "undefined" ? window.location.pathname.replace(/\/+$/, "") || "/" : "/"
+  );
+
+  function navigateTo(nextPath) {
+    const clean = nextPath === "/" ? "/" : nextPath.replace(/\/+$/, "");
+    if (typeof window !== "undefined" && window.location.pathname !== clean) {
+      window.history.pushState({}, "", clean);
+    }
+    setRoutePath(clean);
+  }
+
+  useEffect(() => {
+    function onPopState() {
+      setRoutePath(window.location.pathname.replace(/\/+$/, "") || "/");
+    }
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  const isEmployeeRoute = routePath === "/funcionario" || routePath.startsWith("/funcionario/");
+
   const [cmdOpen, setCmdOpen] = useState(false);
   const [mapFocusAreaId, setMapFocusAreaId] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -116,6 +142,7 @@ export default function App() {
       );
     } catch { /* ignora */ }
     setTab("welcome");
+    navigateTo("/funcionario");
   }
 
   function handleOperatorLogout() {
@@ -126,6 +153,7 @@ export default function App() {
       sessionStorage.removeItem("aponta_schedule_operator");
     } catch { /* ignora */ }
     lockAdminSession();
+    navigateTo("/funcionario");
   }
 
   // Líder/Gestor OU admin pode acessar Checklist, Rotação e Rotina do Líder
@@ -278,6 +306,23 @@ export default function App() {
     void payload;
   }
 
+  // Rota "/" sempre mostra a Tela Inicial editorial (link independente de /funcionario e /tv)
+  if (!isEmployeeRoute) {
+    return (
+      <LandingPage
+        mode={session ? "operator" : "auth"}
+        operators={operators}
+        currentOperator={currentOperator}
+        onEnterEmployeeArea={() => navigateTo("/funcionario")}
+        onEnterLogin={() => {
+          setShowLogin(true);
+          navigateTo("/funcionario");
+        }}
+        onOperatorLogin={handleOperatorLogin}
+      />
+    );
+  }
+
   if (authLoading) {
     return (
       <div className="loading-screen">
@@ -288,10 +333,7 @@ export default function App() {
   }
 
   if (!session) {
-    if (!showLogin) {
-      return <LandingPage mode="auth" onEnterLogin={() => setShowLogin(true)} />;
-    }
-    return <LoginScreen onBackToLanding={() => setShowLogin(false)} />;
+    return <LoginScreen onBackToLanding={() => navigateTo("/")} />;
   }
 
   if (!loaded) {
@@ -303,13 +345,15 @@ export default function App() {
     );
   }
 
-  // Tela inicial obrigatória até o funcionário entrar com seu código
+  // Em /funcionario, se ainda não identificou o operador, abre direto o acesso por código + senha
   if (!currentOperator && !isAdmin) {
     return (
       <LandingPage
         mode="operator"
         operators={operators}
         onOperatorLogin={handleOperatorLogin}
+        onBackToLanding={() => navigateTo("/")}
+        standaloneGate
       />
     );
   }
@@ -550,7 +594,6 @@ export default function App() {
               activities={activities}
               separationErrors={separationErrors}
               shortagesByEntry={shortagesByEntry}
-              onBack={() => setTab("welcome")}
               editable
             />
           )}
@@ -561,7 +604,6 @@ export default function App() {
               isAdmin={isAdmin}
               onManageOperators={() => setTab("team")}
               onRefreshOperators={loadAll}
-              onBack={() => setTab("welcome")}
             />
           )}
           {tab === "sales-query" && (

@@ -1959,84 +1959,133 @@
   display: block;
 }
 
-.aponta-logo-ui-frame {
+.aponta-logo-editorial-svg {
   position: relative;
   z-index: 1;
   width: 100%;
-  max-width: 540px;
-  aspect-ratio: 16 / 9;
+  max-width: 600px;
+  height: auto;
+  display: block;
   margin: 0 auto;
-  border-radius: 24px;
-  overflow: hidden;
-  background: #ffffff;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  box-shadow: 0 24px 56px rgba(10, 14, 20, 0.24);
+  overflow: visible;
   cursor: pointer;
   user-select: none;
-  transition: transform 380ms cubic-bezier(0.25, 1, 0.5, 1), box-shadow 380ms cubic-bezier(0.25, 1, 0.5, 1);
+  transition: transform 320ms cubic-bezier(0.25, 1, 0.5, 1);
 }
 
-[data-theme="light"] .aponta-logo-ui-frame {
-  border-color: rgba(15, 26, 46, 0.08);
-  box-shadow: 0 20px 48px rgba(15, 26, 46, 0.1);
+.aponta-logo-stage:hover .aponta-logo-editorial-svg {
+  transform: translateY(-2px);
 }
 
-.aponta-logo-ui-frame:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 30px 64px rgba(10, 14, 20, 0.28);
-}
-
-.aponta-logo-ui-frame:focus-visible {
-  outline: 2px solid var(--accent-2, #0ea5c6);
-  outline-offset: 4px;
-}
-
-.aponta-logo-layer {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  display: block;
-}
-
-.aponta-logo-still {
-  z-index: 1;
-}
-
-.aponta-logo-gif {
-  z-index: 2;
-}
-
-.aponta-logo-replay-hint {
-  position: absolute;
-  right: 12px;
-  bottom: 10px;
-  z-index: 3;
-  width: 28px;
-  height: 28px;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(15, 26, 46, 0.08);
-  color: #16336e;
-  font-size: 14px;
-  font-weight: 700;
-  opacity: 0;
-  transform: scale(0.9);
-  transition: opacity 220ms ease, transform 220ms cubic-bezier(0.25, 1, 0.5, 1), background-color 180ms ease;
-}
-
-.aponta-logo-ui-frame:hover .aponta-logo-replay-hint,
-.aponta-logo-ui-frame:focus-visible .aponta-logo-replay-hint {
+/* Galpão permanece fixo desde o primeiro frame (só ganha nitidez imediata) */
+.ed-warehouse-fixed {
   opacity: 1;
-  transform: scale(1);
 }
 
-.aponta-logo-replay-hint:hover {
-  background: rgba(14, 165, 198, 0.18);
-  color: #0ea5c6;
+/* Caminhão chega da esquerda/baixo ao longo do eixo isométrico e estaciona suavemente na doca */
+@keyframes edTruckArrive {
+  0% {
+    opacity: 0;
+    transform: translate(-155px, 84px);
+  }
+  18% {
+    opacity: 1;
+  }
+  82% {
+    transform: translate(4px, -2px);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(0px, 0px);
+  }
+}
+
+.ed-truck-arrive {
+  animation: edTruckArrive 1.25s cubic-bezier(0.22, 1, 0.36, 1) 0.15s both;
+}
+
+@keyframes edHeadlightGlow {
+  0%, 70% { opacity: 0.45; }
+  85% { opacity: 1; }
+  100% { opacity: 0.85; }
+}
+
+.ed-headlight-glow {
+  animation: edHeadlightGlow 1.5s ease-out 0.15s both;
+}
+
+/* Caixas caem do alto em cascata com física spring (quique sutil ao pousar) */
+@keyframes edBoxDrop {
+  0% {
+    opacity: 0;
+    transform: translateY(-130px) scale(0.92);
+  }
+  58% {
+    opacity: 1;
+    transform: translateY(4px) scale(1.02, 0.96);
+  }
+  76% {
+    transform: translateY(-9px) scale(0.99, 1.02);
+  }
+  90% {
+    transform: translateY(2px) scale(1.01, 0.99);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0px) scale(1);
+  }
+}
+
+.ed-box-drop-1 {
+  transform-box: fill-box;
+  transform-origin: bottom center;
+  animation: edBoxDrop 780ms cubic-bezier(0.22, 1, 0.36, 1) 0.85s both;
+}
+
+.ed-box-drop-2 {
+  transform-box: fill-box;
+  transform-origin: bottom center;
+  animation: edBoxDrop 780ms cubic-bezier(0.22, 1, 0.36, 1) 1.08s both;
+}
+
+.ed-box-drop-3 {
+  transform-box: fill-box;
+  transform-origin: bottom center;
+  animation: edBoxDrop 800ms cubic-bezier(0.22, 1, 0.36, 1) 1.32s both;
+}
+
+/* Wordmark "aponta cd" sobe suavemente após o caminhão e as caixas pousarem */
+@keyframes edWordmarkIn {
+  0% {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.ed-wordmark-reveal {
+  animation: edWordmarkIn 720ms cubic-bezier(0.25, 1, 0.5, 1) 0.65s both;
+}
+
+.ed-word-aponta {
+  font-family: var(--font-display);
+  font-size: 86px;
+  font-weight: 800;
+  letter-spacing: -0.045em;
+  fill: #16336e;
+}
+
+[data-theme="dark"] .ed-word-aponta {
+  fill: #eef3f9;
+}
+
+.ed-pipe-stroke {
+  stroke-dasharray: 160;
+  stroke-dashoffset: 160;
+  animation: pipeDraw 900ms cubic-bezier(0.25, 1, 0.5, 1) 1.05s forwards;
 }
 
 /* Caminhão sai do galpão ao longo do eixo 30° isométrico, pausa e entra de volta */

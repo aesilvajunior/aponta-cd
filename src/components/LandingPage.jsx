@@ -228,7 +228,10 @@ export default function LandingPage({
   operators = [],
   currentOperator = null,
   onEnterLogin,
+  onEnterEmployeeArea,
   onOperatorLogin,
+  onBackToLanding,
+  standaloneGate = false,
   isAuthenticated = false,
   onOpenMap2D,
   onOpenMap3D,
@@ -248,7 +251,7 @@ export default function LandingPage({
   const isOperatorGate = mode === "operator";
 
   useEffect(() => {
-    if (!authModalOpen) return undefined;
+    if (!authModalOpen && !standaloneGate) return undefined;
     setCode("");
     setPassword("");
     setCodeError("");
@@ -258,16 +261,21 @@ export default function LandingPage({
       inputRef.current?.focus();
     }, 120);
     const onKey = (e) => {
-      if (e.key === "Escape") setAuthModalOpen(false);
+      if (e.key === "Escape" && authModalOpen) setAuthModalOpen(false);
     };
     window.addEventListener("keydown", onKey);
     return () => {
       clearTimeout(t);
       window.removeEventListener("keydown", onKey);
     };
-  }, [authModalOpen]);
+  }, [authModalOpen, standaloneGate]);
 
-  function openEmployeeArea() {
+  function openEmployeeArea(e) {
+    if (e) e.preventDefault();
+    if (onEnterEmployeeArea) {
+      onEnterEmployeeArea();
+      return;
+    }
     if (isOperatorGate) {
       setCodeError("");
       setAuthModalOpen(true);
@@ -364,13 +372,146 @@ export default function LandingPage({
 
   const step = PROCESS_STEPS[activeStep] || PROCESS_STEPS[0];
 
+  // Página dedicada em /funcionario para o colaborador entrar com código + senha
+  if (standaloneGate) {
+    return (
+      <div className="login-page">
+        <div className="login-theme-corner">
+          <ThemeToggle compact showColors={false} />
+        </div>
+
+        <div className={`br-modal-card ${shake ? "shake" : ""}`} style={{ maxWidth: 440 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
+            <BrandMark variant="lockup" />
+            {onBackToLanding && (
+              <a
+                href="/"
+                className="btn-small"
+                style={{ textDecoration: "none" }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  onBackToLanding();
+                }}
+              >
+                ← Início
+              </a>
+            )}
+          </div>
+
+          <div className="br-operator-head" style={{ marginBottom: 18 }}>
+            <div className="br-operator-icon">
+              <IconLock size={18} />
+            </div>
+            <div>
+              <h2 id="employee-modal-title">Área do Funcionário</h2>
+              <p>Informe seu código e sua senha para acessar</p>
+            </div>
+          </div>
+
+          <form onSubmit={handleCodeSubmit} autoComplete="off" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div>
+              <label className="br-field-label" htmlFor="emp-code-standalone">Código do funcionário</label>
+              <input
+                id="emp-code-standalone"
+                name="aponta_emp_code_guard"
+                ref={inputRef}
+                type="text"
+                inputMode="numeric"
+                className="br-code-input"
+                placeholder="Ex.: 101"
+                value={code}
+                readOnly={!empFieldsUnlocked}
+                onFocus={() => setEmpFieldsUnlocked(true)}
+                onPointerDown={() => setEmpFieldsUnlocked(true)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val.includes("@")) return;
+                  setCodeError("");
+                  setCode(val);
+                }}
+                autoComplete="off"
+                data-lpignore="true"
+                data-1p-ignore="true"
+                data-form-type="other"
+              />
+            </div>
+
+            <div>
+              <label className="br-field-label" htmlFor="emp-pass-standalone">Senha</label>
+              <div style={{ position: "relative" }}>
+                <input
+                  id="emp-pass-standalone"
+                  name="aponta_emp_pass_guard"
+                  type={showPass ? "text" : "password"}
+                  inputMode="numeric"
+                  className="br-code-input"
+                  style={{ paddingRight: 78 }}
+                  placeholder="••••"
+                  value={password}
+                  readOnly={!empFieldsUnlocked}
+                  onFocus={() => setEmpFieldsUnlocked(true)}
+                  onPointerDown={() => setEmpFieldsUnlocked(true)}
+                  onChange={(e) => {
+                    setCodeError("");
+                    setPassword(e.target.value);
+                  }}
+                  autoComplete="new-password"
+                  data-lpignore="true"
+                  data-1p-ignore="true"
+                  data-form-type="other"
+                />
+                <button
+                  type="button"
+                  className="br-pass-toggle"
+                  onClick={() => setShowPass((v) => !v)}
+                >
+                  {showPass ? "OCULTAR" : "VER"}
+                </button>
+              </div>
+              <div style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: 5 }}>
+                Primeiro acesso: use os números do seu próprio código como senha.
+              </div>
+            </div>
+
+            {codeError && (
+              <div className="login-error" role="alert" style={{ margin: 0 }}>
+                {codeError}
+              </div>
+            )}
+
+            <button type="submit" className="br-submit-btn" style={{ marginTop: 4 }}>
+              <span>Entrar no sistema</span>
+              <IconChevronRight size={16} />
+            </button>
+          </form>
+
+          {operators.filter((o) => o.active !== false).length === 0 && onOperatorLogin && (
+            <button
+              type="button"
+              className="btn-small"
+              style={{ width: "100%", marginTop: 12, justifyContent: "center" }}
+              onClick={() => onOperatorLogin({ code: "ADMIN", name: "Administrador", role: "lider" })}
+            >
+              Primeiro acesso (cadastrar equipe)
+            </button>
+          )}
+
+          <div className="br-operator-foot">
+            <span><IconCheck size={13} /> Teclado numérico</span>
+            <span><IconCheck size={13} /> Acesso protegido</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div ref={pageRef} className={`br-page ${isAuthenticated ? "br-embedded" : ""}`}>
       {/* ============ MINIMAL SWISS EDITORIAL NAVBAR ============ */}
       {!isAuthenticated && (
         <header className="br-nav">
           <div className="br-container br-nav-inner">
-            <a href="#topo" className="br-nav-brand" style={{ textDecoration: "none" }}>
+            <a href="/" className="br-nav-brand" style={{ textDecoration: "none" }}>
               <BrandMark variant="lockup" />
             </a>
 
@@ -386,14 +527,15 @@ export default function LandingPage({
 
             <div className="br-nav-actions">
               <ThemeToggle compact showColors={false} />
-              <button
-                type="button"
+              <a
+                href="/funcionario"
                 className="br-pill-btn"
+                style={{ textDecoration: "none" }}
                 onClick={openEmployeeArea}
               >
-                <span>{isOperatorGate ? "Área do Funcionário" : "Entrar"}</span>
+                <span>Área do Funcionário</span>
                 <span className="br-pill-arrow">↗</span>
-              </button>
+              </a>
             </div>
           </div>
         </header>
@@ -751,9 +893,9 @@ export default function LandingPage({
 
             <div className="br-footer-col">
               <div className="br-footer-col-title">Acesso rápido</div>
-              <button type="button" className="br-footer-link-btn" onClick={openEmployeeArea}>
-                Área do Funcionário
-              </button>
+              <a href="/funcionario" className="br-footer-link-btn" onClick={openEmployeeArea}>
+                Área do Funcionário ↗
+              </a>
               <a href="/tv" target="_blank" rel="noopener noreferrer">
                 Painel TV ao vivo ↗
               </a>
