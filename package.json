@@ -17,18 +17,18 @@
     "db:diff": "npx supabase db diff"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.45.4",
+    "@supabase/supabase-js": "^2.119.2",
     "konva": "^9.3.16",
-    "papaparse": "^5.7.0",
+    "papaparse": "^5.7.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-konva": "^18.2.10",
     "recharts": "^2.12.7",
     "xlsx": "https://cdn.sheetjs.com/xlsx-latest/xlsx-latest.tgz",
     "qrcode": "^1.5.4",
-    "three": "^0.170.0",
-    "@zxing/browser": "^0.1.5",
-    "@zxing/library": "^0.21.3"
+    "three": "^0.187.0",
+    "@zxing/browser": "^0.2.1",
+    "@zxing/library": "^0.23.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.1",
